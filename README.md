@@ -1,0 +1,2 @@
+# SurfQuakeCore
+SurfQuake Core Library
