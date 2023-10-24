@@ -1,48 +1,75 @@
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import List
 
-
-@dataclass
-class SignalProcessingParameters:
-    remove_response: bool
-    freq_max: float
-    freq_min: float
+from surfquakecore.utils import Cast
 
 
 @dataclass
-class InversionParameters:
-    earth_model: str
+class BaseDataClass:
+
+    def to_dict(self):
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, dto: dict):
+        return Cast(dto, cls)
+
+
+@dataclass
+class SignalProcessingParameters(BaseDataClass):
+    remove_response: bool = True
+    freq_max: float = 0.15
+    freq_min: float = 0.02
+
+    def __post_init__(self):
+
+        if self.freq_min >= self.freq_max:
+            raise ValueError(f"freq_min >= freq_max. Minimum frequency cannot be bigger than maximum.")
+
+
+@dataclass
+class InversionParameters(BaseDataClass):
+    earth_model_file: str
     location_unc: float
     time_unc: float
     deviatoric: bool
     depth_unc: float
-    covariance: bool
     rupture_velocity: float
-    source_type: str
     min_dist: float
     max_dist: float
+    covariance: bool = True
+    deviatoric: bool = False
+    source_type: str = "PointSource"
 
 
 @dataclass
-class Station:
+class StationConfig(BaseDataClass):
     name: str
     channels: List[str]
 
+    def validate_channels(self):
+        if not self.channels or len(self.channels) > 3:
+            raise AttributeError(f"Channels must contain a maximum of 3 values")
+
+        for ch in self.channels:
+            if len(ch) > 3:
+                raise AttributeError(f"Channel name: {ch} must contain a maximum of 3 characters")
+
     def __post_init__(self):
-        if not self.channels and len(self.channels) > 3:
-            raise AttributeError(f"channels must contain a maximum of 3 values")
+        self.validate_channels()
 
 
 @dataclass
-class MomentTensorInversionConfig:
+class MomentTensorInversionConfig(BaseDataClass):
 
     origin_date: datetime
     latitude: float
     longitude: float
     depth: float  # km
     magnitude: float
-    stations: List[Station]
+    stations: List[StationConfig]
     inversion_parameters: InversionParameters
-    signal_processing_pams: SignalProcessingParameters
+    signal_processing_pams: SignalProcessingParameters = field(default_factory=SignalProcessingParameters)
 
