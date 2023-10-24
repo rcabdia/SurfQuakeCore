@@ -34,7 +34,6 @@ class InversionParameters(BaseDataClass):
     earth_model_file: str
     location_unc: float
     time_unc: float
-    deviatoric: bool
     depth_unc: float
     rupture_velocity: float
     min_dist: float
