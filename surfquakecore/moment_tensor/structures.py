@@ -15,7 +15,7 @@ class InversionParameters:
     earth_model: str
     location_unc: float
     time_unc: float
-    deviatoric: bool  # rename this?? What deviatoric means?
+    deviatoric: bool
     depth_unc: float
     covariance: bool
     rupture_velocity: float
