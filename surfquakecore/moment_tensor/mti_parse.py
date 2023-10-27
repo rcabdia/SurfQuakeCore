@@ -1,6 +1,5 @@
 from configparser import ConfigParser
 from datetime import datetime
-
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, StationConfig, InversionParameters, \
     SignalProcessingParameters
 from surfquakecore.utils import Cast
