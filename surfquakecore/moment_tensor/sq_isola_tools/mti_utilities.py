@@ -1,9 +1,15 @@
 import os
 import shutil
+
+from obspy import UTCDateTime
 from obspy.taup import TauPyModel
 import pandas as pd
 from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
-from surfquake.seismogramInspector.signal_processing_advanced import get_rms_times
+
+from surfquakecore.utils.obspy_utils import MseedUtil
+
+
+#from surfquake.seismogramInspector.signal_processing_advanced import get_rms_times
 
 
 class MTIManager:
@@ -47,6 +53,7 @@ class MTIManager:
         stations_dir = os.path.join(self.root_path, "input")
         self.__validate_dir(stations_dir)
         return stations_dir
+
 
     def get_stations_index(self):
 
@@ -95,37 +102,37 @@ class MTIManager:
         df.to_csv(outstations_path, header=False, index=False)
         return self.stream, deltas
 
-    def get_traces_participation(self, p_arrival_time, win_length, threshold=4, magnitude=None, distance=None):
-
-        """
-        Find which traces from self.stream are above RMS Threshold
-        """
-
-        for st in self.stream:
-            for tr in st:
-
-                try:
-                    if p_arrival_time!=None:
-                        pass
-                    else:
-
-                        coords = self.__inv.get_coordinates(tr.id)
-                        lat = coords['latitude']
-                        lon = coords['longitude']
-                        [dist, _, _] = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
-                        distance_degrees = kilometer2degrees(dist*1E-3)
-                        arrivals = self.model.get_travel_times(source_depth_in_km=self.depth*1E-3,
-                                                               distance_in_degree=distance_degrees)
-                        p_arrival_time = self.o_time+arrivals[0].time
-
-                    rms = get_rms_times(tr, p_arrival_time, win_length, freqmin=0.5, freqmax=8, win_threshold=30,
-                                        magnitude=magnitude, distance=distance)
-                    if rms >= threshold:
-                        self.check_rms[tr.stats.network+"_" + tr.stats.station + "__" + tr.stats.channel] = True
-                    else:
-                        self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
-                except:
-                    self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
+    # def get_traces_participation(self, p_arrival_time, win_length, threshold=4, magnitude=None, distance=None):
+    #
+    #     """
+    #     Find which traces from self.stream are above RMS Threshold
+    #     """
+    #
+    #     for st in self.stream:
+    #         for tr in st:
+    #
+    #             try:
+    #                 if p_arrival_time!=None:
+    #                     pass
+    #                 else:
+    #
+    #                     coords = self.__inv.get_coordinates(tr.id)
+    #                     lat = coords['latitude']
+    #                     lon = coords['longitude']
+    #                     [dist, _, _] = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
+    #                     distance_degrees = kilometer2degrees(dist*1E-3)
+    #                     arrivals = self.model.get_travel_times(source_depth_in_km=self.depth*1E-3,
+    #                                                            distance_in_degree=distance_degrees)
+    #                     p_arrival_time = self.o_time+arrivals[0].time
+    #
+    #                 rms = get_rms_times(tr, p_arrival_time, win_length, freqmin=0.5, freqmax=8, win_threshold=30,
+    #                                     magnitude=magnitude, distance=distance)
+    #                 if rms >= threshold:
+    #                     self.check_rms[tr.stats.network+"_" + tr.stats.station + "__" + tr.stats.channel] = True
+    #                 else:
+    #                     self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
+    #             except:
+    #                 self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
 
 
     def filter_mti_inputTraces(self, stations, stations_list):

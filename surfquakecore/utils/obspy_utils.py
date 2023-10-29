@@ -3,7 +3,7 @@ import pickle
 import re
 from multiprocessing import Pool
 import pandas as pd
-from obspy import read
+from obspy import read, UTCDateTime
 
 
 class MseedUtil:
@@ -27,6 +27,13 @@ class MseedUtil:
         except:
             pass
         return project
+    @staticmethod
+    def list_folder_files(folder):
+        list_of_files = []
+        for top_dir, sub_dir, files in os.walk(folder):
+            for file in files:
+                list_of_files.append(os.path.join(top_dir, file))
+        return list_of_files
 
     def search_indiv_files(self, list_files: list):
 
@@ -185,6 +192,19 @@ class MseedUtil:
                 })
 
         return pd.DataFrame.from_dict(project_converted)
+
+    @staticmethod
+    def get_now_files(project, date, stations_list, channel_list):
+        date = UTCDateTime(date)
+
+        selection = [".", stations_list, channel_list]
+
+        _, files_path = MseedUtil.filter_project_keys(project, net=selection[0], station=selection[1],
+                                                      channel=selection[2])
+        start = date - 1300  # half and hour before
+        end = date + 3 * 3600  # end 2 hours after
+        files_path = MseedUtil.filter_time(list_files=files_path, starttime=start, endtime=end)
+        return files_path
 
     @classmethod
     def get_metadata_files(cls, file):
