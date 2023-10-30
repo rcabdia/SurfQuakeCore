@@ -5,7 +5,9 @@
 Various data manipulation / arithmetic / waveform filtering functions.
 
 """
+import math
 
+#import math
 import numpy as np
 import fractions
 
@@ -46,7 +48,29 @@ def lcmm(b, *args):
 		if a - round(a) < 1e6:
 			a = round(a)
 		b = fractions.gcd(a, b)
+		#b = math.gcd(a,b)
 	return 3/b
+
+
+def glcm(numbers):
+	"""
+    Calculate the Generalized Least Common Multiple (GLCM) of a list of integers
+    without exponents. This is equivalent to finding the LCM of the numbers.
+
+    Parameters:
+    - numbers: A list of integers.
+
+    Returns:
+    The LCM of the numbers.
+    """
+	if not numbers:
+		return 1  # LCM of an empty list is 1 by convention.
+
+	glcm_result = numbers[0]
+	for num in numbers[1:]:
+		glcm_result = math.lcm(glcm_result, num)
+
+	return glcm_result
 
 def my_filter(data, fmin, fmax):
 	"""

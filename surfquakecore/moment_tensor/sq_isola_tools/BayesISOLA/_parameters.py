@@ -4,7 +4,8 @@
 import math
 import numpy as np
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import lcmm, next_power_of_2
+from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import lcmm, next_power_of_2, glcm
+
 
 def set_frequencies(self, fmax, fmin=0., wavelengths=5):
 	"""
@@ -38,7 +39,12 @@ def set_working_sampling(self, multiple8=False):
 	"""
 	#min_sampling = 4 * self.fmax
 	min_sampling = 8 * self.fmax # teoreticky 4*fmax aby fungovala L2 norma????
-	SAMPRATE = 1. / lcmm(*self.d.data_deltas) # kazda stanice muze mit jine vzorkovani, bereme nejvetsiho spolecneho delitele (= 1. / nejmensi spolecny nasobek)
+	inverses = []
+	for num in self.d.data_deltas:
+		if num == 0:
+			raise ValueError("Division by zero is not allowed.")
+		inverses.append(int(1 / num))
+	SAMPRATE = float(glcm(inverses))
 	decimate = SAMPRATE / min_sampling
 	if multiple8:
 		if decimate > 128:

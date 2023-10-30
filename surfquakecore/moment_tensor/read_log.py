@@ -6,7 +6,6 @@ This is a temporary script file.
 """
 
 import re
-import obspy
 import numpy as np
 
 
@@ -41,11 +40,11 @@ def read_log(file):
     log_dict["longitude"] = float(lines[ri + 2].split(' ')[11])
     log_dict["depth"] = float(lines[ri + 2].split(' ')[16])
 
-    log_dict["VR"] = float(lines[ri + 6].strip('\n').split(':')[1].strip(' %'))
-    log_dict["CN"] = float(lines[ri + 7].strip('\n').split(':')[1].strip(' '))
+    log_dict["VR"] = float(lines[ri + 7].strip('\n').split(':')[1].strip(' %'))
+    log_dict["CN"] = float(lines[ri + 8].strip('\n').split(':')[1].strip(' '))
 
-    MT_exp = float(lines[ri + 9].split('*')[1].strip(' \n'))
-    MT = np.array([float(x) for x in lines[ri + 9].split('*')[0].strip('[ ]').split(' ') if x != ''])
+    MT_exp = float(lines[ri + 10].split('*')[1].strip(' \n'))
+    MT = np.array([float(x) for x in lines[ri + 10].split('*')[0].strip('[ ]').split(' ') if x != ''])
     MT *= MT_exp
 
     mrr, mtt, mpp, mrt, mrp, mtp = MT
@@ -56,25 +55,25 @@ def read_log(file):
     log_dict["mrp"] = mrp
     log_dict["mtp"] = mtp
 
-    log_dict["mo"] = float(lines[ri + 11].split('M0')[1].split('Nm')[0].strip(' ='))
-    log_dict["mw_mt"] = float(lines[ri + 11].split('M0')[1].split('Nm')[1].strip('\n ( ) Mw = '))
+    log_dict["mo"] = float(lines[ri + 12].split('M0')[1].split('Nm')[0].strip(' ='))
+    log_dict["mw_mt"] = float(lines[ri + 12].split('M0')[1].split('Nm')[1].strip('\n ( ) Mw = '))
 
     regex = re.compile('[a-zA-Z =:%,\n]')
 
-    dc, clvd, iso = [float(x) for x in re.sub(regex, ' ', lines[ri + 12]).split(' ') if x != '']
+    dc, clvd, iso = [float(x) for x in re.sub(regex, ' ', lines[ri + 13]).split(' ') if x != '']
     log_dict["dc"] = dc
     log_dict["clvd"] = clvd
     log_dict["iso"] = iso
 
-    fp1_strike, fp1_dip, fp1_rake = [float(x) for x in re.sub(regex, ' ', lines[ri + 13].split(':')[1]).split(' ') if
+    fp1_strike, fp1_dip, fp1_rake = [float(x) for x in re.sub(regex, ' ', lines[ri + 14].split(':')[1]).split(' ') if
                                      x != '' and x != '-']
-    fp2_strike, fp2_dip, fp2_rake = [float(x) for x in re.sub(regex, ' ', lines[ri + 14].split(':')[1]).split(' ') if
+    fp2_strike, fp2_dip, fp2_rake = [float(x) for x in re.sub(regex, ' ', lines[ri + 15].split(':')[1]).split(' ') if
                                      x != '' and x != '-']
     log_dict["strike_mt"] = fp1_strike
     log_dict["dip_mt"] = fp1_dip
     log_dict["rake_mt"] = fp1_rake
-    # log_dict["fp2_strike"] = fp2_strike
-    # log_dict["fp2_dip"] = fp2_dip
-    # log_dict["fp2_rake"] = fp2_rake
+    log_dict["fp2_strike"] = fp2_strike
+    log_dict["fp2_dip"] = fp2_dip
+    log_dict["fp2_rake"] = fp2_rake
 
     return log_dict

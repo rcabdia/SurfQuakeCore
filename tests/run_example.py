@@ -1,8 +1,7 @@
 import os
+from surfquakecore.moment_tensor.read_log import read_log
 from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import bayesian_isola_core
 from surfquakecore.utils.obspy_utils import MseedUtil
-
-
 
 if __name__ == "__main__":
 
@@ -27,5 +26,9 @@ if __name__ == "__main__":
 
     # build the class
 
-    bic = bayesian_isola_core(project, inventory_path, path_to_configfiles, working_directory, output_directory)
+    bic = bayesian_isola_core(project, inventory_path, path_to_configfiles, working_directory, output_directory,
+                              save_plots=True)
     bic.run_mti_inversion()
+    # example of reading output file
+    results = read_log("/Volumes/LaCie/mti_surfquakecore/output_directory/1/log.txt")
+    print(results.keys())

@@ -216,7 +216,8 @@ def plot_map_backend(self, x, y, s, CN, MT, color, width, highlight, xmin, xmax,
 	#if xmin != ymin or xmax != ymax:
 	plt.axis('equal')
 	plt.xlim(xmin, xmax)
-	plt.ylim(ymin, ymax, int(np.sign(ydiff)))
+	#plt.ylim(ymin, ymax, int(np.sign(ydiff)))
+	plt.ylim(ymin, ymax)
 	if xlabel: plt.xlabel(xlabel)
 	if ylabel: plt.ylabel(ylabel)
 	if title: plt.title(title)

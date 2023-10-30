@@ -248,7 +248,8 @@ def plot_noise(self, outfile='$outdir/noise.png', comp_order='ZNE', obs_style='k
 		for i in range(len(comps)):
 			l4 = ax[r,i].add_patch(mpatches.Rectangle((-NPTS/samprate, -ymax), NPTS/samprate, 2*ymax, color=(1.0, 0.6, 0.4))) # (x,y), width, height
 			l5 = ax[r,i].add_patch(mpatches.Rectangle((0, -ymax), self.data.npts_slice/samprate, 2*ymax, color=(0.7, 0.7, 0.7)))
-	ea.append(f.legend((l4, l5), ('$C_D$', 'inverted'), 'lower center', bbox_to_anchor=(0.5, 1.-0.0066*len(plot_stations)), ncol=2, fontsize='small', fancybox=True, handlelength=3, handleheight=1.2)) # , borderaxespad=0.1
+	#ea.append(f.legend((l4, l5), ('$C_D$', 'inverted'), 'lower center', bbox_to_anchor=(0.5, 1.-0.0066*len(plot_stations)),
+	#				   ncol=2, fontsize='small', fancybox=True, handlelength=3, handleheight=1.2)) # , borderaxespad=0.1
 	ea.append(f.text(0.1, 1.06-0.004*len(plot_stations), 'x', color='white', ha='center', va='center'))
 	outfile = outfile.replace('$outdir', self.outdir)
 	self.plot_seismo_backend_2(outfile, plot_stations, comps, ax, extra_artists=ea)
@@ -284,7 +285,7 @@ def plot_spectra(self, outfile='$outdir/spectra.png', comp_order='ZNE', plot_sta
 			#ax[i,j].set_yscale('log')
 			ax3[i,j] = ax[i,j].twinx()
 			#ax3[i,j].set_yscale('log')
-	ax3[0,0].get_shared_y_axes().join(*ax3.flatten().tolist())
+	#ax3[0,0].get_shared_y_axes().join(*ax3.flatten().tolist())
 
 	dt = 1./samprate
 	DT = 0.5*dt

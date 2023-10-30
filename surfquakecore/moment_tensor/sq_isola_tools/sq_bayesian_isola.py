@@ -1,3 +1,4 @@
+import gc
 import os
 from obspy import UTCDateTime, read_inventory
 from surfquakecore import green_dir
@@ -10,7 +11,7 @@ from surfquakecore.utils.obspy_utils import MseedUtil
 
 class bayesian_isola_core:
     def __init__(self, project: dict, metadata_file: str, parameters_folder: str, working_directory: str,
-                 ouput_directory: str):
+                 ouput_directory: str, save_plots=False):
 
         """
         ----------
@@ -27,6 +28,7 @@ class bayesian_isola_core:
         self.cpuCount = os.cpu_count() - 1
         self.working_directory = working_directory
         self.ouput_directory = ouput_directory
+        self.save_plots = save_plots
 
     def _get_path_files(self, project, date, stations_list, channel_list):
         files_path = []
@@ -61,6 +63,7 @@ class bayesian_isola_core:
 
 
     def run_mti_inversion(self, **kwargs):
+
         """
         This method should be to loop over config files and run the inversion.
         Previously it is needed to load the project and metadata.
@@ -107,7 +110,7 @@ class bayesian_isola_core:
         MTIManager.move_files2workdir(green_dir, self.working_directory)
         [st, deltas] = mt.get_stations_index()
         inputs = load_data(outdir=local_folder)
-        inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=(parameters['depth'] / 1000),
+        inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=parameters['depth'],
                                mag=parameters['magnitude'], t=UTCDateTime(parameters['origin_date']))
         #
         # # Sets the source time function for calculating elementary seismograms inside green folder type, working_directory, t0=0, t1=0
@@ -139,35 +142,41 @@ class bayesian_isola_core:
         inputs.create_station_index()
         inputs.data_deltas = deltas
         #
-        # grid = BayesISOLA.grid(inputs, self.working_directory, location_unc=3000, depth_unc=self.parameters['depth_unc'],
-        #         time_unc=self.parameters['time_unc'], step_x=200, step_z=200, max_points=500, circle_shape=False,
-        #                        rupture_velocity=self.parameters['rupture_velocity'])
+        grid = BayesISOLA.grid(inputs, self.working_directory, location_unc=parameters["inversion_parameters"]["location_unc"],
+            depth_unc=parameters["inversion_parameters"]['depth_unc'], time_unc=parameters["inversion_parameters"]['time_unc'],
+            step_x=200, step_z=200, max_points=500, circle_shape=False,
+            rupture_velocity=parameters["inversion_parameters"]["rupture_velocity"])
         #
-        # data = BayesISOLA.process_data(inputs, self.working_directory_local, grid, threads=self.cpuCount,
-        #         use_precalculated_Green=False, fmin=self.parameters["fmin"],fmax=self.parameters["fmax"],
-        #                                correct_data=False)
-        #
-        # cova = BayesISOLA.covariance_matrix(data)
-        # cova.covariance_matrix_noise(crosscovariance=self.parameters['covariance'], save_non_inverted=True)
-        # #
-        # solution = BayesISOLA.resolve_MT(data, cova, self.working_directory_local,
-        #             deviatoric=self.parameters["deviatoric"], from_axistra=True)
-        #
-        # # deviatoric=True: force isotropic component to be zero
-        # #
-        # if self.parameters['plot_save']:
-        #     plot = BayesISOLA.plot(solution, self.working_directory_local, from_axistra=True)
-        #     plot.html_log(h1='Example_Test')
-        #
-        # del inputs
-        # del grid
-        # del data
-        # del plot
-        # del mt
-        # del self.st
-        # del stations
-        # del stations_index
-        # gc.collect()
+        fmax = parameters['signal_processing_pams']["freq_max"]
+        fmin = parameters['signal_processing_pams']["freq_min"]
+        data = BayesISOLA.process_data(inputs, self.working_directory, grid, threads=self.cpuCount,
+                 use_precalculated_Green=False, fmin=fmin,
+                                       fmax=fmax, correct_data=False)
+
+        cova = BayesISOLA.covariance_matrix(data)
+        cova.covariance_matrix_noise(crosscovariance=parameters["inversion_parameters"]['covariance'],
+                                     save_non_inverted=True)
+        # deviatoric=True: force isotropic component to be zero
+        solution = BayesISOLA.resolve_MT(data, cova, self.working_directory,
+                    deviatoric=parameters["inversion_parameters"]["deviatoric"], from_axistra=True)
+
+        #if self.parameters['plot_save']:
+        if self.save_plots:
+            plot = BayesISOLA.plot(solution, self.working_directory, from_axistra=True)
+            plot.html_log(h1='surfQuake MTI')
+
+        del inputs
+        del grid
+        del data
+        del deltas
+        del plot
+        del mt
+        del st
+        del stations
+        del stations_index
+        del plot
+        del cova
+        gc.collect()
 
 
 

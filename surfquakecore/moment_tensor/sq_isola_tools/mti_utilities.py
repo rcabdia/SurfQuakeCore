@@ -120,7 +120,7 @@ class MTIManager:
                 arrivals = self.model.get_travel_times(source_depth_in_km=self.depth * 1E-3, distance_in_degree=distance_degrees)
                 p_arrival_time = self.o_time+arrivals[0].time
 
-                if distance_degrees <= 1: # Go for waveform duration of strong motion.
+                if distance_degrees <= 5: # Go for waveform duration of strong motion.
 
                     rms = self.get_rms_times(tr, p_arrival_time, dist*1E-3, self.magnitude,freqmin=0.5, freqmax=8)
 
@@ -188,6 +188,8 @@ class MTIManager:
         for stream_sort in stream_sorted:
             if "1" and "2" in stream_sort:
                 stream_sorted_order.append(sorted(stream_sort, key=lambda x: (x.isnumeric(), int(x) if x.isnumeric() else x)))
+                # if len(stream_sorted_order) ==3:
+                #     stream_sorted_order[-2], stream_sorted_order[-1] = stream_sorted_order[-1], stream_sorted_order[-2]
             else:
                 stream_sorted_order.append(stream_sort.reverse())
 

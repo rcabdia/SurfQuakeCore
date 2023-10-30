@@ -59,29 +59,80 @@ class plot:
 					  'seismo_sharey':None, 'spectra':None, 'noise':None, 'covariance_function':None,
 					  'covariance_matrix':None, 'maps':None, 'slices':None, 'maps_sum':None}
 
-		if maps:
-			self.plot_maps()
-		if slices:
-			self.plot_slices()
-		if maps_sum:
-			self.plot_maps_sum()
-		if MT:
-			self.plot_MT()
-		if uncertainty:
-			self.plot_uncertainty(n=uncertainty)
-		if seismo:
-			self.plot_seismo()
-		if seismo_sharey:
-			self.plot_seismo(outfile='$outdir/seismo_sharey.png', sharey=True)
-		if seismo_cova and (len(self.cova.LT) or len(self.cova.LT3)):
-			self.plot_seismo(outfile='$outdir/seismo_cova.png', cholesky=True)
-		if noise:
-			self.plot_noise()
-		if spectra:
-			self.plot_spectra()
-		if stations:
-			self.plot_stations()
-		if covariance_matrix:
-			self.plot_covariance_matrix()
-		if covariance_function:
-			self.plot_covariance_function()
+		try:
+			if maps:
+				self.plot_maps()
+		except:
+			print("Coudn't Plot Maps, Review Matplotlib version")
+
+		try:
+			if slices:
+				self.plot_slices()
+		except:
+			print("Coudn't Plot Slices, Review Matplotlib version")
+
+		try:
+			if maps_sum:
+				self.plot_maps_sum()
+		except:
+			print("Coudn't Plot Map Sum, Review Matplotlib version")
+
+		try:
+			if MT:
+				self.plot_MT()
+		except:
+			print("Coudn't Plot MT, Review Matplotlib version")
+
+		try:
+			if uncertainty:
+				self.plot_uncertainty(n=uncertainty)
+		except:
+			print("Coudn't Plot Uncertainity, Review Matplotlib version")
+
+		try:
+			if seismo:
+				self.plot_seismo()
+		except:
+			print("Coudn't Plot Seismo, Review Matplotlib version")
+
+		try:
+			if seismo_sharey:
+				self.plot_seismo(outfile='$outdir/seismo_sharey.png', sharey=True)
+		except:
+			print("Coudn't Plot Seismo_Sharey, Review Matplotlib version")
+
+		try:
+			if seismo_cova and (len(self.cova.LT) or len(self.cova.LT3)):
+				self.plot_seismo(outfile='$outdir/seismo_cova.png', cholesky=True)
+		except:
+			print("Coudn't Plot Seismo Cova, Review Matplotlib version")
+
+		try:
+			if noise:
+				self.plot_noise()
+		except:
+			print("Coudn't Plot Noise, Review Matplotlib version")
+
+		try:
+			if spectra:
+				self.plot_spectra()
+		except:
+			print("Coudn't Plot Spectra, Review Matplotlib version")
+
+		try:
+			if stations:
+				self.plot_stations()
+		except:
+			print("Coudn't Plot Stations, Review Matplotlib version")
+
+		try:
+			if covariance_matrix:
+				self.plot_covariance_matrix()
+		except:
+			print("Coudn't Plot Covariance_Matrix, Review Matplotlib version")
+
+		try:
+			if covariance_function:
+				self.plot_covariance_function()
+		except:
+			print("Coudn't Plot Covariance Function, Review Matplotlib version")
