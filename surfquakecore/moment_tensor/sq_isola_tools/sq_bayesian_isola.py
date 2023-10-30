@@ -3,6 +3,7 @@ from obspy import UTCDateTime, read_inventory
 from surfquakecore import green_dir
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools import BayesISOLA
+from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.load_data import load_data
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.utils.obspy_utils import MseedUtil
 
@@ -69,7 +70,6 @@ class bayesian_isola_core:
 
         inventory = read_inventory(self.metadata_file)
         ms = MseedUtil()
-        files_list = []
         list_of_earthquakes = ms.list_folder_files(self.parameters)
         for num, earthquake in enumerate(list_of_earthquakes):
             try:
@@ -101,41 +101,43 @@ class bayesian_isola_core:
 
         mt = MTIManager(st, inventory, parameters['latitude'], parameters['longitude'],
             parameters['depth'], UTCDateTime(parameters['origin_date']), parameters["inversion_parameters"]["min_dist"]*1000,
-                        parameters["inversion_parameters"]["max_dist"]*1000, self.working_directory)
+                        parameters["inversion_parameters"]["max_dist"]*1000, parameters['magnitude'],
+                        parameters['signal_processing_pams']['rms_thresh'], self.working_directory)
 
         MTIManager.move_files2workdir(green_dir, self.working_directory)
-        # [st, deltas] = mt.get_stations_index()
-        # inputs = BayesISOLA.load_data(outdir=local_folder)
-        # inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=(parameters['depth'] / 1000),
-        #                       mag=parameters['magnitude'], t=UTCDateTime(parameters['origin_Date']))
+        [st, deltas] = mt.get_stations_index()
+        inputs = load_data(outdir=local_folder)
+        inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=(parameters['depth'] / 1000),
+                               mag=parameters['magnitude'], t=UTCDateTime(parameters['origin_date']))
         #
         # # Sets the source time function for calculating elementary seismograms inside green folder type, working_directory, t0=0, t1=0
-        # inputs.set_source_time_function(parameters["inversion_paramters"]["source_type"].lower(), self.working_directory, t0=2.0, t1=0.5)
+        inputs.set_source_time_function(parameters["inversion_parameters"]["source_type"].lower(), self.working_directory,
+                                        t0=2.0, t1=0.5)
         #
         # # Create data structure self.stations
-        # inputs.read_network_coordinates(os.path.join(self.working_directory, "stations.txt"))
+        inputs.read_network_coordinates(os.path.join(self.working_directory, "stations.txt"))
 
         # edit self.stations_index
         inputs.read_network_coordinates(filename=os.path.join(self.working_directory, "stations.txt"))
         #
         stations = inputs.stations
         stations_index = inputs.stations_index
-        #
+
         # NEW FILTER STATIONS PARTICIPATION BY RMS THRESHOLD
-        # mt.get_traces_participation(None, 20, self.parameters['rms_thresh'], magnitude=event_info.mw,
-        #                             distance=self.max_distance)
-        # inputs.stations, inputs.stations_index = mt.filter_mti_inputTraces(stations, stations_index)
+        mt.get_participation()
+
+        inputs.stations, inputs.stations_index = mt.filter_mti_inputTraces(stations, stations_index)
+
+        # read crustal file and writes in green folder, read_crust(source, output='green/crustal.dat')
+        inputs.read_crust(parameters["inversion_parameters"]["earth_model_file"],
+            output=os.path.join(self.working_directory, "crustal.dat"))
+
+        # writes station.dat in working folder from self.stations
+        inputs.write_stations(self.working_directory)
         #
-        # # read crustal file and writes in green folder
-        # inputs.read_crust(self.parameters['earth_model'], output=os.path.join(self.working_directory_local,
-        #                     "crustal.dat"))  # read_crust(source, output='green/crustal.dat')
-        #
-        # # writes station.dat in working folder from self.stations
-        # inputs.write_stations(self.working_directory_local)
-        #
-        # inputs.data_raw = st
-        # inputs.create_station_index()
-        # inputs.data_deltas = deltas
+        inputs.data_raw = st
+        inputs.create_station_index()
+        inputs.data_deltas = deltas
         #
         # grid = BayesISOLA.grid(inputs, self.working_directory, location_unc=3000, depth_unc=self.parameters['depth_unc'],
         #         time_unc=self.parameters['time_unc'], step_x=200, step_z=200, max_points=500, circle_shape=False,

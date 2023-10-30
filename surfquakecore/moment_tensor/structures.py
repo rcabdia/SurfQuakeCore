@@ -22,6 +22,7 @@ class SignalProcessingParameters(BaseDataClass):
     remove_response: bool = True
     freq_max: float = 0.15
     freq_min: float = 0.02
+    rms_thresh: float= 5.0
 
     def __post_init__(self):
 

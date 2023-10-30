@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os.path
-
 import warnings
 warnings.filterwarnings("ignore",category=DeprecationWarning)
 warnings.filterwarnings('ignore', '.*Conversion of the second argument of issubdtype from.*')

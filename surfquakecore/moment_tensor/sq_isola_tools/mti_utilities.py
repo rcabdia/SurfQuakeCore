@@ -1,18 +1,18 @@
+import math
 import os
 import shutil
+from trace import Trace
+import obspy
 from obspy import UTCDateTime, Stream, read
+from obspy.signal.trigger import trigger_onset
 from obspy.taup import TauPyModel
 import pandas as pd
 from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
-from surfquakecore.utils.obspy_utils import MseedUtil
-
-
-#from surfquake.seismogramInspector.signal_processing_advanced import get_rms_times
-
+import numpy as np
 
 class MTIManager:
 
-    def __init__(self, st, inv, lat0, lon0, depth, o_time, min_dist, max_dist, working_directory):
+    def __init__(self, st, inv, lat0, lon0, depth, o_time, min_dist, max_dist, magnitude, threshold, working_directory):
         """
         Manage MTI files for run isola class program.
         st: stream of seismograms
@@ -27,6 +27,8 @@ class MTIManager:
         self.max_dist = max_dist
         self.working_directory = working_directory
         self.o_time = o_time
+        self.magnitude = magnitude
+        self.threshold = threshold
         self.model = TauPyModel(model="iasp91")
         self.check_rms = {}
 
@@ -100,37 +102,36 @@ class MTIManager:
         df.to_csv(outstations_path, header=False, index=False)
         return self.stream, deltas
 
-    # def get_traces_participation(self, p_arrival_time, win_length, threshold=4, magnitude=None, distance=None):
-    #
-    #     """
-    #     Find which traces from self.stream are above RMS Threshold
-    #     """
-    #
-    #     for st in self.stream:
-    #         for tr in st:
-    #
-    #             try:
-    #                 if p_arrival_time!=None:
-    #                     pass
-    #                 else:
-    #
-    #                     coords = self.__inv.get_coordinates(tr.id)
-    #                     lat = coords['latitude']
-    #                     lon = coords['longitude']
-    #                     [dist, _, _] = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
-    #                     distance_degrees = kilometer2degrees(dist*1E-3)
-    #                     arrivals = self.model.get_travel_times(source_depth_in_km=self.depth*1E-3,
-    #                                                            distance_in_degree=distance_degrees)
-    #                     p_arrival_time = self.o_time+arrivals[0].time
-    #
-    #                 rms = get_rms_times(tr, p_arrival_time, win_length, freqmin=0.5, freqmax=8, win_threshold=30,
-    #                                     magnitude=magnitude, distance=distance)
-    #                 if rms >= threshold:
-    #                     self.check_rms[tr.stats.network+"_" + tr.stats.station + "__" + tr.stats.channel] = True
-    #                 else:
-    #                     self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
-    #             except:
-    #                 self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
+
+    def get_participation(self):
+
+        """
+        Find which traces from self.stream are above RMS Threshold
+        """
+
+        for st in self.stream:
+            for tr in st:
+
+                coords = self.__inv.get_coordinates(tr.id)
+                lat = coords['latitude']
+                lon = coords['longitude']
+                [dist, _, _] = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
+                distance_degrees = kilometer2degrees(dist*1E-3)
+                arrivals = self.model.get_travel_times(source_depth_in_km=self.depth * 1E-3, distance_in_degree=distance_degrees)
+                p_arrival_time = self.o_time+arrivals[0].time
+
+                if distance_degrees <= 1: # Go for waveform duration of strong motion.
+
+                    rms = self.get_rms_times(tr, p_arrival_time, dist*1E-3, self.magnitude,freqmin=0.5, freqmax=8)
+
+                else: # Go for estimate earthquake duration from expected Rayleigh Wave
+
+                    rms = self.get_rms_times(tr, p_arrival_time, dist * 1E-3, self.magnitude, freqmin=0.05, freqmax=1.0)
+
+                if rms >= self.threshold:
+                    self.check_rms[tr.stats.network+"_" + tr.stats.station + "__" + tr.stats.channel] = True
+                else:
+                    self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
 
 
     def filter_mti_inputTraces(self, stations, stations_list):
@@ -213,21 +214,11 @@ class MTIManager:
             # destination directory
             shutil.copy2(os.path.join(src_dir, fname), dest_dir)
 
-    # def prepare_working_directory(self, green_path):
-    #     # check that exists otherwise remove it
-    #     if not os.path.exists(self.input_path):
-    #         os.makedirs(self.input_path)
-    #     # gather all files
-    #     allfiles = os.listdir(green_path)
-    #     # iterate on all files to move them to destination folder
-    #     for f in allfiles:
-    #         src_path = os.path.join(green_path, f)
-    #         dst_path = os.path.join(self.input_path, f)
-    #         os.rename(src_path, dst_path)
+
     @staticmethod
     def default_processing(files_path, origin_time, inventory, output_directory, regional=True, remove_response=True,
                            save_stream_plot=True):
-
+        st = None
         all_traces = []
         origin_time = UTCDateTime(origin_time)
 
@@ -267,3 +258,93 @@ class MTIManager:
         if save_stream_plot:
             output_dir = os.path.join(output_directory, "stream_raw.png")
             st.plot(outfile=output_dir, size=(800, 600))
+
+        return st
+
+    def get_rms_times(self, tr: Trace, p_arrival_time: UTCDateTime, distance_km, magnitude,
+                      freqmin=0.5, freqmax=8) -> float:
+
+        """
+        Get trace cut times between P arrival and end of envelope coda plus earthquake duration
+        """
+
+        tr_env = tr.copy()
+        # remove the mean...
+        tr_env.detrend(type='constant')
+        # ...and the linear trend...
+        tr_env.detrend(type='linear')
+        # ...filter
+        tr_env.taper(max_percentage=0.05)
+        tr_env.filter(type='bandpass', freqmin=freqmin, freqmax=freqmax)
+        tr_env.data = self._envelope(tr_env.data)
+        # smooth
+        tr_env.filter(type='lowpass', freq=0.15)
+        tr_noise = tr_env.copy()
+        tr_signal = tr_env.copy()
+
+        if distance_km <= 150:
+
+            t_duration = self._duration(magnitude, distance_km, component="vertical", S=1)
+            t2 = p_arrival_time + t_duration
+            win_length_noise = 60
+            t1 = p_arrival_time - win_length_noise
+
+        else:
+            delta_t = distance_km/4.0  # rough aproximation arrival of surface wave
+            t2 = p_arrival_time + delta_t + 1.5 * delta_t
+            win_length_noise = 5*60
+            t1 = p_arrival_time - win_length_noise
+
+        tr_noise.trim(starttime=t1, endtime=p_arrival_time, pad=False, fill_value=0)
+        tr_signal.trim(starttime=p_arrival_time, endtime=t2, pad=False, fill_value=0)
+
+        return self._compute_snr(tr_noise, tr_signal)
+
+    @staticmethod
+    def _compute_snr(trace_noise, trace_signal):
+
+        rmsnoise = np.sqrt(np.power(trace_noise.data, 2).sum())
+        rmsSignal = np.sqrt(np.power(trace_signal.data, 2).sum())
+        sn_ratio = rmsSignal / rmsnoise
+
+        return sn_ratio
+
+    @staticmethod
+    def _duration(magnitude, distance, component="vertical", S=1):
+        # Trifunac and  Brady 1987
+        # A new definition of strong motion duration and comparison with other definitions
+        # N.A. THEOFANOPULOS AND M. WATABE 1989
+        # S = 0, 1, 2 hard, intermediate and soft
+        # distance in km
+        if component == "vertical":
+            a = -124.5
+            b = 120.7
+            c = 0.019
+            d = 0.08641
+            e = 4.352
+
+        if component == "horizontal":
+            a = 2.201
+            b = 0.02489
+            c = 0.860
+            d = 0.05335
+            e = 2.883
+
+        D = a + b * np.exp(c * magnitude) + distance * d + e * S
+        t = 0.05 * D + D  # seconds
+
+        return t
+
+    @staticmethod
+    def _envelope(data):
+
+        N = len(data)
+        D = 2 ** math.ceil(math.log2(N))
+        z = np.zeros(D - N)
+        data = np.concatenate((data, z), axis=0)
+
+        # Necesary padding with zeros
+        data_envelope = obspy.signal.filter.envelope(data)
+        data_envelope = data_envelope[0:N]
+
+        return data_envelope

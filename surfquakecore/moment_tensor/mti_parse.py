@@ -45,6 +45,7 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             REMOVE_RESPONSE = True
             MAX_FREQ = 0.15
             MIN_FREQ = 0.02
+            RMS_THRESH = 5.0
             "
 
 
@@ -76,10 +77,12 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             rupture_velocity=Cast(mti_config_ini["MTI_PARAMETERS"]["RUPTURE_VELOCITY"], float),
             min_dist=Cast(mti_config_ini["MTI_PARAMETERS"]["MIN_DIST"], float),
             max_dist=Cast(mti_config_ini["MTI_PARAMETERS"]["MAX_DIST"], float),
+            source_type=Cast(mti_config_ini["MTI_PARAMETERS"]["SOURCE_TYPE"], str),
         ),
         signal_processing_pams=SignalProcessingParameters(
             remove_response=Cast(mti_config_ini["SIGNAL_PROCESSING"]["REMOVE_RESPONSE"], bool),
             freq_min=Cast(mti_config_ini["SIGNAL_PROCESSING"]["MIN_FREQ"], float),
             freq_max=Cast(mti_config_ini["SIGNAL_PROCESSING"]["MAX_FREQ"], float),
+            rms_thresh=Cast(mti_config_ini["SIGNAL_PROCESSING"]["RMS_THRESH"], float),
         )
     )
