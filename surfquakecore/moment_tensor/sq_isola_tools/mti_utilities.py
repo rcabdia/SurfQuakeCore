@@ -1,11 +1,9 @@
 import os
 import shutil
-
-from obspy import UTCDateTime
+from obspy import UTCDateTime, Stream, read
 from obspy.taup import TauPyModel
 import pandas as pd
 from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
-
 from surfquakecore.utils.obspy_utils import MseedUtil
 
 
@@ -227,21 +225,45 @@ class MTIManager:
     #         dst_path = os.path.join(self.input_path, f)
     #         os.rename(src_path, dst_path)
 
-    def default_processing(self, paths, start, end):
-        pass
-        # start = UTCDateTime("2018-08-21T00:20:00.0")
-        # end = UTCDateTime("2018-08-21T00:35:00.0")
-        # o_time = "2018-08-21 00:28:57"  # '%Y-%m-%d %H:%M:%S'
-        # st.trim(starttime=start, endtime=end)
-        # f1 = 0.01
-        # f2 = 0.02
-        # f3 = 0.35 * st[0].stats.sampling_rate
-        # f4 = 0.40 * st[0].stats.sampling_rate
-        # pre_filt = (f1, f2, f3, f4)
-        # st.detrend(type='constant')
-        # # ...and the linear trend
-        # st.detrend(type='linear')
-        # st.taper(max_percentage=0.05)
-        # st.remove_response(inventory=inv, pre_filt=pre_filt, output="VEL", water_level=60)
-        # st.detrend(type='linear')
-        # st.taper(max_percentage=0.05)
+    def default_processing(self, files_path, origin_time, inventory, output_directory, regional=True, remove_response=True,
+                           save_stream_plot=True):
+
+        all_traces = []
+        origin_time = UTCDateTime(origin_time)
+
+        if regional:
+            dt_noise = 5*60
+            dt_signal = 5*60
+        else:
+            dt_noise = 10*60
+            dt_signal = 60*60
+
+        start = origin_time - dt_noise
+        end = origin_time + dt_signal
+        for file in files_path:
+            st = read(file)
+            tr = st[0]
+            tr.trim(starttime=start, endtime=end)
+
+            # TODO: It is still necessary to check if a % of the trace have gaps. Interpolate or reject trace processing
+
+            f1 = 0.01
+            f2 = 0.02
+            f3 = 0.35 * tr.stats.sampling_rate
+            f4 = 0.40 * tr.stats.sampling_rate
+            pre_filt = (f1, f2, f3, f4)
+            tr.detrend(type='constant')
+            # # ...and the linear trend
+            tr.detrend(type='linear')
+            tr.taper(max_percentage=0.05)
+            if remove_response:
+                tr.remove_response(inventory=inventory, pre_filt=pre_filt, output="VEL", water_level=60)
+                tr.detrend(type='linear')
+                tr.taper(max_percentage=0.05)
+
+            all_traces.append(tr)
+        st = Stream(traces=all_traces)
+        st.merge()
+        if save_stream_plot:
+            output_dir = os.path.join(output_directory, "stream_raw.png")
+            st.plot(outfile=output_dir, size=(800, 600))

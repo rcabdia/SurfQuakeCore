@@ -6,7 +6,7 @@ from surfquakecore.utils.obspy_utils import MseedUtil
 
 if __name__ == "__main__":
 
-    inventory_path = "/Users/roberto/Documents/SurfQuakeCore/tests/test_resources/mti/inventories/inv_test.xml"
+    inventory_path = "/Users/roberto/Documents/SurfQuakeCore/tests/test_resources/mti/inventories/inv_surfquakecore.xml"
     data_dir_path = "/Users/roberto/Desktop/surfquakecore_test_data"
     path_to_project = "/Users/roberto/Documents/SurfQuakeCore/tests/test_resources/mti/project"
     project_name = 'surfquake_project_test.pkl'
@@ -28,4 +28,4 @@ if __name__ == "__main__":
     # build the class
 
     bic = bayesian_isola_core(project, inventory_path, path_to_configfiles, working_directory, output_directory)
-    bic.test_running()
+    bic.run_mti_inversion()
