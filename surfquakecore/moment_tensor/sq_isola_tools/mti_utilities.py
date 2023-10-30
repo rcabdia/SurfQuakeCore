@@ -224,8 +224,8 @@ class MTIManager:
     #         src_path = os.path.join(green_path, f)
     #         dst_path = os.path.join(self.input_path, f)
     #         os.rename(src_path, dst_path)
-
-    def default_processing(self, files_path, origin_time, inventory, output_directory, regional=True, remove_response=True,
+    @staticmethod
+    def default_processing(files_path, origin_time, inventory, output_directory, regional=True, remove_response=True,
                            save_stream_plot=True):
 
         all_traces = []

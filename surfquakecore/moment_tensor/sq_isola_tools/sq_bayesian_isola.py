@@ -90,29 +90,30 @@ class bayesian_isola_core:
         if not os.path.exists(self.ouput_directory):
             os.makedirs(self.ouput_directory)
 
-        if not os.path.exists(self.ouput_directory):
+        if not os.path.exists(local_folder):
             os.makedirs(local_folder)
 
         ### Process data ###
-        st = MTIManager.default_processing(files_list, parameters['origin_Date'], inventory, local_folder, regional=True,
-                    remove_response=parameters['signal_proccessing_params']['remove_response'],
+
+        st = MTIManager.default_processing(files_list, parameters['origin_date'], inventory, local_folder, regional=True,
+                    remove_response=parameters['signal_processing_pams']['remove_response'],
                     save_stream_plot=save_stream_plot)
 
         mt = MTIManager(st, inventory, parameters['latitude'], parameters['longitude'],
-            parameters['depth'], UTCDateTime(parameters['origin_date']), parameters["inversion_paramters"]["min_dist"]*1000,
-                        parameters["inversion_paramters"]["max_dist"]*1000, self.working_directory)
+            parameters['depth'], UTCDateTime(parameters['origin_date']), parameters["inversion_parameters"]["min_dist"]*1000,
+                        parameters["inversion_parameters"]["max_dist"]*1000, self.working_directory)
 
         MTIManager.move_files2workdir(green_dir, self.working_directory)
-        [st, deltas] = mt.get_stations_index()
-        inputs = BayesISOLA.load_data(outdir=local_folder)
-        inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=(parameters['depth'] / 1000),
-                              mag=parameters['magnitude'], t=UTCDateTime(parameters['origin_Date']))
-
-        # Sets the source time function for calculating elementary seismograms inside green folder type, working_directory, t0=0, t1=0
-        inputs.set_source_time_function(parameters["inversion_paramters"]["source_type"].lower(), self.working_directory, t0=2.0, t1=0.5)
-
-        # Create data structure self.stations
-        inputs.read_network_coordinates(os.path.join(self.working_directory, "stations.txt"))
+        # [st, deltas] = mt.get_stations_index()
+        # inputs = BayesISOLA.load_data(outdir=local_folder)
+        # inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=(parameters['depth'] / 1000),
+        #                       mag=parameters['magnitude'], t=UTCDateTime(parameters['origin_Date']))
+        #
+        # # Sets the source time function for calculating elementary seismograms inside green folder type, working_directory, t0=0, t1=0
+        # inputs.set_source_time_function(parameters["inversion_paramters"]["source_type"].lower(), self.working_directory, t0=2.0, t1=0.5)
+        #
+        # # Create data structure self.stations
+        # inputs.read_network_coordinates(os.path.join(self.working_directory, "stations.txt"))
 
         # edit self.stations_index
         inputs.read_network_coordinates(filename=os.path.join(self.working_directory, "stations.txt"))
