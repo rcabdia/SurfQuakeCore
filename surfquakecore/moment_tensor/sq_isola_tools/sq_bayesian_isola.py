@@ -1,4 +1,5 @@
 import gc
+import glob
 import os
 from obspy import UTCDateTime, read_inventory
 from surfquakecore import green_dir
@@ -7,7 +8,6 @@ from surfquakecore.moment_tensor.sq_isola_tools import BayesISOLA
 from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.load_data import load_data
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.utils.obspy_utils import MseedUtil
-
 
 class bayesian_isola_core:
     def __init__(self, project: dict, metadata_file: str, parameters_folder: str, working_directory: str,
@@ -70,7 +70,8 @@ class bayesian_isola_core:
         """
 
         save_stream_plot = kwargs.pop('save_plot', True)
-
+        if not os.path.exists(self.working_directory):
+            os.makedirs(self.ouput_directory)
         inventory = read_inventory(self.metadata_file)
         ms = MseedUtil()
         list_of_earthquakes = ms.list_folder_files(self.parameters)
@@ -87,6 +88,11 @@ class bayesian_isola_core:
     def _run_inversion(self, parameters, inventory, files_list, num, save_stream_plot=False):
 
         # TODO: might be is good idea to include option to remove previuos inversions
+        # cleaning working directory
+
+        files = glob.glob(self.working_directory + "/*")
+        for f in files:
+            os.remove(f)
 
         local_folder = os.path.join(self.ouput_directory, num)
 

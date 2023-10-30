@@ -1,0 +1,126 @@
+# https://packaging.python.org/en/latest/tutorials/packaging-projects/
+# https://stackoverflow.com/questions/28002897/wheel-file-installation
+# https://packaging.python.org/en/latest/key_projects/#hatch
+
+python3 -m pip install --upgrade pip
+
+A simple project
+packaging_tutorial/
+└── src/
+    └── example_package_YOUR_USERNAME_HERE/
+        ├── __init__.py
+        └── example.py
+
+
+__init__.py is required to import the directory as a package, and should be empty.
+
+###########
+example.py
+
+def add_one(number):
+    return number + 1
+
+###########
+
+Creating the package files
+
+packaging_tutorial/
+├── LICENSE
+├── pyproject.toml
+├── README.md
+├── src/
+│   └── example_package_YOUR_USERNAME_HERE/
+│       ├── __init__.py
+│       └── example.py
+└── tests/
+
+Creating a test directory
+Creating pyproject.toml
+
+pyproject.toml tells “frontend” build tools like pip and build what “backend” tool to use to create distribution packages for your project. You can choose from a number of backends; this tutorial uses Hatchling by default, but it will work identically with setuptools, Flit, PDM, and others that support the [project] table for metadata.
+
+# In Hatchling
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# In setuptools
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+	requires is a list of packages that are needed to build your package. You don’t need to install them; build frontends like pip will install them automatically in a temporary, isolated virtual environment for use during the build process.
+
+	build-backend is the name of the Python object that frontends will use to perform the build.
+
+
+# Configuring metadata
+
+[project]
+name = "example_package_YOUR_USERNAME_HERE"
+version = "0.0.1"
+authors = [
+  { name="Example Author", email="author@example.com" },
+]
+description = "A small example package"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/pypa/sampleproject"
+"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
+
+Creating README.md
+
+# Example Package
+
+This is a simple example package. You can use
+[Github-flavored Markdown](https://guides.github.com/features/mastering-markdown/)
+to write your content.
+
+# Including other files
+https://packaging.python.org/en/latest/glossary/#term-Source-Distribution-or-sdist
+
+# Creating the package
+Now run this command from the same directory where pyproject.toml is located:
+pip install build
+python3 -m build
+
+The output is:
+
+dist/
+├── example_package_YOUR_USERNAME_HERE-0.0.1-py3-none-any.whl
+└── example_package_YOUR_USERNAME_HERE-0.0.1.tar.gz
+
+The tar.gz file is a source distribution whereas the .whl file is a built distribution. Newer pip versions preferentially install built distributions, but will fall back to source distributions if needed. You should always upload a source distribution and provide built distributions for the platforms your project is compatible with. In this case, our example package is compatible with Python on any platform so only one built distribution is needed.
+
+# Uploading the distribution archives
+The first thing you’ll need to do is register an account on TestPyPI, which is a separate instance of the package index intended for testing and experimentation. It’s great for things like this tutorial where we don’t necessarily want to upload to the real index. To register an account, go to https://test.pypi.org/account/register/ and complete the steps on that page. You will also need to verify your email address before you’re able to upload any packages. For more details, see Using TestPyPI.
+
+To securely upload your project, you’ll need a PyPI API token. Create one at https://test.pypi.org/manage/account/#api-tokens, setting the “Scope” to “Entire account”. Don’t close the page until you have copied and saved the token — you won’t see that token again.
+
+Now that you are registered, you can use twine to upload the distribution packages. You’ll need to install Twine:
+
+
+### Create a pip enviroment
+
+pip install virtualenv
+python<version> -m venv <virtual-environment-name>
+python3 -m venv mytest
+
+source env/bin/activate
+which python
+#deactivate
+
+# Install my local package
+activate the enviroment and navigate where is the wheel file
+cd /Users/roberto/Documents/packaging_tutorial/dist
+then install
+#python3 -m pip install requests-2.18.4.tar.gz
+pip install example_package_rob-0.0.1-py3-none-any.whl
+
