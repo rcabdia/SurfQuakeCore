@@ -1,10 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0", "python-dateutil", "obspy", "pyproj", "pandas"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+
 [project]
-name = "surfQuakecore"
+name = "surfquakecore"
 version = "0.0.1"
+# Requirements
+dependencies = [
+    "python-dateutil",
+    "obspy",
+    "pyproj",
+    "pandas",
+]
 authors = [
   { name="Roberto Cabieces & Thiago Junqueira", email="rcabdia@roa.es"},
 ]
@@ -19,3 +27,9 @@ classifiers = [
 
 [project.urls]
 "Homepage" = "https://projectisp.github.io/ISP_tutorial.github.io/"
+
+
+[tool.setuptools.package-data]
+"surfquakecore.bin.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
+"surfquakecore.bin.mac_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
+

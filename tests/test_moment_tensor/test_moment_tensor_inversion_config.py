@@ -4,6 +4,7 @@ from datetime import datetime
 
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, StationConfig, InversionParameters
+
 from tests.test_resources.mti import test_resources_mti_path
 
 
@@ -21,7 +22,7 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
                                      'deviatoric': False,
                                      'source_type': 'PointSource'
                                      },
-            'signal_processing_pams': {'remove_response': True, 'freq_max': 0.15, 'freq_min': 0.02}
+            'signal_processing_pams': {'remove_response': True, 'freq_max': 0.15, 'freq_min': 0.02, 'rms_thresh': 5.0}
         }
 
     def test_config(self):
@@ -57,6 +58,9 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
             {'name': "WAIT", 'channels': ["BH*"]},
             {'name': "EVO", 'channels': ["*"]},
         ]
+        self.expect_mti_dto["inversion_parameters"]["source_type"] = "Triangle"
+        self.expect_mti_dto["signal_processing_pams"]["rms_thresh"] = 10.
+
         self.assertEqual(mti_config.to_dict(), self.expect_mti_dto)
 
 
