@@ -225,8 +225,8 @@ class MTIManager:
         origin_time = UTCDateTime(origin_time)
 
         if regional:
-            dt_noise = 5*60
-            dt_signal = 5*60
+            dt_noise = 10*60
+            dt_signal = 10*60
         else:
             dt_noise = 10*60
             dt_signal = 60*60

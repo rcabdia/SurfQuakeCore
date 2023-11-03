@@ -2,12 +2,13 @@ import gc
 import glob
 import os
 from obspy import UTCDateTime, read_inventory
-from surfquakecore import green_dir
+from surfquakecore.bin import green_bin_dir
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools import BayesISOLA
 from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.load_data import load_data
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.utils.obspy_utils import MseedUtil
+
 
 class bayesian_isola_core:
     def __init__(self, project: dict, metadata_file: str, parameters_folder: str, working_directory: str,
@@ -29,6 +30,12 @@ class bayesian_isola_core:
         self.working_directory = working_directory
         self.ouput_directory = ouput_directory
         self.save_plots = save_plots
+
+        if not os.path.exists(self.working_directory):
+            os.makedirs(self.working_directory)
+        if not os.path.exists(self.ouput_directory):
+            os.makedirs(self.ouput_directory)
+
 
     def _get_path_files(self, project, date, stations_list, channel_list):
         files_path = []
@@ -83,7 +90,11 @@ class bayesian_isola_core:
             if mti_config is not None:
                 files_list = self._get_files_from_config(mti_config)
                 parameters = mti_config.to_dict()
-                self._run_inversion(parameters, inventory, files_list, str(num), save_stream_plot=save_stream_plot)
+                try:
+                    self._run_inversion(parameters, inventory, files_list, str(num), save_stream_plot=save_stream_plot)
+                except:
+                    print("Inversion not possible for earthquake: ", parameters['origin_date'], parameters['latitude'], parameters['longitude'],
+            parameters['depth'], parameters['magnitude'])
 
     def _run_inversion(self, parameters, inventory, files_list, num, save_stream_plot=False):
 
@@ -101,6 +112,11 @@ class bayesian_isola_core:
 
         if not os.path.exists(local_folder):
             os.makedirs(local_folder)
+        else:
+            files = glob.glob(self.working_directory + "/*")
+            for f in files:
+                os.remove(f)
+
 
         ### Process data ###
 
@@ -113,7 +129,7 @@ class bayesian_isola_core:
                         parameters["inversion_parameters"]["max_dist"]*1000, parameters['magnitude'],
                         parameters['signal_processing_pams']['rms_thresh'], self.working_directory)
 
-        MTIManager.move_files2workdir(green_dir, self.working_directory)
+        MTIManager.move_files2workdir(green_bin_dir, self.working_directory)
         [st, deltas] = mt.get_stations_index()
         inputs = load_data(outdir=local_folder)
         inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=parameters['depth'],
@@ -168,20 +184,24 @@ class bayesian_isola_core:
 
         #if self.parameters['plot_save']:
         if self.save_plots:
-            plot = BayesISOLA.plot(solution, self.working_directory, from_axistra=True)
-            plot.html_log(h1='surfQuake MTI')
+            plot_mti = BayesISOLA.plot(solution, self.working_directory, from_axistra=True)
+            plot_mti.html_log(h1='surfQuake MTI')
 
         del inputs
         del grid
         del data
         del deltas
-        del plot
         del mt
         del st
         del stations
         del stations_index
-        del plot
         del cova
+        try:
+            if self.save_plots:
+                del plot_mti
+        except:
+            print("coudn't release plotting memory usage")
+
         gc.collect()
 
 
