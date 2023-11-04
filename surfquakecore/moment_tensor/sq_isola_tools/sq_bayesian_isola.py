@@ -137,11 +137,9 @@ class bayesian_isola_core:
         #
         # # Sets the source time function for calculating elementary seismograms inside green folder type, working_directory, t0=0, t1=0
         inputs.set_source_time_function(parameters["inversion_parameters"]["source_type"].lower(), self.working_directory,
-                                        t0=2.0, t1=0.5)
+                                        t0=parameters["inversion_parameters"]["source_duration"], t1=0.5)
         #
-        # # Create data structure self.stations
-        inputs.read_network_coordinates(os.path.join(self.working_directory, "stations.txt"))
-
+        # Create data structure self.stations
         # edit self.stations_index
         inputs.read_network_coordinates(filename=os.path.join(self.working_directory, "stations.txt"))
         #

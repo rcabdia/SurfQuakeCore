@@ -38,6 +38,7 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             COVARIANCE = True
             RUPTURE_VELOCITY = 2500
             SOURCE_TYPE = Triangle
+            SOURCE_DURATION = 2.0
             MIN_DIST = 10
             MAX_DIST = 300
             #
@@ -78,6 +79,9 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             min_dist=Cast(mti_config_ini["MTI_PARAMETERS"]["MIN_DIST"], float),
             max_dist=Cast(mti_config_ini["MTI_PARAMETERS"]["MAX_DIST"], float),
             source_type=Cast(mti_config_ini["MTI_PARAMETERS"]["SOURCE_TYPE"], str),
+            covariance=Cast(mti_config_ini["MTI_PARAMETERS"]["COVARIANCE"], bool),
+            deviatoric=Cast(mti_config_ini["MTI_PARAMETERS"]["DEVIATORIC"], bool),
+            source_duration=Cast(mti_config_ini["MTI_PARAMETERS"]["SOURCE_DURATION"], float),
         ),
         signal_processing_pams=SignalProcessingParameters(
             remove_response=Cast(mti_config_ini["SIGNAL_PROCESSING"]["REMOVE_RESPONSE"], bool),

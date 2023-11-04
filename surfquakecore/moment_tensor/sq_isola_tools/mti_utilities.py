@@ -234,27 +234,29 @@ class MTIManager:
         start = origin_time - dt_noise
         end = origin_time + dt_signal
         for file in files_path:
-            st = read(file)
-            tr = st[0]
-            tr.trim(starttime=start, endtime=end)
+            try:
+                st = read(file)
+                tr = st[0]
+                tr.trim(starttime=start, endtime=end)
 
-            # TODO: It is still necessary to check if a % of the trace have gaps. Interpolate or reject trace processing
+                # TODO: It is still necessary to check if a % of the trace have gaps. Interpolate or reject trace processing
 
-            f1 = 0.01
-            f2 = 0.02
-            f3 = 0.35 * tr.stats.sampling_rate
-            f4 = 0.40 * tr.stats.sampling_rate
-            pre_filt = (f1, f2, f3, f4)
-            tr.detrend(type='constant')
-            # # ...and the linear trend
-            tr.detrend(type='linear')
-            tr.taper(max_percentage=0.05)
-            if remove_response:
-                tr.remove_response(inventory=inventory, pre_filt=pre_filt, output="VEL", water_level=60)
+                f1 = 0.01
+                f2 = 0.02
+                f3 = 0.35 * tr.stats.sampling_rate
+                f4 = 0.40 * tr.stats.sampling_rate
+                pre_filt = (f1, f2, f3, f4)
+                tr.detrend(type='constant')
+                # # ...and the linear trend
                 tr.detrend(type='linear')
                 tr.taper(max_percentage=0.05)
-
-            all_traces.append(tr)
+                if remove_response:
+                    tr.remove_response(inventory=inventory, pre_filt=pre_filt, output="VEL", water_level=60)
+                    tr.detrend(type='linear')
+                    tr.taper(max_percentage=0.05)
+                all_traces.append(tr)
+            except:
+                print("It cannot be processed file ", file)
         st = Stream(traces=all_traces)
         st.merge()
         if save_stream_plot:
@@ -350,3 +352,37 @@ class MTIManager:
         data_envelope = data_envelope[0:N]
 
         return data_envelope
+
+    def fill_gaps(self, tr, tol=5):
+
+        N = len(tr.data)
+        tol_seconds_percentage = int((tol/100)*N)*tr.stats.delta
+        st = Stream(traces=tr)
+        gaps = st.get_gaps()
+
+        if len(gaps) > 0 and self._check_gaps(gaps, tol_seconds_percentage):
+            st.print_gaps()
+            st = []
+
+        elif len(gaps) > 0 and self._check_gaps(gaps, tol_seconds_percentage) == False:
+            st.print_gaps()
+            st.merge(fill_value="interpolate", interpolation_samples=-1)
+
+        elif len(gaps) == 0 and self.check_gaps(gaps, tol_seconds_percentage) == False:
+            pass
+
+        return st
+    @staticmethod
+    def _check_gaps(gaps, tol):
+        time_gaps = []
+        for i in gaps:
+            time_gaps.append(i[6])
+
+        sum_total = sum(time_gaps)
+
+        if sum_total > tol:
+            check = False
+        else:
+            check = True
+
+        return check

@@ -113,7 +113,7 @@ pip install virtualenv
 python<version> -m venv <virtual-environment-name>
 python3 -m venv mytest
 
-source env/bin/activate
+source venv/bin/activate
 which python
 #deactivate
 
@@ -123,4 +123,5 @@ cd /Users/roberto/Documents/packaging_tutorial/dist
 then install
 #python3 -m pip install requests-2.18.4.tar.gz
 pip install example_package_rob-0.0.1-py3-none-any.whl
+pip install --force-reinstall example_package_rob-0.0.1-py3-none-any.whl
 

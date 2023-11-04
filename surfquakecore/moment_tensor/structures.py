@@ -39,9 +39,11 @@ class InversionParameters(BaseDataClass):
     rupture_velocity: float
     min_dist: float
     max_dist: float
+    source_duration: float
     covariance: bool = True
     deviatoric: bool = False
-    source_type: str = "PointSource"
+    source_type: str = "Heaviside"
+
 
 
 @dataclass
