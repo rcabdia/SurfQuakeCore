@@ -1,4 +1,3 @@
-import os
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import List
@@ -45,7 +44,6 @@ class InversionParameters(BaseDataClass):
     source_type: str = "Heaviside"
 
 
-
 @dataclass
 class StationConfig(BaseDataClass):
     name: str
@@ -73,5 +71,4 @@ class MomentTensorInversionConfig(BaseDataClass):
     magnitude: float
     stations: List[StationConfig]
     inversion_parameters: InversionParameters
-    signal_processing_pams: SignalProcessingParameters = field(default_factory=SignalProcessingParameters)
-
+    signal_processing_parameters: SignalProcessingParameters = field(default_factory=SignalProcessingParameters)

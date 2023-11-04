@@ -4,20 +4,13 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
+dynamic = ["readme", "dependencies"]
 name = "surfquakecore"
 version = "0.0.1"
-# Requirements
-dependencies = [
-    "python-dateutil",
-    "obspy",
-    "pyproj",
-    "pandas",
-]
 authors = [
   { name="Roberto Cabieces & Thiago Junqueira", email="rcabdia@roa.es"},
 ]
 description = "SurfQuake Core"
-readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -27,6 +20,10 @@ classifiers = [
 
 [project.urls]
 "Homepage" = "https://projectisp.github.io/ISP_tutorial.github.io/"
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"]}
+dependencies = {file = ["requirements.txt"]}
 
 
 [tool.setuptools.package-data]

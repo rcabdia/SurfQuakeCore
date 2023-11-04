@@ -19,10 +19,12 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
                                      'time_unc': .2, 'depth_unc': 3.,
                                      'rupture_velocity': 2500., 'min_dist': 10.,
                                      'max_dist': 300., 'covariance': True,
+                                     'source_duration': 2.,
                                      'deviatoric': False,
                                      'source_type': 'PointSource'
                                      },
-            'signal_processing_pams': {'remove_response': True, 'freq_max': 0.15, 'freq_min': 0.02, 'rms_thresh': 5.0}
+            'signal_processing_parameters': {'remove_response': True, 'freq_max': 0.15, 'freq_min': 0.02,
+                                             'rms_thresh': 5.0}
         }
 
     def test_config(self):
@@ -41,9 +43,11 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
                 location_unc=0.7,
                 time_unc=.2,
                 depth_unc=3.,
+                source_duration=2.0,
                 rupture_velocity=2500.,
                 min_dist=10.,
                 max_dist=300.,
+                source_type='PointSource'
             ),
         )
         self.assertEqual(mti_config.to_dict(), self.expect_mti_dto)
@@ -59,8 +63,7 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
             {'name': "EVO", 'channels': ["*"]},
         ]
         self.expect_mti_dto["inversion_parameters"]["source_type"] = "Triangle"
-        self.expect_mti_dto["signal_processing_pams"]["rms_thresh"] = 10.
-
+        self.expect_mti_dto["signal_processing_parameters"]["rms_thresh"] = 10.
         self.assertEqual(mti_config.to_dict(), self.expect_mti_dto)
 
 

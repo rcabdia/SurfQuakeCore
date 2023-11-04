@@ -5,24 +5,30 @@
 Various data manipulation / arithmetic / waveform filtering functions.
 
 """
+import fractions
 import math
 
-#import math
 import numpy as np
-import fractions
 
-def rename_keys(somedict, prefix='', suffix=''):
+
+# TODO  Remove all unnecessary methods here. Lots of bad code
+def rename_keys(_dict: dict, prefix: str = '', suffix: str = '') -> dict:
 	"""
 	Returns a dictionary with keys renamed by adding some prefix and/or suffix
-	:param somedict: dictionary, whose keys will be remapped
-	:type somedict: dictionary
+	:param _dict: dictionary, whose keys will be remapped
+	:type _dict: dictionary
 	:param prefix: new keys starts with
 	:type prefix: string, optional
 	:param suffix: new keys ends with
 	:type suffix: string, optional
 	:returns : dictionary with keys renamed
 	"""
-	return dict(map(lambda key, value: (prefix+str(key)+suffix, value), somedict.items()))
+
+	# TODO this can be done just like:
+	return {f"{prefix}{k}{suffix}": v for k, v in _dict.items()}
+
+	# TODO Why use map and lambda for a simple thing???? See above.
+	return dict(map(lambda key, value: (prefix+str(key)+suffix, value), _dict.items()))
 
 def next_power_of_2(n):
 	"""

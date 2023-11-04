@@ -368,6 +368,7 @@ class MTIManager:
             pass
 
         return st
+
     @staticmethod
     def _check_gaps(gaps, tol):
         time_gaps = []
@@ -376,9 +377,4 @@ class MTIManager:
 
         sum_total = sum(time_gaps)
 
-        if sum_total > tol:
-            check = False
-        else:
-            check = True
-
-        return check
+        return sum_total <= tol

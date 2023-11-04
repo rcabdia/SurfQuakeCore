@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import os.path
+import numpy as np
 from obspy import read, Trace, Stream, read_inventory
 
 from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.fileformats import attach_ISOLA_paz, attach_xml_paz
 
+
+# TODO needs serious refactoring. Why this starts with self?? This is not inside a class!!!
 def add_NEZ(self, filename, network, station, starttime, channelcode='LH', location='', accelerograph=False):
 	"""
 	Read stream from four column file (t, N, E, Z) (format used in ISOLA).
@@ -27,9 +30,8 @@ def add_NEZ(self, filename, network, station, starttime, channelcode='LH', locat
 	:param accelerograph: set ``True`` when the recorded quantity is acceleration
 	:type accelerograph: bool, optional
 	"""
-	inp  = open(filename, 'r')
-	lines = inp.readlines()
-	inp.close()
+	with open(filename, 'r') as f:
+		lines = f.readlines()
 	npts = len(lines)
 
 	tr = Trace(data=np.empty(npts))

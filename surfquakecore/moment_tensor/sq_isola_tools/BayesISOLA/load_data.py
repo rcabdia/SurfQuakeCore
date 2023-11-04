@@ -46,14 +46,6 @@ class load_data:
         Text description of source time function
 	"""
 
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._input_crust import read_crust
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._input_event import read_event_info, set_event_info, set_source_time_function
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._input_network import read_network_info_DB, read_network_coordinates, create_station_index, write_stations
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._input_seismo_files import add_NEZ, add_SAC, add_NIED, load_files, load_NIED_files, check_a_station_present
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._input_seismo_remote import load_streams_ArcLink, load_streams_fdsnws
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._mouse import detect_mouse
-	#from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._input_parameters import set_frequencies, set_working_sampling
-
 	def __init__(self, outdir='output', logfile='$outdir/log.txt', output_mkdir=True):
 		self.outdir = outdir
 		if not os.path.exists(outdir) and output_mkdir:

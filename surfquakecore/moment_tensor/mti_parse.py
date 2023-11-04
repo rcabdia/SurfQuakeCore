@@ -83,7 +83,7 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             deviatoric=Cast(mti_config_ini["MTI_PARAMETERS"]["DEVIATORIC"], bool),
             source_duration=Cast(mti_config_ini["MTI_PARAMETERS"]["SOURCE_DURATION"], float),
         ),
-        signal_processing_pams=SignalProcessingParameters(
+        signal_processing_parameters=SignalProcessingParameters(
             remove_response=Cast(mti_config_ini["SIGNAL_PROCESSING"]["REMOVE_RESPONSE"], bool),
             freq_min=Cast(mti_config_ini["SIGNAL_PROCESSING"]["MIN_FREQ"], float),
             freq_max=Cast(mti_config_ini["SIGNAL_PROCESSING"]["MAX_FREQ"], float),
