@@ -85,11 +85,7 @@ class MTIManager:
                     file_list.sort(key=keydict.get)
                 else:
                     # do not filter by distance
-                    ind.append(station)
-                    file_list.append(item)
-                    dist1.append(dist)
-                    keydict = dict(zip(file_list, dist1))
-                    file_list.sort(key=keydict.get)
+                    pass
 
         self.stations_index = ind
         self.stream = self.sort_stream(dist1)
