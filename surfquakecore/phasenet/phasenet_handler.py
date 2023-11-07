@@ -696,65 +696,66 @@ class PhasenetUtils:
 
         return net2_resize
 
-    # def extract_picks(preds, fnames=None, station_ids=None, t0=None, config=None):
-    #     if preds.shape[-1] == 4:
-    #         record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob", "ps_idx",
-    #                             "ps_prob"])
-    #     else:
-    #         record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob"])
-    #
-    #     picks = []
-    #
-    #     for i, pred in enumerate(preds):
-    #
-    #         if config is None:
-    #             mph_p, mph_s, mpd = 0.3, 0.3, 50
-    #         else:
-    #             mph_p, mph_s, mpd = config['min_p_prob'], config['min_s_prob'], config['min_peak_distance']
-    #
-    #         if fnames is None:
-    #             fname = f"{i:04d}"
-    #         else:
-    #             if isinstance(fnames[i], str):
-    #                 fname = fnames[i]
-    #             else:
-    #                 fname = fnames[i].decode()
-    #
-    #         if station_ids is None:
-    #             station_id = f"{i:04d}"
-    #         else:
-    #             if isinstance(station_ids[i], str):
-    #                 station_id = station_ids[i]
-    #             else:
-    #                 station_id = station_ids[i].decode()
-    #
-    #         if t0 is None:
-    #             start_time = "1970-01-01T00:00:00.000"
-    #         else:
-    #             if isinstance(t0[i], str):
-    #                 start_time = t0[i]
-    #             else:
-    #                 start_time = t0[i].decode()
-    #
-    #         p_idx, p_prob, s_idx, s_prob = [], [], [], []
-    #
-    #         for j in range(pred.shape[1]):
-    #             p_idx_, p_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 1], mph=mph_p, mpd=mpd, show=False)
-    #             s_idx_, s_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 2], mph=mph_s, mpd=mpd, show=False)
-    #             p_idx.append(p_idx_)
-    #             p_prob.append(p_prob_)
-    #             s_idx.append(s_idx_)
-    #             s_prob.append(s_prob_)
-    #
-    #         if pred.shape[-1] == 4:
-    #             ps_idx, ps_prob = PhasenetUtils.detect_peaks(pred[:, 0, 3], mph=0.3, mpd=mpd, show=False)
-    #             picks.append(record(fname, station_id, start_time, p_idx, p_prob, s_idx, s_prob,
-    #                                 ps_idx, ps_prob))
-    #         else:
-    #             picks.append(record(fname, station_id, start_time, list(p_idx), list(p_prob), list(s_idx),
-    #                                 list(s_prob)))
-    #
-    #     return picks
+    @staticmethod
+    def extract_picks(preds, fnames=None, station_ids=None, t0=None, config=None):
+        if preds.shape[-1] == 4:
+            record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob", "ps_idx",
+                                "ps_prob"])
+        else:
+            record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob"])
+
+        picks = []
+
+        for i, pred in enumerate(preds):
+
+            if config is None:
+                mph_p, mph_s, mpd = 0.3, 0.3, 50
+            else:
+                mph_p, mph_s, mpd = config['min_p_prob'], config['min_s_prob'], config['min_peak_distance']
+
+            if fnames is None:
+                fname = f"{i:04d}"
+            else:
+                if isinstance(fnames[i], str):
+                    fname = fnames[i]
+                else:
+                    fname = fnames[i].decode()
+
+            if station_ids is None:
+                station_id = f"{i:04d}"
+            else:
+                if isinstance(station_ids[i], str):
+                    station_id = station_ids[i]
+                else:
+                    station_id = station_ids[i].decode()
+
+            if t0 is None:
+                start_time = "1970-01-01T00:00:00.000"
+            else:
+                if isinstance(t0[i], str):
+                    start_time = t0[i]
+                else:
+                    start_time = t0[i].decode()
+
+            p_idx, p_prob, s_idx, s_prob = [], [], [], []
+
+            for j in range(pred.shape[1]):
+                p_idx_, p_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 1], mph=mph_p, mpd=mpd, show=False)
+                s_idx_, s_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 2], mph=mph_s, mpd=mpd, show=False)
+                p_idx.append(p_idx_)
+                p_prob.append(p_prob_)
+                s_idx.append(s_idx_)
+                s_prob.append(s_prob_)
+
+            if pred.shape[-1] == 4:
+                ps_idx, ps_prob = PhasenetUtils.detect_peaks(pred[:, 0, 3], mph=0.3, mpd=mpd, show=False)
+                picks.append(record(fname, station_id, start_time, p_idx, p_prob, s_idx, s_prob,
+                                    ps_idx, ps_prob))
+            else:
+                picks.append(record(fname, station_id, start_time, list(p_idx), list(p_prob), list(s_idx),
+                                    list(s_prob)))
+
+        return picks
 
     @staticmethod
     def extract_amplitude(data, picks, window_p=10, window_s=5, config=None):
@@ -1030,16 +1031,17 @@ class PhasenetUtils:
         :param original_p_dir: output to storage original_picks
         :return:
         """
+
         print('saving_picks_original_format')
-        pick_path = os.path.join(original_p_dir, "original_picks")
-        file_to_store = open(pick_path, "wb")
-        pickle.dump(original_picks, file_to_store)
+        pick_path = os.path.join(original_p_dir, "original_picks.csv")
+        original_picks.to_csv(pick_path, index=False)
+
 
     @staticmethod
     def split_picks(picks):
         print('get_picks & converting to REAL associator format')
         prob_threshold = 0.3
-        columns = ['date', 'fname', 'year', 'month', 'day', 'net', 'station', 'flag', 'tt',
+        columns = ['date', 'fname', 'year', 'month', 'day', 'net', 'station', 'flag', 'tt', 'date_time',
                    'weight', 'amplitude', 'phase']
         split_picks_ = pd.DataFrame(columns=columns)
 
@@ -1074,6 +1076,7 @@ class PhasenetUtils:
             split_aux_p = []
             split_aux_s = []
             t0[i] = datetime.strptime(t0[i], "%Y-%m-%dT%H:%M:%S.%f")
+            date_start = t0[i]
             year = t0[i].year
             month = t0[i].month
             day = t0[i].day
@@ -1105,12 +1108,17 @@ class PhasenetUtils:
                             pamp.append(pamp_um[j])
 
                 for j in np.arange(0, len(pprob)):
+                    # ppick = pick samples from file waveform starttime
+                    # t0 = datetime of the starttime
                     if float(pprob[j]) >= prob_threshold:
                         fname = network + '.' + station + '.' + 'P'
-                        tp = int(ppick[j])*samplingrate+ss
+                        delta_time = int(ppick[j])*samplingrate
+                        tp = delta_time+ss
+                        t_pick = date_start + timedelta(seconds=delta_time)
+                        t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
                         amp = float(pamp[j])*2080*25 if len(p_amp) > 0 else 0
                         split_aux_p.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station,
-                                            1, tp, pprob[j], amp, "P"])
+                                            1, tp, t_pick_string, pprob[j], amp, "P"])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_p, columns=columns)], ignore_index=True)
 
@@ -1137,10 +1145,13 @@ class PhasenetUtils:
                 for j in np.arange(0, len(sprob)):
                     if float(sprob[j]) >= prob_threshold:
                         fname = network + '.' + station + '.' + 'S'
-                        tp = int(spick[j])*samplingrate+ss
+                        delta_time = int(ppick[j]) * samplingrate
+                        tp = delta_time+ss
                         amp = float(samp[j]) * 2080 * 25 if len(s_amp) > 0 else 0
+                        t_pick = date_start + + timedelta(seconds=delta_time)
+                        t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
                         split_aux_s.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station, 1,
-                                            tp, sprob[j], amp, "S"])
+                                            tp, t_pick_string, sprob[j], amp, "S"])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_s, columns=columns)], ignore_index=True)
 
