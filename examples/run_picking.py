@@ -7,8 +7,8 @@ from surfquakecore.utils.obspy_utils import MseedUtil
 
 ### LOAD PROJECT ###
 path_to_project = "/Volumes/LaCie/test_surfquake_core/project"
-project_name = 'surfquake_project_test.pkl'
-output_picks = '/Volumes/LaCie/test_surfquake_core/test_picking'
+project_name = 'surfquake_project_test2.pkl'
+output_picks = '/Volumes/LaCie/test_surfquake_core/test_picking2'
 project_file = os.path.join(path_to_project, project_name)
 
 if __name__ == '__main__':
@@ -21,7 +21,9 @@ if __name__ == '__main__':
     """ PHASENET OUTPUT TO REAL INPUT"""
 
     picks_results = PhasenetUtils.split_picks(picks)
-    PhasenetUtils.save_original_picks(picks_results, output_picks)
     PhasenetUtils.convert2real(picks_results, output_picks)
+    #PhasenetUtils.save_picks_json(output_picks,picks_results, output_picks)
+    PhasenetUtils.save_original_picks(picks_results, output_picks)
+
 
 

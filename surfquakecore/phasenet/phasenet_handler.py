@@ -10,7 +10,8 @@ from obspy import read, UTCDateTime, Stream
 from datetime import datetime
 from collections import namedtuple
 from scipy.interpolate import interp1d
-
+from datetime import datetime, timedelta
+import json
 
 tf.compat.v1.disable_eager_execution()
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -695,66 +696,65 @@ class PhasenetUtils:
 
         return net2_resize
 
-    @staticmethod
-    def extract_picks(preds, fnames=None, station_ids=None, t0=None, config=None):
-        if preds.shape[-1] == 4:
-            record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob", "ps_idx",
-                                "ps_prob"])
-        else:
-            record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob"])
-
-        picks = []
-
-        for i, pred in enumerate(preds):
-
-            if config is None:
-                mph_p, mph_s, mpd = 0.3, 0.3, 50
-            else:
-                mph_p, mph_s, mpd = config['min_p_prob'], config['min_s_prob'], config['min_peak_distance']
-
-            if fnames is None:
-                fname = f"{i:04d}"
-            else:
-                if isinstance(fnames[i], str):
-                    fname = fnames[i]
-                else:
-                    fname = fnames[i].decode()
-
-            if station_ids is None:
-                station_id = f"{i:04d}"
-            else:
-                if isinstance(station_ids[i], str):
-                    station_id = station_ids[i]
-                else:
-                    station_id = station_ids[i].decode()
-
-            if t0 is None:
-                start_time = "1970-01-01T00:00:00.000"
-            else:
-                if isinstance(t0[i], str):
-                    start_time = t0[i]
-                else:
-                    start_time = t0[i].decode()
-
-            p_idx, p_prob, s_idx, s_prob = [], [], [], []
-
-            for j in range(pred.shape[1]):
-                p_idx_, p_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 1], mph=mph_p, mpd=mpd, show=False)
-                s_idx_, s_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 2], mph=mph_s, mpd=mpd, show=False)
-                p_idx.append(p_idx_)
-                p_prob.append(p_prob_)
-                s_idx.append(s_idx_)
-                s_prob.append(s_prob_)
-
-            if pred.shape[-1] == 4:
-                ps_idx, ps_prob = PhasenetUtils.detect_peaks(pred[:, 0, 3], mph=0.3, mpd=mpd, show=False)
-                picks.append(record(fname, station_id, start_time, p_idx, p_prob, s_idx, s_prob,
-                                    ps_idx, ps_prob))
-            else:
-                picks.append(record(fname, station_id, start_time, list(p_idx), list(p_prob), list(s_idx),
-                                    list(s_prob)))
-
-        return picks
+    # def extract_picks(preds, fnames=None, station_ids=None, t0=None, config=None):
+    #     if preds.shape[-1] == 4:
+    #         record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob", "ps_idx",
+    #                             "ps_prob"])
+    #     else:
+    #         record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob"])
+    #
+    #     picks = []
+    #
+    #     for i, pred in enumerate(preds):
+    #
+    #         if config is None:
+    #             mph_p, mph_s, mpd = 0.3, 0.3, 50
+    #         else:
+    #             mph_p, mph_s, mpd = config['min_p_prob'], config['min_s_prob'], config['min_peak_distance']
+    #
+    #         if fnames is None:
+    #             fname = f"{i:04d}"
+    #         else:
+    #             if isinstance(fnames[i], str):
+    #                 fname = fnames[i]
+    #             else:
+    #                 fname = fnames[i].decode()
+    #
+    #         if station_ids is None:
+    #             station_id = f"{i:04d}"
+    #         else:
+    #             if isinstance(station_ids[i], str):
+    #                 station_id = station_ids[i]
+    #             else:
+    #                 station_id = station_ids[i].decode()
+    #
+    #         if t0 is None:
+    #             start_time = "1970-01-01T00:00:00.000"
+    #         else:
+    #             if isinstance(t0[i], str):
+    #                 start_time = t0[i]
+    #             else:
+    #                 start_time = t0[i].decode()
+    #
+    #         p_idx, p_prob, s_idx, s_prob = [], [], [], []
+    #
+    #         for j in range(pred.shape[1]):
+    #             p_idx_, p_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 1], mph=mph_p, mpd=mpd, show=False)
+    #             s_idx_, s_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 2], mph=mph_s, mpd=mpd, show=False)
+    #             p_idx.append(p_idx_)
+    #             p_prob.append(p_prob_)
+    #             s_idx.append(s_idx_)
+    #             s_prob.append(s_prob_)
+    #
+    #         if pred.shape[-1] == 4:
+    #             ps_idx, ps_prob = PhasenetUtils.detect_peaks(pred[:, 0, 3], mph=0.3, mpd=mpd, show=False)
+    #             picks.append(record(fname, station_id, start_time, p_idx, p_prob, s_idx, s_prob,
+    #                                 ps_idx, ps_prob))
+    #         else:
+    #             picks.append(record(fname, station_id, start_time, list(p_idx), list(p_prob), list(s_idx),
+    #                                 list(s_prob)))
+    #
+    #     return picks
 
     @staticmethod
     def extract_amplitude(data, picks, window_p=10, window_s=5, config=None):
@@ -1163,4 +1163,63 @@ class PhasenetUtils:
                 })
 
         return pd.DataFrame.from_dict(project_converted)
+
+    def calc_timestamp(self, timestamp, sec):
+        timestamp = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f") + timedelta(seconds=sec)
+        return timestamp.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+    def save_picks_json(self, picks, output_dir, dt=0.01, amps=None, fname=None):
+        if fname is None:
+            fname = "picks.json"
+
+        picks_ = []
+        if amps is None:
+            for pick in picks:
+                for idxs, probs in zip(pick.p_idx, pick.p_prob):
+                    for idx, prob in zip(idxs, probs):
+                        picks_.append(
+                            {
+                                "id": pick.station_id,
+                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
+                                "prob": prob.astype(float),
+                                "type": "p",
+                            }
+                        )
+                for idxs, probs in zip(pick.s_idx, pick.s_prob):
+                    for idx, prob in zip(idxs, probs):
+                        picks_.append(
+                            {
+                                "id": pick.station_id,
+                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
+                                "prob": prob.astype(float),
+                                "type": "s",
+                            }
+                        )
+        else:
+            for pick, amplitude in zip(picks, amps):
+                for idxs, probs, amps in zip(pick.p_idx, pick.p_prob, amplitude.p_amp):
+                    for idx, prob, amp in zip(idxs, probs, amps):
+                        picks_.append(
+                            {
+                                "id": pick.station_id,
+                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
+                                "prob": prob.astype(float),
+                                "amp": amp.astype(float),
+                                "type": "p",
+                            }
+                        )
+                for idxs, probs, amps in zip(pick.s_idx, pick.s_prob, amplitude.s_amp):
+                    for idx, prob, amp in zip(idxs, probs, amps):
+                        picks_.append(
+                            {
+                                "id": pick.station_id,
+                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
+                                "prob": prob.astype(float),
+                                "amp": amp.astype(float),
+                                "type": "s",
+                            }
+                        )
+        with open(os.path.join(output_dir, fname), "w") as fp:
+            json.dump(picks_, fp)
+
+        return 0
 
