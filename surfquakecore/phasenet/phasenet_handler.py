@@ -1,5 +1,4 @@
 import os
-import pickle
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -7,7 +6,6 @@ import shutil
 import time as _time
 import datetime
 from obspy import read, UTCDateTime, Stream
-from datetime import datetime
 from collections import namedtuple
 from scipy.interpolate import interp1d
 from datetime import datetime, timedelta

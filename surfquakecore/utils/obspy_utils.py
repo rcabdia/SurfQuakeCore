@@ -231,3 +231,24 @@ class MseedUtil:
 
 class ProjectSaveFailed(Exception):
     pass
+
+class ObspyUtil:
+
+
+    @staticmethod
+    def realStation(dataXml, stationfile):
+        """
+        :param Metadata: STATION XML
+        :param stationfile: REAL file with stations information
+        :return:
+        """
+        channels = ['HNZ', 'HHZ', 'BHZ', 'EHZ']
+
+        with open(stationfile, 'w') as f:
+            for network in dataXml:
+                for stations in network.stations:
+                    info_channel = [ch for ch in stations.channels if ch.code in channels]
+                    f.write(f"{stations.longitude}\t{stations.latitude}\t{network.code}\t{stations.code}\t"
+                            f"{info_channel[0].code}\t{float(stations.elevation) / 1000: .3f}\n")
+
+            f.close()
