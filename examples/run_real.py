@@ -9,6 +9,6 @@ working_directory = '/Volumes/LaCie/test_surfquake_core/test_real/working_direct
 output_directory = '/Volumes/LaCie/test_surfquake_core/test_real/output_directory'
 config_path = os.path.join(test_resources_real_path, "real_config.ini")
 
-rc = RealCore(inventory_path, config_path, working_directory, output_directory)
+rc = RealCore(inventory_path, config_path, picks_path, working_directory, output_directory)
 rc.run_real()
 print("End_Process")
