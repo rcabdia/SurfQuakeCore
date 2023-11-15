@@ -118,16 +118,17 @@ class MTIManager:
 
                 if distance_degrees <= 5: # Go for waveform duration of strong motion.
 
-                    rms = self.get_rms_times(tr, p_arrival_time, dist*1E-3, self.magnitude,freqmin=0.5, freqmax=8)
+                    rms = self.get_rms_times(tr, p_arrival_time, dist*1E-3, self.magnitude, freqmin=0.5, freqmax=8)
 
-                else: # Go for estimate earthquake duration from expected Rayleigh Wave
-
+                else:
+                    # Go for estimate earthquake duration from expected Rayleigh Wave
                     rms = self.get_rms_times(tr, p_arrival_time, dist * 1E-3, self.magnitude, freqmin=0.05, freqmax=1.0)
 
                 if rms >= self.threshold:
                     self.check_rms[tr.stats.network+"_" + tr.stats.station + "__" + tr.stats.channel] = True
                 else:
                     self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
+
 
 
     def filter_mti_inputTraces(self, stations, stations_list):
@@ -178,14 +179,20 @@ class MTIManager:
         stream_sorted = [x for _, x in sorted(zip(dist1, stream))]
         # Bayesian isola require ZNE order
         # reverse from E N Z --> Z N E
+        # reverse from X Y Z --> Z Y X
         # reverse from 1 2 Z --> Z 1 2
 
         # TODO REVERSE DEPENDS ON THE NAMING BUT ALWAYS OUTPUT MUST BE IN THE ORDER ZNE
         for stream_sort in stream_sorted:
-            if "1" and "2" in stream_sort:
+
+            if "1" in stream_sort and "2" in stream_sort:
                 stream_sorted_order.append(sorted(stream_sort, key=lambda x: (x.isnumeric(), int(x) if x.isnumeric() else x)))
+
                 # if len(stream_sorted_order) ==3:
-                #     stream_sorted_order[-2], stream_sorted_order[-1] = stream_sorted_order[-1], stream_sorted_order[-2]
+                #      stream_sorted_order[-2], stream_sorted_order[-1] = stream_sorted_order[-1], stream_sorted_order[-2]
+                # elif len(stream_sorted_order) ==2:
+                #     stream_sorted_order[-1], stream_sorted_order[0] = stream_sorted_order[0], stream_sorted_order[-1]
+
             else:
                 stream_sorted_order.append(stream_sort.reverse())
 
@@ -213,8 +220,8 @@ class MTIManager:
             shutil.copy2(os.path.join(src_dir, fname), dest_dir)
 
 
-    @staticmethod
-    def default_processing(files_path, origin_time, inventory, output_directory, regional=True, remove_response=True,
+
+    def default_processing(self, files_path, origin_time, inventory, output_directory, regional=True, remove_response=True,
                            save_stream_plot=True):
         st = None
         all_traces = []
@@ -235,22 +242,23 @@ class MTIManager:
                 tr = st[0]
                 tr.trim(starttime=start, endtime=end)
 
-                # TODO: It is still necessary to check if a % of the trace have gaps. Interpolate or reject trace processing
-
-                f1 = 0.01
-                f2 = 0.02
-                f3 = 0.35 * tr.stats.sampling_rate
-                f4 = 0.40 * tr.stats.sampling_rate
-                pre_filt = (f1, f2, f3, f4)
-                tr.detrend(type='constant')
-                # # ...and the linear trend
-                tr.detrend(type='linear')
-                tr.taper(max_percentage=0.05)
-                if remove_response:
-                    tr.remove_response(inventory=inventory, pre_filt=pre_filt, output="VEL", water_level=60)
+                # TODO: It is not still checked the fill_gaps functionality
+                tr = self.fill_gaps(tr)
+                if tr is not None:
+                    f1 = 0.01
+                    f2 = 0.02
+                    f3 = 0.35 * tr.stats.sampling_rate
+                    f4 = 0.40 * tr.stats.sampling_rate
+                    pre_filt = (f1, f2, f3, f4)
+                    tr.detrend(type='constant')
+                    # # ...and the linear trend
                     tr.detrend(type='linear')
                     tr.taper(max_percentage=0.05)
-                all_traces.append(tr)
+                    if remove_response:
+                        tr.remove_response(inventory=inventory, pre_filt=pre_filt, output="VEL", water_level=60)
+                        tr.detrend(type='linear')
+                        tr.taper(max_percentage=0.05)
+                    all_traces.append(tr)
             except:
                 print("It cannot be processed file ", file)
         st = Stream(traces=all_traces)
@@ -358,16 +366,16 @@ class MTIManager:
 
         if len(gaps) > 0 and self._check_gaps(gaps, tol_seconds_percentage):
             st.print_gaps()
-            st = []
+            st.merge(fill_value="interpolate", interpolation_samples=-1)
+            return st[0]
 
         elif len(gaps) > 0 and self._check_gaps(gaps, tol_seconds_percentage) == False:
             st.print_gaps()
-            st.merge(fill_value="interpolate", interpolation_samples=-1)
-
-        elif len(gaps) == 0 and self.check_gaps(gaps, tol_seconds_percentage) == False:
-            pass
-
-        return st
+            return None
+        elif len(gaps) == 0 and self.check_gaps(gaps, tol_seconds_percentage) == True:
+            return tr
+        else:
+            return tr
 
     @staticmethod
     def _check_gaps(gaps, tol):

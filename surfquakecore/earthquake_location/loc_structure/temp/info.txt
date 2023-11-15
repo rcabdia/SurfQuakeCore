@@ -1,0 +1,55 @@
+NLLoc (NonLinLoc v7.00.00 27Oct2017) 
+... Reading observation file /Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/obs/nll_input.txt
+Reading next set of observations (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 0) ...
+... 16 observations read, 4 will be used for location (/Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211012.002240).
+LOCGAU param CorrLen is zero, will not be used: 0.000000
+Locating... (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 16  3DMem: used:0/avail:0/load:0) ...
+OctTree num samples = 5000 / 25000
+OctTree num samples = 10000 / 25000
+OctTree num samples = 15000 / 25000
+OctTree num samples = 20000 / 25000
+OctTree num samples = 25000 / 25000
+Octree oct_node_value_max= 1.403514e+01 oct_tree_integral= 3.201122e+03
+ellipsoid_volume = 9.181204e+06
+Finished event location, output files: /Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211012.002240.* </Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211012.002240.grid0.loc.hyp>
+Reading next set of observations (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 0) ...
+... 32 observations read, 11 will be used for location (/Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.082317).
+LOCGAU param CorrLen is zero, will not be used: 0.000000
+Locating... (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 44  3DMem: used:0/avail:0/load:0) ...
+OctTree num samples = 5000 / 25000
+OctTree num samples = 10000 / 25000
+OctTree num samples = 15000 / 25000
+OctTree num samples = 20000 / 25000
+OctTree num samples = 25000 / 25000
+WARNING: max prob location on grid boundary 21, rejecting location.
+Octree oct_node_value_max= 5.093693e+01 oct_tree_integral= 1.801570e+02
+ellipsoid_volume = 5.248341e+03
+Finished event location, output files: /Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.082317.* </Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.082317.grid0.loc.hyp>
+Reading next set of observations (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 0) ...
+... 13 observations read, 4 will be used for location (/Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.204604).
+LOCGAU param CorrLen is zero, will not be used: 0.000000
+Locating... (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 16  3DMem: used:0/avail:0/load:0) ...
+OctTree num samples = 5000 / 25000
+OctTree num samples = 10000 / 25000
+OctTree num samples = 15000 / 25000
+OctTree num samples = 20000 / 25000
+OctTree num samples = 25000 / 25000
+WARNING: max prob location on grid boundary 31, rejecting location.
+Octree oct_node_value_max= 1.632037e+01 oct_tree_integral= 3.262872e+04
+ellipsoid_volume = 1.240111e+06
+Finished event location, output files: /Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.204604.* </Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.204604.grid0.loc.hyp>
+Reading next set of observations (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 0) ...
+... 15 observations read, 5 will be used for location (/Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.210327).
+LOCGAU param CorrLen is zero, will not be used: 0.000000
+Locating... (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 20  3DMem: used:0/avail:0/load:0) ...
+OctTree num samples = 5000 / 25000
+OctTree num samples = 10000 / 25000
+OctTree num samples = 15000 / 25000
+OctTree num samples = 20000 / 25000
+OctTree num samples = 25000 / 25000
+Octree oct_node_value_max= 2.255289e+01 oct_tree_integral= 3.219233e+03
+ellipsoid_volume = 1.986325e+05
+Finished event location, output files: /Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.210327.* </Users/admin/Documents/iMacROA/LocFlow/loc_flow_isp/loc_flow_tools/location_output/loc/location.20211011.210327.grid0.loc.hyp>
+Reading next set of observations (Files open: Tot:2 Buf:0 Hdr:0  Alloc: 0) ...
+...end of observation file detected.
+No more observation files.  4 events read,  4 events located,  4 locations completed.

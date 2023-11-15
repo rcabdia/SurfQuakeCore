@@ -1,0 +1,1 @@
+Folder to storage station coordinates in NLL file format
