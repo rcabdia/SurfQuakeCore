@@ -10,7 +10,7 @@ from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.utils.obspy_utils import MseedUtil
 
 
-class bayesian_isola_core:
+class BayesianIsolaCore:
     def __init__(self, project: dict, metadata_file: str, parameters_folder: str, working_directory: str,
                  ouput_directory: str, save_plots=False):
 

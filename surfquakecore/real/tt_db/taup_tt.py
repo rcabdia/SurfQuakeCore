@@ -1,10 +1,10 @@
 import math
+import os
 import time
 import numpy as ny
 import sys
 from obspy.taup import TauPyModel
 from obspy.taup.taup_create import build_taup_model
-
 from surfquakecore import TT_DB_PATH
 
 
@@ -32,7 +32,7 @@ class create_tt_db:
         dist interval, be exactly divided by dist
         depth interval, be exactly divided by dep
         """
-
+        ttime = os.path.join(ttime, 'ttdb.txt')
         ndep = int(depth/ddep)+1
         ndist = int(dist/ddist)+1
 

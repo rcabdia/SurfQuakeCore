@@ -236,12 +236,13 @@ class ObspyUtil:
 
 
     @staticmethod
-    def realStation(dataXml, stationfile):
+    def realStation(dataXml, working_directory):
         """
         :param Metadata: STATION XML
         :param stationfile: REAL file with stations information
         :return:
         """
+        stationfile = os.path.join(working_directory, "station.dat")
         channels = ['HNZ', 'HHZ', 'BHZ', 'EHZ']
 
         with open(stationfile, 'w') as f:
