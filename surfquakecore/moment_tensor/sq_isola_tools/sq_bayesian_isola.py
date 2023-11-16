@@ -7,6 +7,7 @@ from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools import BayesISOLA
 from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.load_data import load_data
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
+from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
 from surfquakecore.utils.obspy_utils import MseedUtil
 
 
@@ -47,13 +48,7 @@ class BayesianIsolaCore:
         return files_path
 
     def _return_inventory(self):
-        inv = {}
-        inv = read_inventory(self.metadata_file)
-        return inv
-
-    def _load_parameters(self, config_path):
-        mti_config = load_mti_configuration(config_path)
-        return mti_config
+        return read_inventory(self.metadata_file)
 
     def _get_files_from_config(self, mti_config):
 
@@ -83,20 +78,18 @@ class BayesianIsolaCore:
         ms = MseedUtil()
         list_of_earthquakes = ms.list_folder_files(self.parameters)
         for num, earthquake in enumerate(list_of_earthquakes):
-            try:
-                mti_config = self._load_parameters(earthquake)
-            except:
-                mti_config = None
-            if mti_config is not None:
-                files_list = self._get_files_from_config(mti_config)
-                parameters = mti_config.to_dict()
-                try:
-                    self._run_inversion(parameters, inventory, files_list, str(num), save_stream_plot=save_stream_plot)
-                except:
-                    print("Inversion not possible for earthquake: ", parameters['origin_date'], parameters['latitude'], parameters['longitude'],
-            parameters['depth'], parameters['magnitude'])
+            mti_config = load_mti_configuration(earthquake)
+            files_list = self._get_files_from_config(mti_config)
+            self._run_inversion(mti_config, inventory, files_list, str(num), save_stream_plot=save_stream_plot)
+            # try:
+            #     self._run_inversion(parameters, inventory, files_list, str(num), save_stream_plot=save_stream_plot)
+            # except Exception as e:
+            #     print(e)
+            #     print("Inversion not possible for earthquake: ", parameters['origin_date'], parameters['latitude'],
+            #           parameters['longitude'],
+            #           parameters['depth'], parameters['magnitude'])
 
-    def _run_inversion(self, parameters, inventory, files_list, num, save_stream_plot=False):
+    def _run_inversion(self, mti_config: MomentTensorInversionConfig, inventory, files_list, num, save_stream_plot=False):
 
         # TODO: might be is good idea to include option to remove previuos inversions
         # cleaning working directory
@@ -120,24 +113,26 @@ class BayesianIsolaCore:
 
         ### Process data ###
 
-        st = MTIManager.default_processing(files_list, parameters['origin_date'], inventory, local_folder, regional=True,
-                    remove_response=parameters['signal_processing_pams']['remove_response'],
-                    save_stream_plot=save_stream_plot)
+        st = MTIManager.default_processing(files_list, mti_config.origin_date,
+                                           inventory, output_directory=local_folder, regional=True,
+                                           remove_response=mti_config.signal_processing_parameters.remove_response,
+                                           save_stream_plot=save_stream_plot)
 
-        mt = MTIManager(st, inventory, parameters['latitude'], parameters['longitude'],
-            parameters['depth'], UTCDateTime(parameters['origin_date']), parameters["inversion_parameters"]["min_dist"]*1000,
-                        parameters["inversion_parameters"]["max_dist"]*1000, parameters['magnitude'],
-                        parameters['signal_processing_pams']['rms_thresh'], self.working_directory)
+        mt = MTIManager(st, inventory, mti_config.latitude, mti_config.longitude,
+                        mti_config.depth, UTCDateTime(mti_config.origin_date),
+                        mti_config.inversion_parameters.min_dist*1000,
+                        mti_config.inversion_parameters.max_dist*1000, mti_config.magnitude,
+                        mti_config.signal_processing_parameters.rms_thresh, self.working_directory)
 
         MTIManager.move_files2workdir(green_bin_dir, self.working_directory)
         [st, deltas] = mt.get_stations_index()
         inputs = load_data(outdir=local_folder)
-        inputs.set_event_info(lat=parameters['latitude'], lon=parameters['longitude'], depth=parameters['depth'],
-                               mag=parameters['magnitude'], t=UTCDateTime(parameters['origin_date']))
+        inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth,
+                               mag=mti_config.magnitude, t=UTCDateTime(mti_config.origin_date))
         #
         # # Sets the source time function for calculating elementary seismograms inside green folder type, working_directory, t0=0, t1=0
-        inputs.set_source_time_function(parameters["inversion_parameters"]["source_type"].lower(), self.working_directory,
-                                        t0=parameters["inversion_parameters"]["source_duration"], t1=0.5)
+        inputs.set_source_time_function(mti_config.inversion_parameters.source_type.lower(), self.working_directory,
+                                        t0=mti_config.inversion_parameters.source_duration, t1=0.5)
         #
         # Create data structure self.stations
         # edit self.stations_index
@@ -146,14 +141,15 @@ class BayesianIsolaCore:
         stations = inputs.stations
         stations_index = inputs.stations_index
 
+
         # NEW FILTER STATIONS PARTICIPATION BY RMS THRESHOLD
         mt.get_participation()
 
         inputs.stations, inputs.stations_index = mt.filter_mti_inputTraces(stations, stations_index)
 
         # read crustal file and writes in green folder, read_crust(source, output='green/crustal.dat')
-        inputs.read_crust(parameters["inversion_parameters"]["earth_model_file"],
-            output=os.path.join(self.working_directory, "crustal.dat"))
+        inputs.read_crust(mti_config.inversion_parameters.earth_model_file,
+                          output=os.path.join(self.working_directory, "crustal.dat"))
 
         # writes station.dat in working folder from self.stations
         inputs.write_stations(self.working_directory)
@@ -162,23 +158,25 @@ class BayesianIsolaCore:
         inputs.create_station_index()
         inputs.data_deltas = deltas
         #
-        grid = BayesISOLA.grid(inputs, self.working_directory, location_unc=parameters["inversion_parameters"]["location_unc"],
-            depth_unc=parameters["inversion_parameters"]['depth_unc'], time_unc=parameters["inversion_parameters"]['time_unc'],
-            step_x=200, step_z=200, max_points=500, circle_shape=False,
-            rupture_velocity=parameters["inversion_parameters"]["rupture_velocity"])
+        grid = BayesISOLA.grid(inputs, self.working_directory,
+                               location_unc=mti_config.inversion_parameters.location_unc,
+                               depth_unc=mti_config.inversion_parameters.depth_unc,
+                               time_unc=mti_config.inversion_parameters.time_unc,
+                               step_x=200, step_z=200, max_points=500, circle_shape=False,
+                               rupture_velocity=mti_config.inversion_parameters.rupture_velocity)
         #
-        fmax = parameters['signal_processing_pams']["freq_max"]
-        fmin = parameters['signal_processing_pams']["freq_min"]
+        fmax = mti_config.signal_processing_parameters.freq_max
+        fmin = mti_config.signal_processing_parameters.freq_min
         data = BayesISOLA.process_data(inputs, self.working_directory, grid, threads=self.cpuCount,
-                 use_precalculated_Green=False, fmin=fmin,
+                                       use_precalculated_Green=False, fmin=fmin,
                                        fmax=fmax, correct_data=False)
 
         cova = BayesISOLA.covariance_matrix(data)
-        cova.covariance_matrix_noise(crosscovariance=parameters["inversion_parameters"]['covariance'],
+        cova.covariance_matrix_noise(crosscovariance=mti_config.inversion_parameters.covariance,
                                      save_non_inverted=True)
         # deviatoric=True: force isotropic component to be zero
         solution = BayesISOLA.resolve_MT(data, cova, self.working_directory,
-                    deviatoric=parameters["inversion_parameters"]["deviatoric"], from_axistra=True)
+                                         deviatoric=mti_config.inversion_parameters.deviatoric, from_axistra=True)
 
         #if self.parameters['plot_save']:
         if self.save_plots:

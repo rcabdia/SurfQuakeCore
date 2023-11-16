@@ -1,8 +1,9 @@
 import os
-from surfquakecore.moment_tensor.read_log import read_log
+import warnings
+
 from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import BayesianIsolaCore
 from surfquakecore.utils.obspy_utils import MseedUtil
-import warnings
+
 warnings.filterwarnings("ignore")
 if __name__ == "__main__":
     cwd = os.getcwd()

@@ -161,3 +161,4 @@ cython_debug/
 
 # ignore output examples
 examples/mti/output_directory
+examples/mti/working_directory

@@ -10,6 +10,7 @@ import pandas as pd
 from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
 import numpy as np
 
+
 class MTIManager:
 
     def __init__(self, st, inv, lat0, lon0, depth, o_time, min_dist, max_dist, magnitude, threshold, working_directory):
@@ -54,7 +55,6 @@ class MTIManager:
         self.__validate_dir(stations_dir)
         return stations_dir
 
-
     def get_stations_index(self):
 
         ind = []
@@ -73,9 +73,10 @@ class MTIManager:
                 [dist, _, _] = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
 
                 item = '{net}:{station}::{channel}    {lat}    {lon}'.format(net=net,
-                        station=station, channel=channel[0:2], lat=lat, lon=lon)
+                                                                             station=station, channel=channel[0:2],
+                                                                             lat=lat, lon=lon)
 
-            # filter by distance
+                # filter by distance
                 if self.min_dist < self.max_dist and self.min_dist <= dist and dist <= self.max_dist:
                     # do the distance filter
                     ind.append(station)
@@ -98,7 +99,6 @@ class MTIManager:
         df.to_csv(outstations_path, header=False, index=False)
         return self.stream, deltas
 
-
     def get_participation(self):
 
         """
@@ -112,24 +112,23 @@ class MTIManager:
                 lat = coords['latitude']
                 lon = coords['longitude']
                 [dist, _, _] = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
-                distance_degrees = kilometer2degrees(dist*1E-3)
-                arrivals = self.model.get_travel_times(source_depth_in_km=self.depth * 1E-3, distance_in_degree=distance_degrees)
-                p_arrival_time = self.o_time+arrivals[0].time
+                distance_degrees = kilometer2degrees(dist * 1E-3)
+                arrivals = self.model.get_travel_times(source_depth_in_km=self.depth * 1E-3,
+                                                       distance_in_degree=distance_degrees)
+                p_arrival_time = self.o_time + arrivals[0].time
 
-                if distance_degrees <= 5: # Go for waveform duration of strong motion.
+                if distance_degrees <= 5:  # Go for waveform duration of strong motion.
 
-                    rms = self.get_rms_times(tr, p_arrival_time, dist*1E-3, self.magnitude, freqmin=0.5, freqmax=8)
+                    rms = self.get_rms_times(tr, p_arrival_time, dist * 1E-3, self.magnitude, freqmin=0.5, freqmax=8)
 
                 else:
                     # Go for estimate earthquake duration from expected Rayleigh Wave
                     rms = self.get_rms_times(tr, p_arrival_time, dist * 1E-3, self.magnitude, freqmin=0.05, freqmax=1.0)
 
                 if rms >= self.threshold:
-                    self.check_rms[tr.stats.network+"_" + tr.stats.station + "__" + tr.stats.channel] = True
+                    self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = True
                 else:
                     self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
-
-
 
     def filter_mti_inputTraces(self, stations, stations_list):
         # guess that starts everything inside stations and stations_list to False
@@ -138,15 +137,13 @@ class MTIManager:
         for key in self.check_rms.keys():
 
             if self.check_rms[key]:
-
                 stations_list = self.__find_in_stations_list(stations_list, key)
-                #stations = self.__find_in_stations(stations, key) #not necessary, it is doone automatically
-
+                # stations = self.__find_in_stations(stations, key) #not necessary, it is doone automatically
 
         return stations, stations_list
 
     def __find_in_stations_list(self, stations_list, key_check):
-        #stations_list is a dictionary with dictionaries inside
+        # stations_list is a dictionary with dictionaries inside
         key_search = 'use' + key_check[-1]
         key_check_find = key_check[0:-1]
         if key_check_find in stations_list.keys():
@@ -157,7 +154,8 @@ class MTIManager:
         # stations is a list of dictionaries
         network, code, loc, channelcode = key.split("_")
         for iter, index_dict in enumerate(stations):
-            if index_dict["channelcode"] == channelcode[0:2] and index_dict["code"] == code and index_dict["network"] == network:
+            if index_dict["channelcode"] == channelcode[0:2] and index_dict["code"] == code and index_dict[
+                "network"] == network:
                 if channelcode[-1] == "Z" or channelcode[-1] == 3:
                     stations[iter]["useZ"] = self.check_rms[key]
                 elif channelcode[-1] == "N" or channelcode[-1] == "Y" or channelcode[-1] == 1:
@@ -186,7 +184,8 @@ class MTIManager:
         for stream_sort in stream_sorted:
 
             if "1" in stream_sort and "2" in stream_sort:
-                stream_sorted_order.append(sorted(stream_sort, key=lambda x: (x.isnumeric(), int(x) if x.isnumeric() else x)))
+                stream_sorted_order.append(
+                    sorted(stream_sort, key=lambda x: (x.isnumeric(), int(x) if x.isnumeric() else x)))
 
                 # if len(stream_sorted_order) ==3:
                 #      stream_sorted_order[-2], stream_sorted_order[-1] = stream_sorted_order[-1], stream_sorted_order[-2]
@@ -219,20 +218,19 @@ class MTIManager:
             # destination directory
             shutil.copy2(os.path.join(src_dir, fname), dest_dir)
 
-
-
-    def default_processing(self, files_path, origin_time, inventory, output_directory, regional=True, remove_response=True,
+    @classmethod
+    def default_processing(cls, files_path, origin_time,
+                           inventory, output_directory, regional=True, remove_response=True,
                            save_stream_plot=True):
-        st = None
         all_traces = []
         origin_time = UTCDateTime(origin_time)
 
         if regional:
-            dt_noise = 10*60
-            dt_signal = 10*60
+            dt_noise = 10 * 60
+            dt_signal = 10 * 60
         else:
-            dt_noise = 10*60
-            dt_signal = 60*60
+            dt_noise = 10 * 60
+            dt_signal = 60 * 60
 
         start = origin_time - dt_noise
         end = origin_time + dt_signal
@@ -243,7 +241,7 @@ class MTIManager:
                 tr.trim(starttime=start, endtime=end)
 
                 # TODO: It is not still checked the fill_gaps functionality
-                tr = self.fill_gaps(tr)
+                tr = cls.fill_gaps(tr)
                 if tr is not None:
                     f1 = 0.01
                     f2 = 0.02
@@ -298,9 +296,9 @@ class MTIManager:
             t1 = p_arrival_time - win_length_noise
 
         else:
-            delta_t = distance_km/4.0  # rough aproximation arrival of surface wave
+            delta_t = distance_km / 4.0  # rough aproximation arrival of surface wave
             t2 = p_arrival_time + delta_t + 1.5 * delta_t
-            win_length_noise = 5*60
+            win_length_noise = 5 * 60
             t1 = p_arrival_time - win_length_noise
 
         tr_noise.trim(starttime=t1, endtime=p_arrival_time, pad=False, fill_value=0)
@@ -357,22 +355,22 @@ class MTIManager:
 
         return data_envelope
 
-    def fill_gaps(self, tr, tol=5):
+    @classmethod
+    def fill_gaps(cls, tr, tol=5):
 
-        N = len(tr.data)
-        tol_seconds_percentage = int((tol/100)*N)*tr.stats.delta
+        tol_seconds_percentage = int((tol / 100) * len(tr.data)) * tr.stats.delta
         st = Stream(traces=tr)
         gaps = st.get_gaps()
 
-        if len(gaps) > 0 and self._check_gaps(gaps, tol_seconds_percentage):
+        if len(gaps) > 0 and cls._check_gaps(gaps, tol_seconds_percentage):
             st.print_gaps()
             st.merge(fill_value="interpolate", interpolation_samples=-1)
             return st[0]
 
-        elif len(gaps) > 0 and self._check_gaps(gaps, tol_seconds_percentage) == False:
+        elif len(gaps) > 0 and not cls._check_gaps(gaps, tol_seconds_percentage):
             st.print_gaps()
             return None
-        elif len(gaps) == 0 and self.check_gaps(gaps, tol_seconds_percentage) == True:
+        elif len(gaps) == 0 and cls._check_gaps(gaps, tol_seconds_percentage):
             return tr
         else:
             return tr

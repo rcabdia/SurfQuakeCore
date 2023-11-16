@@ -24,11 +24,8 @@ def rename_keys(_dict: dict, prefix: str = '', suffix: str = '') -> dict:
 	:returns : dictionary with keys renamed
 	"""
 
-	# TODO this can be done just like:
 	return {f"{prefix}{k}{suffix}": v for k, v in _dict.items()}
 
-	# TODO Why use map and lambda for a simple thing???? See above.
-	return dict(map(lambda key, value: (prefix+str(key)+suffix, value), _dict.items()))
 
 def next_power_of_2(n):
 	"""
