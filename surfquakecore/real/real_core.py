@@ -87,21 +87,41 @@ class RealCore:
         tt_db.run_tt_db(ttime=self.working_directory, dist=self.h_range,
                         depth=self.parameters['geographic_frame']['depth'], ddist=0.01, ddep=1)
 
-        real_handler = RealManager(pick_dir=self.picking_directory, station_file=stationfile,
+        # real_handler = RealManager(pick_dir=self.picking_directory, station_file=stationfile,
+        # out_data_dir=self.output_directory,
+        # time_travel_table_file=ttime_file,
+        # gridSearchParamHorizontalRange=self.parameters['grid_search_parameters']['horizontal_search_range'],
+        # HorizontalGridSize=self.parameters['grid_search_parameters']['horizontal_search_grid_size'],
+        # DepthSearchParamHorizontalRange=self.parameters['grid_search_parameters']['depth_search_range'],
+        # DepthGridSize=self.parameters['grid_search_parameters']['depth_search_grid_size'],
+        # EventTimeW=self.parameters['grid_search_parameters']['event_time_window'],
+        # TTHorizontalRange=self.parameters['travel_time_grid_search']['horizontal_range'],
+        # TTHorizontalGridSize=self.parameters['travel_time_grid_search']['horizontal_grid_resolution_size'],
+        # TTDepthGridSize=self.parameters['travel_time_grid_search']['depth_grid_resolution_size'],
+        # TTDepthRange=self.parameters['travel_time_grid_search']['depth_range'],
+        # ThresholdPwave=self.parameters['threshold_picks']['min_num_p_wave_picks'],
+        # ThresholdSwave=self.parameters['threshold_picks']['min_num_s_wave_picks'],
+        # number_stations_picks=self.parameters['threshold_picks']['num_stations_recorded'])
+
+
+        real_handler = RealManager(pick_dir="/Users/admin/Documents/iMacROA/SurfQuake/surfquake/data/picks",
+                                   station_file="/Users/admin/Documents/iMacROA/SurfQuake/surfquake/data/station/station.dat",
         out_data_dir=self.output_directory,
         time_travel_table_file=ttime_file,
-        gridSearchParamHorizontalRange=self.parameters['grid_search_parameters']['horizontal_search_range'],
-        HorizontalGridSize=self.parameters['grid_search_parameters']['horizontal_search_grid_size'],
-        DepthSearchParamHorizontalRange=self.parameters['grid_search_parameters']['depth_search_range'],
-        DepthGridSize=self.parameters['grid_search_parameters']['depth_search_grid_size'],
-        EventTimeW=self.parameters['grid_search_parameters']['event_time_window'],
-        TTHorizontalRange=self.parameters['travel_time_grid_search']['horizontal_range'],
-        TTHorizontalGridSize=self.parameters['travel_time_grid_search']['horizontal_grid_resolution_size'],
-        TTDepthGridSize=self.parameters['travel_time_grid_search']['depth_grid_resolution_size'],
-        TTDepthRange=self.parameters['travel_time_grid_search']['depth_range'],
-        ThresholdPwave=self.parameters['threshold_picks']['min_num_p_wave_picks'],
-        ThresholdSwave=self.parameters['threshold_picks']['min_num_s_wave_picks'],
-        number_stations_picks=self.parameters['threshold_picks']['num_stations_recorded'])
+        gridSearchParamHorizontalRange=4.8,
+        HorizontalGridSize=0.6,
+        DepthSearchParamHorizontalRange=50,
+        DepthGridSize=10,
+        EventTimeW=120,
+        TTHorizontalRange=5,
+        TTHorizontalGridSize=0.01,
+        TTDepthGridSize=10,
+        TTDepthRange=50,
+        ThresholdPwave=3,
+        ThresholdSwave=1,
+        number_stations_picks=1)
+
+
         real_handler.latitude_center = self.__get_lat_mean()
         for events_info in real_handler:
             print(events_info)
