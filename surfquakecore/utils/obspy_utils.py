@@ -16,6 +16,7 @@ class MseedUtil:
         self.pos_file = []
         self.robust = robust
         self.use_ind_files = False
+        self.search_file = []
 
 
     @classmethod
@@ -48,13 +49,13 @@ class MseedUtil:
         return project
 
     def search_files(self, rooth_path: str):
-        project = {}
         self.search_file = []
         for top_dir, sub_dir, files in os.walk(rooth_path):
             for file in files:
                 self.search_file.append(os.path.join(top_dir, file))
 
-        with Pool(processes=os.cpu_count()) as pool:
+        cpus = min(len(self.search_file), os.cpu_count())
+        with Pool(processes=cpus) as pool:
             returned_list = pool.map(self.create_dict, range(len(self.search_file)))
 
         project = self.convert2dict(returned_list)

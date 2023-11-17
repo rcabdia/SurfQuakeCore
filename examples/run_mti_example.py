@@ -1,21 +1,20 @@
 import os
-import warnings
 
 from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import BayesianIsolaCore
 from surfquakecore.utils.obspy_utils import MseedUtil
 
-warnings.filterwarnings("ignore")
 if __name__ == "__main__":
-    cwd = os.getcwd()
-    inventory_path = os.path.join(cwd, "mti/inventories/inv_surfquakecore.xml")
-    data_dir_path = os.path.join(cwd, "mti/waveforms")
-    path_to_project = os.path.join(cwd, "mti/project")
-    project_name = os.path.join(cwd, 'surfquake_project_test.pkl')
-    path_to_configfiles = os.path.join(cwd, 'mti/list_earthquakes')
-    working_directory = os.path.join(cwd, "mti/working_directory")
-    output_directory = os.path.join(cwd, "mti/output_directory")
+    cwd = os.path.dirname(__file__)
+    resource_root = os.path.join(cwd, "mti")
+    inventory_path = os.path.join(resource_root, "inventories", "inv_surfquakecore.xml")
+    data_dir_path = os.path.join(resource_root, "waveforms")
+    path_to_project = os.path.join(resource_root, "project")
+    path_to_configfiles = os.path.join(resource_root, "list_earthquakes")
+    working_directory = os.path.join(resource_root, "working_directory")
+    output_directory = os.path.join(resource_root, "output_directory")
 
-    project_tobe_saved = os.path.join(path_to_project, project_name)
+    project_tobe_saved = os.path.join(path_to_project, "surfquake_project_test.pkl")
+    print("project:", project_tobe_saved)
     ms = MseedUtil()
     project = ms.search_files(data_dir_path)
     print("End of project creation, number of files ", len(project))

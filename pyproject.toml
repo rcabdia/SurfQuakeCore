@@ -25,8 +25,12 @@ classifiers = [
 readme = {file = ["README.md"]}
 dependencies = {file = ["requirements.txt"]}
 
+[tool.setuptools.packages.find]
+exclude = ["docs*", "tests*", "examples*"]
 
 [tool.setuptools.package-data]
 "surfquakecore.bin.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
 "surfquakecore.bin.mac_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
+"surfquakecore.bin.win_bin" = ["mti_green/*"]
+
 

@@ -5,6 +5,7 @@ from obspy import UTCDateTime, read_inventory
 from surfquakecore.bin import green_bin_dir
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools import BayesISOLA
+from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._covariance_matrix import covariance_matrix_noise
 from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.load_data import load_data
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
@@ -14,14 +15,14 @@ from surfquakecore.utils.obspy_utils import MseedUtil
 class BayesianIsolaCore:
     def __init__(self, project: dict, metadata_file: str, parameters_folder: str, working_directory: str,
                  ouput_directory: str, save_plots=False):
-
         """
-        ----------
-        Parameters
-        ----------
-        project dict: Information of seismogram data files available
-        metadata str: Path to the inventory information of stations coordinates and instrument description
-        parameters: dictionary generated from the dataclass
+
+        :param project:
+        :param metadata_file:
+        :param parameters_folder:
+        :param working_directory:
+        :param ouput_directory:
+        :param save_plots:
         """
 
         self.metadata_file = metadata_file
@@ -128,9 +129,8 @@ class BayesianIsolaCore:
         [st, deltas] = mt.get_stations_index()
         inputs = load_data(outdir=local_folder)
         inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth,
-                               mag=mti_config.magnitude, t=UTCDateTime(mti_config.origin_date))
-        #
-        # # Sets the source time function for calculating elementary seismograms inside green folder type, working_directory, t0=0, t1=0
+                              mag=mti_config.magnitude, t=UTCDateTime(mti_config.origin_date))
+
         inputs.set_source_time_function(mti_config.inversion_parameters.source_type.lower(), self.working_directory,
                                         t0=mti_config.inversion_parameters.source_duration, t1=0.5)
         #
@@ -172,7 +172,7 @@ class BayesianIsolaCore:
                                        fmax=fmax, correct_data=False)
 
         cova = BayesISOLA.covariance_matrix(data)
-        cova.covariance_matrix_noise(crosscovariance=mti_config.inversion_parameters.covariance,
+        covariance_matrix_noise(cova, crosscovariance=mti_config.inversion_parameters.covariance,
                                      save_non_inverted=True)
         # deviatoric=True: force isotropic component to be zero
         solution = BayesISOLA.resolve_MT(data, cova, self.working_directory,
@@ -181,7 +181,7 @@ class BayesianIsolaCore:
         #if self.parameters['plot_save']:
         if self.save_plots:
             plot_mti = BayesISOLA.plot(solution, self.working_directory, from_axistra=True)
-            plot_mti.html_log(h1='surfQuake MTI')
+            # plot_mti.html_log(h1='surfQuake MTI')
 
         del inputs
         del grid
@@ -199,6 +199,7 @@ class BayesianIsolaCore:
             print("coudn't release plotting memory usage")
 
         gc.collect()
+
 
 
 

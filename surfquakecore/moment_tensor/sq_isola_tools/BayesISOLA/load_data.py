@@ -1,82 +1,245 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
+import math
 import os.path
-import warnings
-warnings.filterwarnings("ignore",category=DeprecationWarning)
-warnings.filterwarnings('ignore', '.*Conversion of the second argument of issubdtype from.*')
-	# Avoids following warning:
-		# /usr/lib/python3.7/site-packages/obspy/signal/detrend.py:31: FutureWarning: Conversion of the second argument of issubdtype from `float` to `np.floating` is deprecated. In future, it will be treated as `np.float64 == np.dtype(float).type`.
+import shutil
+
+from obspy import UTCDateTime
+from obspy.geodetics import gps2dist_azimuth
 
 
 class load_data:
-	"""
-    Load all necessary data for MT inversion.
+    def __init__(self, outdir='output', logfile='$outdir/log.txt', output_mkdir=True):
+        self.stations = []
+        self.outdir = outdir
+        if not os.path.exists(outdir) and output_mkdir:
+            os.mkdir(outdir)
+        self.logfile = open(logfile.replace('$outdir', self.outdir), 'w', 1)
+        self.data_raw = []
+        self.data_deltas = []  # list of ``stats.delta`` values of traces in ``self.data`` or ``self.data_raw``
+        self.logtext = {}
+        self.models = {}
+        self.stf_description = ""
+        self.rupture_length: float = 0.
+        self.event: dict = {}
+        self.stations_index = {}
+        self.nr = None
 
-    :type logfile: string, optional
-    :param logfile: path to the logfile (default '$outdir/log.txt')
-    :type outdir: string, optional
-    :param outdir: a directory, where the outputs are saved (default 'output')
-    :type output_mkdir: bool, optional
-    :param output_mkdir: if ``True`` (default), creates a dir for output in case it does not exists
-	
-    .. rubric:: _`Variables`
-    
-    ``data_raw`` : list of :class:`~obspy.core.stream`
-        Data for the inversion. They are loaded by :func:`add_SAC`, :func:`load_files`, or :func:`load_streams_ArcLink`. Then they are corrected by :func:`correct_data` and trimmed by :func:`trim_filter_data`. The list is ordered ascending by epicentral distance of the station. After processing, the list references to the same streams as ``data``.
-    ``data_deltas`` : list of floats
-        List of ``stats.delta`` from ``data_raw`` and ``data``.
-    ``data_are_corrected`` : bool
-        Flag whether the instrument response correction was performed.
-    ``event`` : dictionary
-        Information about event location and magnitude.
-    ``stations`` : list of dictionaries
-        Information about stations used in inversion. The list is ordered ascending by epicentral distance.
-    ``stations_index`` : dictionary referencing ``station`` items.
-        You can also access station information like ``self.stations_index['NETWORK_STATION_LOCATION_CHANNELCODE']['dist']`` insted of ``self.stations[5]['dist']``. `CHANNELCODE` are the first two letters of channel, e.g. `HH`.
-    ``nr`` : integer
-        Number of stations used, i.e. length of ``stations`` and ``data``.
-    ``logtext`` : dictionary
-        Status messages for :func:`html_log`
-    ``models`` : dictionary
-        Crust models used for calculating synthetic seismograms
-    ``rupture_length`` : float
-        Estimated length of the rupture in meters
-    ``stf_description`` : string
-        Text description of source time function
-	"""
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.__del__()
 
-	def __init__(self, outdir='output', logfile='$outdir/log.txt', output_mkdir=True):
-		self.outdir = outdir
-		if not os.path.exists(outdir) and output_mkdir:
-			os.mkdir(outdir)
-		self.logfile = open(logfile.replace('$outdir', self.outdir), 'w', 1)
-		self.data_raw = []
-		self.data_deltas = [] # list of ``stats.delta`` values of traces in ``self.data`` or ``self.data_raw``
-		self.logtext = {}
-		self.models = {}
-		self.stf_description = ""
+    def __del__(self):
+        self.logfile.close()
+        del self.data_raw
 
-	def __exit__(self, exc_type, exc_value, traceback):
-		self.__del__()
-		
-	def __del__(self):
-		self.logfile.close()
-		del self.data_raw
+    def log(self, s, newline=True, printcopy=False):
+        """
+        Write text into log file
+        :param s: Text to write into log
+        :type s: string
+        :param newline: if is ``True``, add LF symbol (\\\\n) at the end
+        :type newline: bool, optional
+        :param printcopy: if is ``True`` prints copy of ``s`` also to stdout
+        :type printcopy: bool, optional
+        """
+        self.logfile.write(s)
+        if newline:
+            self.logfile.write('\n')
+        if printcopy:
+            print(s)
 
-	def log(self, s, newline=True, printcopy=False):
-		"""
-		Write text into log file
-		
-		:param s: Text to write into log
-		:type s: string
-		:param newline: if is ``True``, add LF symbol (\\\\n) at the end
-		:type newline: bool, optional
-		:param printcopy: if is ``True`` prints copy of ``s`` also to stdout
-		:type printcopy: bool, optional
-		"""
-		self.logfile.write(s)
-		if newline:
-			self.logfile.write('\n')
-		if printcopy:
-			print(s)
+    def set_event_info(self, lat, lon, depth, mag, t, agency=''):
+        """
+        Sets event coordinates, magnitude, and time from parameters given to this function
+        :param lat: event latitude
+        :type lat: float
+        :param lon: event longitude
+        :type lon: float
+        :param depth: event depth in km
+        :type lat: float
+        :param mag: event moment magnitude
+        :type lat: float
+        :param t: event origin time
+        :type t: :type starttime: :class:`~obspy.core.utcdatetime.UTCDateTime` or string
+        :param agency: agency which provides this location
+        :type lat: string, optional
+        Sets ``rupture_length`` to :math:`\sqrt{111 \cdot 10^M}`, where `M` is the magnitude.
+        """
+        if isinstance(t, str):
+            t = UTCDateTime(t)
+
+        self.event = {'lat': lat, 'lon': lon, 'depth': float(depth) * 1e3, 'mag': float(mag), 't': t, 'agency': agency}
+        self.log(
+            f"\nHypocenter location:\n  "
+            f"Agency: {agency:s}\n  "
+            f"Origin time: {t.strftime('%Y-%m-%d %H:%M:%S')}\n  "
+            f"Lat {lat:8.3f}   "
+            f"Lon {lon:8.3f}   "
+            f"Depth{depth:4.1f} km"
+        )
+        self.rupture_length = math.sqrt(111 * 10 ** self.event['mag'])  # M6 ~ 111 km2, M5 ~ 11 km2 		REFERENCE NEEDED
+
+    def set_source_time_function(self, source_type: str, working_directory: str, t0: float = 0., t1: float = 0.):
+        """
+        Sets the source time function for calculating elementary seismograms.
+
+        This function writes file ``green/soutype.dat``, which is read by ``green/elemse``
+        (function ``fsource()`` at the end of ``elemse.for``).
+        """
+        source_time_function_file_path = os.path.join(working_directory, "soutype.dat")
+        # icc parameter-1 is used as number of derivatives in complex domain (1 = no derivative, 2 = a derivative etc.)
+        valid_sources = {
+            "heaviside": {"description": "Step in displacement", "icc": 2, "ics": 7},
+            "step": {"description": "Step in displacement", "icc": 2, "ics": 7},
+            "triangular": {"description": f"triangle in velocity, length = {t0:3.1f} s", "icc": 1, "ics": 4},
+            "triangle": {"description": f"triangle in velocity, length = {t0:3.1f} s", "icc": 1, "ics": 4},
+            "bouchon": {"description": f"Bouchon's smooth step, length = {t0:3.1f} s", "icc": 2, "ics": 2},
+            "brune": {"description": f"Brune, length = {t0:3.1f} s", "icc": 1, "ics": 9},
+        }
+        source = valid_sources.get(source_type.lower(), None)
+        if not source:
+            raise ValueError(f"Invalid source_type. Please choose a valid options: {','.join(valid_sources.keys())}")
+
+        self.stf_description = source.get("description", "")
+        icc = source.get("icc", 0)
+        ics = source.get("ics", 0)
+
+        # TODO source complex spectrum is given as array and written to a
+        #  TODO file (uncomment reading file 301 in elemse.for)
+        with open(source_time_function_file_path, 'w') as f:
+            f.write(f"{ics:d}\n{t0:3.1f}\n{t1:3.1f}\n{icc:d}\n")
+
+    def read_network_coordinates(self, filename, network='', location='', channelcode='LH',
+                                 min_distance=None, max_distance=None, max_n_of_stations=None):
+        """
+        Read information about stations from file in ISOLA format.
+        Calculate their distances and azimuthes using WGS84 elipsoid.
+        Create data structure ``self.stations``. Sorts it according to station epicentral distance.
+
+        :param filename: path to file with network coordinates
+        :type filename: string
+        :param network: all station are from specified network
+        :type network: string, optional
+        :param location: all stations has specified location
+        :type location: string, optional
+        :param channelcode: component names of all stations start with these letters (if channelcode is `LH`, component names will be `LHZ`, `LHN`, and `LHE`)
+        :type channelcode: string, optional
+        :param min_distance: minimal epicentral distance in meters
+        :param min_distance: float or None
+        :param min_distance: maximal epicentral distance in meters
+        :param max_distance: float or None
+        :param min_distance: maximal number of stations used in inversion
+        :param max_distance: int or None
+        :param max_n_of_stations:
+
+        If ``min_distance`` is ``None``, value is calculated as 2*self.rupture_length. If ``max_distance`` is ``None``, value is calculated as :math:`1000 \cdot 2^{2M}`.
+        """
+        mag = self.event['mag']
+        if min_distance is None:
+            min_distance = 2 * self.rupture_length
+        if max_distance is None:
+            max_distance = 1000 * 2 ** (mag * 2.)
+        self.logtext['network'] = s = 'Station coordinates: ' + filename
+        self.log(s)
+        inp = open(filename, 'r')
+        lines = inp.readlines()
+        inp.close()
+        stats = []
+        for line in lines:
+            if line == '\n':  # skip empty lines
+                continue
+            # 2DO: souradnice stanic dle UTM
+            items = line.split()
+            sta, lat, lon = items[0:3]
+            if len(items) > 3:
+                model = items[3]
+            else:
+                model = ''
+            if model not in self.models:
+                self.models[model] = 0
+            net = network
+            loc = location
+            ch = channelcode  # default values given by function parameters
+            if ":" in sta or "." in sta:
+                l = sta.replace(':', '.').split('.')
+                net, sta = l[0], l[1]
+                if len(l) > 2:
+                    loc = l[2]
+                if len(l) > 3:
+                    ch = l[3]
+            stn = \
+                {
+                    'code': sta, 'lat': lat, 'lon': lon, 'network': net, 'location': loc, 'channelcode': ch,
+                    'model': model
+                }
+            dist, az, baz = gps2dist_azimuth(float(self.event['lat']), float(self.event['lon']), float(lat), float(lon))
+            stn['az'] = az
+            stn['dist'] = dist
+            stn['useN'] = stn['useE'] = stn['useZ'] = False
+            stn['accelerograph'] = False
+            stn['weightN'] = stn['weightE'] = stn['weightZ'] = 1.
+            if min_distance < dist < max_distance:
+                stats.append(stn)
+        stats = sorted(stats, key=lambda stn: stn['dist'])  # sort by distance
+        if max_n_of_stations and len(stats) > max_n_of_stations:
+            stats = stats[0:max_n_of_stations]
+        self.stations = stats
+        self.create_station_index()
+
+    def create_station_index(self):
+        """
+        Creates ``self.stations_index`` which serves for accesing ``self.stations`` items by the station name.
+        It is called from :func:`read_network_coordinates`.
+        """
+        stats = self.stations
+        self.nr = len(stats)
+        self.stations_index = {}
+        for i in range(self.nr):
+            self.stations_index[
+                '_'.join([stats[i]['network'], stats[i]['code'], stats[i]['location'], stats[i]['channelcode']])] = \
+                stats[i]
+
+    def write_stations(self, working_path):
+        """
+        Write file with carthesian coordinates of stations. The file is necessary for Axitra code.
+
+        This function is usually called from some of the functions related to reading seismograms.
+        """
+        filename = os.path.join(working_path, "station.dat")
+        for model in self.models:
+            if model:
+                f = filename[0:filename.rfind('.')] + '-' + model + filename[filename.rfind('.'):]
+            else:
+                f = filename
+            with open(f, 'w') as outp:
+                outp.write(' Station co-ordinates\n x(N>0,km),y(E>0,km),z(km),azim.,dist.,stat.\n')
+                self.models[model] = 0
+                for s in self.stations:
+                    if s['model'] != model:
+                        continue
+                    az = math.radians(s['az'])
+                    dist = s['dist'] / 1000  # from meter to kilometer
+                    outp.write(
+                        f"{math.cos(az)*dist:10.4f} {math.sin(az) * dist:10.4f} "
+                        f"{0.:10.4f} {s['az']:10.4f} {dist:10.4f} {s['code']:4s} ?\n")
+                    self.models[model] += 1
+
+    def read_crust(self, source, output='green/crustal.dat'):
+        """
+        Copy a file or files with crustal model definition to location where code ``Axitra`` expects it
+
+        :param source: path to crust file
+        :type source: string
+        :param output: path to copy target
+        :type output: string, optional
+        """
+        inputs = []
+        for model in self.models:
+            if model:
+                inp = source[0:source.rfind('.')] + '-' + model + source[source.rfind('.'):]
+                outp = output[0:output.rfind('.')] + '-' + model + output[output.rfind('.'):]
+            else:
+                inp = source
+                outp = output
+            shutil.copyfile(inp, outp)
+            inputs.append(inp)
+        self.log('Crustal model(s): ' + ', '.join(inputs))
+        self.logtext['crust'] = ', '.join(inputs)
