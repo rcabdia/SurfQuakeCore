@@ -15,14 +15,15 @@ import pandas as pd
 import shutil
 from obspy.core.event import Origin
 from obspy.geodetics import gps2dist_azimuth
-from surfquake import ROOT_DIR, location_output, BINARIES
-from surfquake.DataProcessing.metadata_manager import MetadataManager
-from surfquake.Utils.subprocess_utils import exc_cmd
-from surfquake.Utils.obspy_utils import ObspyUtil
+from surfquakecore.DataProcessing.metadata_manager import MetadataManager
+from surfquakecore.bin import nll_bin_dir
+from surfquakecore.utils.subprocess_utils import exc_cmd
+from surfquakecore.utils.obspy_utils import ObspyUtil
 _os = platform.system()
+
 class NllManager:
 
-    def __init__(self, obs_file_path, dataless_path):
+    def __init__(self, obs_file_path, dataless_path, working_directory):
         """
         Manage nll files for run nll program.
 
@@ -32,6 +33,7 @@ class NllManager:
         """
         self.__dataless_dir = dataless_path
         self.__obs_file_path = obs_file_path
+        self.__location_output = working_directory
         self.__create_dirs()
         self.__metadata_manager = None
 
@@ -41,33 +43,9 @@ class NllManager:
         return [n for n in fnmatch.filter(os.listdir(base), pattern) if os.path.isfile(os.path.join(base, n))]
 
 
-    def __get_binaries(self):
-
-        if _os.lower() == 'linux':
-            bin_dir = os.path.join(BINARIES, "linux")
-
-        elif _os.lower() == 'windows':
-            bin_dir = os.path.join(BINARIES, "win")
-
-        elif _os.lower() == 'mac' or _os.lower() == 'darwin':
-            bin_dir = os.path.join(BINARIES, "mac")
-
-        else:
-            raise AttributeError(f"The OS {_os} is not valid.")
-
-        return bin_dir
-    @property
-    def nll_bin_path(self):
-        bin_path = self.__get_binaries()
-        if not os.path.isdir(bin_path):
-            raise FileNotFoundError("The dir {} doesn't exist. Please make sure to run: "
-                                    "python setup.py build_ext --inplace. These should create a bin folder for nll."
-                                    .format(bin_path))
-        return bin_path
-
     @property
     def root_path(self):
-        root_path = location_output
+        root_path = self.__location_output
         self.__validate_dir(root_path)
         return root_path
 
@@ -214,19 +192,19 @@ class NllManager:
         # model dir.
         self.__create_dir("model")
 
+        # model dir.
+        self.__create_dir("model3D")
+
         # time dir.
         self.__create_dir("time")
 
         # loc dir.
         self.__create_dir("loc")
 
-    def set_dataless_dir(self, dir_path):
-        self.__dataless_dir = dir_path
-
     def set_observation_file(self, file_path):
         self.__obs_file_path = file_path
 
-    def set_run_template(self, latitude, longitude, depth):
+    def set_run_template(self, latitude, longitude):
         files = self.find_files(self.get_time_dir, 'layer.P.mod.hdr')
         file_name = os.path.join(self.get_time_dir, files[0])
         fa = open(file_name)
@@ -252,8 +230,6 @@ class NllManager:
                             y=yNum, z=zNum, xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
         else:
 
-            #xNum = int(yNum / 2)
-            #yNum = int(yNum / 2)
             df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=xNum,
                         y=yNum, z=zNum, xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
 
@@ -309,7 +285,7 @@ class NllManager:
         return output
 
     def get_bin_file(self, file_name):
-        bin_file = os.path.join(self.nll_bin_path, file_name)
+        bin_file = os.path.join(nll_bin_dir, file_name)
         if not os.path.isfile(bin_file):
             raise FileNotFoundError("The file {} doesn't exist. Check typos in file_name or make sure to run: "
                                     "python setup.py build_ext --inplace. These should create a bin folder fo nll with "
