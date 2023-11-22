@@ -4,7 +4,7 @@ import logging
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 model_dir = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "models", "190703-214543")
 TT_DB_PATH = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "real", "tt_db", "mymodel.nd")
-
+nll_templates = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "earthquake_location/loc_structure/run")
 def create_logger():
 
     # create logger.

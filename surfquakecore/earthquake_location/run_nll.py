@@ -15,15 +15,20 @@ import pandas as pd
 import shutil
 from obspy.core.event import Origin
 from obspy.geodetics import gps2dist_azimuth
+
+from surfquakecore import nll_templates
 from surfquakecore.DataProcessing.metadata_manager import MetadataManager
 from surfquakecore.bin import nll_bin_dir
+from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
+from surfquakecore.earthquake_location.structures import NLLConfig
 from surfquakecore.utils.subprocess_utils import exc_cmd
 from surfquakecore.utils.obspy_utils import ObspyUtil
 _os = platform.system()
 
 class NllManager:
 
-    def __init__(self, obs_file_path, dataless_path, working_directory):
+    #working_directory, inventory_path, path_to_configfiles
+    def __init__(self, config_file_path, dataless_path, working_directory):
         """
         Manage nll files for run nll program.
 
@@ -31,12 +36,16 @@ class NllManager:
 
         :param obs_file_path: The file path of pick observations.
         """
-        self.__dataless_dir = dataless_path
-        self.__obs_file_path = obs_file_path
+        self.__get_nll_config(config_file_path)
         self.__location_output = working_directory
         self.__create_dirs()
+        self.__dataless_dir = dataless_path
         self.__metadata_manager = None
+        # self.__obs_file_path = obs_file_path
 
+    def __get_nll_config(self, config_file_path):
+
+        self.nll_config: NLLConfig = load_nll_configuration(config_file_path)
 
     def find_files(self,base, pattern):
         '''Return list of files matching pattern in base folder.'''
@@ -51,25 +60,25 @@ class NllManager:
 
     @property
     def get_run_template_file_path(self):
-        run_file_path = os.path.join(self.get_run_dir, "run_template")
+        run_file_path = os.path.join(nll_templates, "run_template")
         self.__validate_file(run_file_path)
         return run_file_path
 
     @property
     def get_run_template_global_file_path(self):
-        run_template_global_file_path = os.path.join(self.get_run_dir, "global_template")
+        run_template_global_file_path = os.path.join(nll_templates, "global_template")
         self.__validate_file(run_template_global_file_path)
         return run_template_global_file_path
 
     @property
     def get_vel_template_file_path(self):
-        v2g_file_path = os.path.join(self.get_run_dir, "v2g_template")
+        v2g_file_path = os.path.join(nll_templates, "v2g_template")
         self.__validate_file(v2g_file_path)
         return v2g_file_path
 
     @property
     def get_time_template_file_path(self):
-        g2t_file_path = os.path.join(self.get_run_dir, "g2t_template")
+        g2t_file_path = os.path.join(nll_templates, "g2t_template")
         self.__validate_file(g2t_file_path)
         return g2t_file_path
 
@@ -126,13 +135,13 @@ class NllManager:
 
     @property
     def get_local_models_dir(self):
-        models_dir = os.path.join(self.root_path, "local_models")
+        models_dir = self.nll_config.grid_configuration.path_to_1d_model
         self.__validate_dir(models_dir)
         return models_dir
 
     @property
     def get_local_models_dir3D(self):
-        models_dir = os.path.join(self.root_path, "model3D")
+        models_dir = self.nll_config.grid_configuration.path_to_3d_model
         self.__validate_dir(models_dir)
         return models_dir
 
@@ -201,8 +210,9 @@ class NllManager:
         # loc dir.
         self.__create_dir("loc")
 
-    def set_observation_file(self, file_path):
-        self.__obs_file_path = file_path
+    def set_observation_file(self):
+
+        self.__obs_file_path = self.nll_config.grid_configuration.path_to_picks
 
     def set_run_template(self, latitude, longitude):
         files = self.find_files(self.get_time_dir, 'layer.P.mod.hdr')
@@ -295,22 +305,52 @@ class NllManager:
 
     @staticmethod
     def __append_files(file_path_to_cat: str, file_path_to_append: str):
-        command = "cat {}".format(file_path_to_cat)
+        #command = "cat {}".format(file_path_to_cat)
+        command = ["cat", file_path_to_cat]
+        #command = "cat /Users/admin/Documents/iMacROA/SurfQuakeCore/examples/earthquake_locate/model1D/modelP"
         exc_cmd(command, stdout=open(file_path_to_append, 'a'), close_fds=True)
 
-    def vel_to_grid(self, latitude, longitude, depth, x_node, y_node, z_node, dx, dy, dz, grid_type, wave_type, model):
-        if model == "2D":
-            x_node = 2 # mandatory for 2D models
-            output = self.set_vel2grid_template(latitude, longitude, depth, x_node, y_node, z_node, dx, dy, dz,
-                                                grid_type, wave_type)
-            model_path = self.get_model_file_path(wave_type)
-            self.__append_files(model_path, output)
-            output_path = Path(output)
-            command = "{} {}".format(self.get_bin_file("Vel2Grid"), output_path.name)
-            exc_cmd(command, cwd=output_path.parent)
-        elif model == "3D":
-             self.__write_header(latitude, longitude, depth, x_node, y_node, z_node, dx, dy, dz, wave_type)
-             self.grid3d(wave_type)
+    def vel_to_grid(self):
+        waves = []
+        latitude = self.nll_config.grid_configuration.latitude
+        longitude = self.nll_config.grid_configuration.longitude
+        depth = self.nll_config.grid_configuration.depth
+        x_node = int(self.nll_config.grid_configuration.x)
+        y_node = int(self.nll_config.grid_configuration.y)
+        z_node = int(self.nll_config.grid_configuration.z)
+        dx = self.nll_config.grid_configuration.dx
+        dy = self.nll_config.grid_configuration.dy
+        dz = self.nll_config.grid_configuration.dz
+        grid_type = self.nll_config.grid_configuration.grid_type
+        p_wave_type = self.nll_config.grid_configuration.p_wave_type
+        s_wave_type = self.nll_config.grid_configuration.s_wave_type
+        model_1D = self.nll_config.grid_configuration.model_1D
+        model_3D = self.nll_config.grid_configuration.model_3D
+        #model = self.nll_config.grid_configuration.
+        if model_1D:
+            x_node = 2 #mandatory for 1D models
+            if p_wave_type:
+                waves.append("P")
+            if s_wave_type:
+                waves.append("S")
+            for wave in waves:
+                    output = self.set_vel2grid_template(latitude, longitude, depth, x_node, y_node, z_node, dx, dy, dz,
+                                                        grid_type, wave)
+                    model_path = self.get_model_file_path(wave)
+                    self.__append_files(model_path, output)
+                    output_path = Path(output)
+                    #command = "{} {}".format(self.get_bin_file("Vel2Grid"), output_path.name)
+                    command = [self.get_bin_file("Vel2Grid"), output_path]
+                    exc_cmd(command, cwd=output_path.parent)
+
+        elif model_3D:
+            if p_wave_type:
+                waves.append("P")
+            if s_wave_type:
+                waves.append("S")
+            for wave in waves:
+             self.__write_header(latitude, longitude, depth, x_node, y_node, z_node, dx, dy, dz, wave)
+             self.grid3d(wave)
 
 
     def grid_to_time(self, latitude, longitude, depth, dimension, option, wave, limit):
@@ -471,7 +511,7 @@ class NllManager:
         all_stations_names = self.load_stations_file()
 
         stations = {}
-        for name,lon,lat in zip(all_stations_names[0],all_stations_names[1],all_stations_names[2]):
+        for name, lon, lat in zip(all_stations_names[0],all_stations_names[1],all_stations_names[2]):
             if name in stations_located:
                 stations[name] = [lon, lat]
 
@@ -532,9 +572,9 @@ class NllManager:
         Take the parameters of the 3D_Grid, and writes the header file in model
         """
         if wave_type == "P":
-            file_name = os.path.join(self.get_local_models_dir3D,"layer.P.mod.hdr")
+            file_name = os.path.join(self.get_local_models_dir3D, "layer.P.mod.hdr")
         elif wave_type == "S":
-            file_name = os.path.join(self.get_local_models_dir3D,"layer.S.mod.hdr")
+            file_name = os.path.join(self.get_local_models_dir3D, "layer.S.mod.hdr")
 
 
         shift_x = -0.5*float((x_node-1)*dx)

@@ -33,6 +33,11 @@ class GridConfiguration(BaseDataClass):
     grid_type: str
     path_to_1d_model: str
     path_to_3d_model: str
+    path_to_picks: str
+    p_wave_type: bool
+    s_wave_type: bool
+    model_1D: bool
+    model_3D: bool
 
 @dataclass
 class TravelTimesConfiguration(BaseDataClass):
