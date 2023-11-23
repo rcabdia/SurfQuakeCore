@@ -166,3 +166,4 @@ examples/earthquake_locate/model
 examples/earthquake_locate/time
 examples/earthquake_locate/stations
 examples/earthquake_locate/temp
+examples/earthquake_locate/loc

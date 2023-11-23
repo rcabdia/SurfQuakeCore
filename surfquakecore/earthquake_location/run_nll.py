@@ -230,8 +230,8 @@ class NllManager:
         locationpath = os.path.join(self.get_loc_dir, "location")
         df = pd.DataFrame(data)
         df.iloc[1, 0] = 'TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}'.format(lat=latitude, lon=longitude, depth=0.0)
-        df.iloc[3, 0] = 'LOCFILES {obspath} NLLOC_OBS {timepath} {locpath}'.format(obspath=self.__obs_file_path,
-                            timepath=travetimepath,locpath=locationpath)
+        df.iloc[3, 0] = 'LOCFILES {obspath} NLLOC_OBS {timepath} {locpath}'.format(
+            obspath=self.nll_config.grid_configuration.path_to_picks, timepath=travetimepath, locpath=locationpath)
         if xNum == 2: # 1D Grid
 
            xNum = int(yNum)
@@ -372,7 +372,7 @@ class NllManager:
 
         if self.nll_config.grid_configuration.p_wave_type:
             waves.append("P")
-        elif self.nll_config.grid_configuration.p_wave_type:
+        elif self.nll_config.grid_configuration.s_wave_type:
             waves.append("S")
         self.stations_to_nll_v2(latitude, longitude, depth, limit)
 
@@ -386,12 +386,17 @@ class NllManager:
             exc_cmd(command, cwd=output_path.parent)
 
 
-    def run_nlloc(self, latitude, longitude, depth, transform):
+    def run_nlloc(self):
+        latitude = self.nll_config.grid_configuration.latitude
+        longitude = self.nll_config.grid_configuration.longitude
+        depth = self.nll_config.grid_configuration.depth
+        transform = self.nll_config.grid_configuration.geo_transformation
 
         if transform == "SIMPLE":
-            output = self.set_run_template(latitude, longitude, depth)
+            output = self.set_run_template(latitude, longitude)
             output_path = Path(output)
-            command = "{} {}".format(self.get_bin_file("NLLoc"), output_path.name)
+            #command = "{} {}".format(self.get_bin_file("NLLoc"), output_path.name)
+            command = [self.get_bin_file("NLLoc"), output_path]
 
 
         elif transform == "GLOBAL":
@@ -401,8 +406,9 @@ class NllManager:
             temp_path = self.get_temp_dir
             shutil.copy(stations_path, temp_path)
             output = self.set_run_template_global()
-            output_path = Path(output)
-            command = "{} {}".format(self.get_bin_file("NLLoc"), output_path.name)
+            #output_path = Path(output)
+            #command = "{} {}".format(self.get_bin_file("NLLoc"), output_path.name)
+            command = [self.get_bin_file("NLLoc"), output]
 
         return exc_cmd(command, cwd=output_path.parent)
 
