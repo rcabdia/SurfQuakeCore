@@ -353,14 +353,37 @@ class NllManager:
              self.grid3d(wave)
 
 
-    def grid_to_time(self, latitude, longitude, depth, dimension, option, wave, limit):
+    def grid_to_time(self):
 
+        waves = []
+        latitude = self.nll_config.grid_configuration.latitude
+        longitude = self.nll_config.grid_configuration.longitude
+        depth = self.nll_config.grid_configuration.depth
+        grid1d = self.nll_config.travel_times_configuration.grid1d
+        grid3d = self.nll_config.travel_times_configuration.grid3d
+        limit = self.nll_config.travel_times_configuration.distance_limit
+        option = "ANGLES_YES"
+        dimension = "GRID2D" # DEFAULT
+
+        if grid1d:
+            dimension = "GRID2D"
+        elif grid3d:
+            dimension = "GRID3D"
+
+        if self.nll_config.grid_configuration.p_wave_type:
+            waves.append("P")
+        elif self.nll_config.grid_configuration.p_wave_type:
+            waves.append("S")
         self.stations_to_nll_v2(latitude, longitude, depth, limit)
-        output = self.set_grid2time_template(latitude, longitude, depth, dimension, option, wave)
-        self.__append_files(self.get_stations_template_file_path, output)
-        output_path = Path(output)
-        command = "{} {}".format(self.get_bin_file("Grid2Time"), output_path.name)
-        exc_cmd(command, cwd=output_path.parent)
+
+        for wave in waves:
+
+            output = self.set_grid2time_template(latitude, longitude, depth, dimension, option, wave)
+            self.__append_files(self.get_stations_template_file_path, output)
+            output_path = Path(output)
+            #command = "{} {}".format(self.get_bin_file("Grid2Time"), output_path.name)
+            command = [self.get_bin_file("Grid2Time"), output_path]
+            exc_cmd(command, cwd=output_path.parent)
 
 
     def run_nlloc(self, latitude, longitude, depth, transform):

@@ -10,3 +10,4 @@ if __name__ == "__main__":
     path_to_configfiles = os.path.join(working_directory, "config/nll_config.ini")
     nll_manager = NllManager(path_to_configfiles, inventory_path, working_directory)
     nll_manager.vel_to_grid()
+    nll_manager.grid_to_time()
