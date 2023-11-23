@@ -167,3 +167,4 @@ examples/earthquake_locate/time
 examples/earthquake_locate/stations
 examples/earthquake_locate/temp
 examples/earthquake_locate/loc
+#surfquakecore/earthquake_location/loc_structure/ak135

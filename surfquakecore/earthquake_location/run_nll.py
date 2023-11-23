@@ -16,7 +16,7 @@ import shutil
 from obspy.core.event import Origin
 from obspy.geodetics import gps2dist_azimuth
 
-from surfquakecore import nll_templates
+from surfquakecore import nll_templates, nll_ak135
 from surfquakecore.DataProcessing.metadata_manager import MetadataManager
 from surfquakecore.bin import nll_bin_dir
 from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
@@ -32,7 +32,7 @@ class NllManager:
         """
         Manage nll files for run nll program.
 
-        Important: The  obs_file_path is provide by the class :class:`PickerManager`.
+        Important: The  obs_file_path is provided by the class :class:`PickerManager`.
 
         :param obs_file_path: The file path of pick observations.
         """
@@ -48,7 +48,9 @@ class NllManager:
         self.nll_config: NLLConfig = load_nll_configuration(config_file_path)
 
     def find_files(self,base, pattern):
-        '''Return list of files matching pattern in base folder.'''
+        """
+        Return list of files matching pattern in base folder
+        """
         return [n for n in fnmatch.filter(os.listdir(base), pattern) if os.path.isfile(os.path.join(base, n))]
 
 
@@ -250,15 +252,14 @@ class NllManager:
     def set_run_template_global(self):
         run_path = self.get_run_template_global_file_path
         data = pd.read_csv(run_path)
-        travetimepath = os.path.join(self.get_time_global_dir, "ak135")
-        locationpath = os.path.join(self.get_loc_dir, "location")+" 1"
+        travetimepath = os.path.join(nll_ak135, "ak135")
+        locationpath = os.path.join(self.get_loc_dir, "location")
         stations_path = os.path.join(self.get_stations_template_file_path)
         df = pd.DataFrame(data)
         df.iloc[1, 0] = 'TRANS GLOBAL'
         df.iloc[3, 0] = 'INCLUDE {obspath} '.format(obspath=stations_path)
-        df.iloc[4, 0] = 'LOCFILES {obspath} NLLOC_OBS {timepath} {locpath}'.format(obspath=self.__obs_file_path,
-                                                                                   timepath=travetimepath,
-                                                                                   locpath=locationpath)
+        df.iloc[4, 0] = 'LOCFILES {obspath} NLLOC_OBS {timepath} {locpath}'.format(
+            obspath=self.nll_config.grid_configuration.path_to_picks, timepath=travetimepath, locpath=locationpath)
         output = os.path.join(self.get_temp_dir, "run_temp.txt")
         df.to_csv(output, index=False, header=True, encoding='utf-8')
         return output
@@ -326,7 +327,6 @@ class NllManager:
         s_wave_type = self.nll_config.grid_configuration.s_wave_type
         model_1D = self.nll_config.grid_configuration.model_1D
         model_3D = self.nll_config.grid_configuration.model_3D
-        #model = self.nll_config.grid_configuration.
         if model_1D:
             x_node = 2 #mandatory for 1D models
             if p_wave_type:
@@ -339,7 +339,6 @@ class NllManager:
                     model_path = self.get_model_file_path(wave)
                     self.__append_files(model_path, output)
                     output_path = Path(output)
-                    #command = "{} {}".format(self.get_bin_file("Vel2Grid"), output_path.name)
                     command = [self.get_bin_file("Vel2Grid"), output_path]
                     exc_cmd(command, cwd=output_path.parent)
 
@@ -381,39 +380,34 @@ class NllManager:
             output = self.set_grid2time_template(latitude, longitude, depth, dimension, option, wave)
             self.__append_files(self.get_stations_template_file_path, output)
             output_path = Path(output)
-            #command = "{} {}".format(self.get_bin_file("Grid2Time"), output_path.name)
             command = [self.get_bin_file("Grid2Time"), output_path]
             exc_cmd(command, cwd=output_path.parent)
 
 
     def run_nlloc(self):
+
         latitude = self.nll_config.grid_configuration.latitude
         longitude = self.nll_config.grid_configuration.longitude
-        depth = self.nll_config.grid_configuration.depth
         transform = self.nll_config.grid_configuration.geo_transformation
 
         if transform == "SIMPLE":
             output = self.set_run_template(latitude, longitude)
             output_path = Path(output)
-            #command = "{} {}".format(self.get_bin_file("NLLoc"), output_path.name)
             command = [self.get_bin_file("NLLoc"), output_path]
 
-
         elif transform == "GLOBAL":
-
-            self.stations_to_nll_v2(latitude, longitude, depth, limit = 20000, transform="GLOBAL")
+            self.stations_to_nll_v2(latitude, longitude, limit=20000, transform="GLOBAL")
             stations_path = os.path.join(self.get_stations_template_file_path)
             temp_path = self.get_temp_dir
             shutil.copy(stations_path, temp_path)
             output = self.set_run_template_global()
-            #output_path = Path(output)
-            #command = "{} {}".format(self.get_bin_file("NLLoc"), output_path.name)
+            output_path = Path(output)
             command = [self.get_bin_file("NLLoc"), output]
 
         return exc_cmd(command, cwd=output_path.parent)
 
 
-    def stations_to_nll_v2(self, latitude_f, longitude_f, depth, limit, transform="SIMPLE"):
+    def stations_to_nll_v2(self, latitude_f, longitude_f, limit, transform="SIMPLE"):
 
         try:
             metadata_manager = MetadataManager(self.__dataless_dir)
@@ -439,7 +433,7 @@ class NllManager:
                     elevation = sta.elevation/1000
 
                     # filter minimum distance
-                    dist, _, _ = gps2dist_azimuth(latitude, longitude, latitude_f,longitude_f)
+                    dist, _, _ = gps2dist_azimuth(latitude, longitude, latitude_f, longitude_f)
                     dist = dist/1000
                     if dist<limit:
                         station_names.append(code)
