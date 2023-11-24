@@ -4,3 +4,4 @@ obspy
 pyproj
 pandas
 tensorflow
+sourcespec
