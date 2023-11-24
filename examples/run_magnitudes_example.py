@@ -6,7 +6,7 @@ if __name__ == "__main__":
 
     cwd = os.path.dirname(__file__)
     ## Project definition ##
-    path_to_project = "/Volumes/LaCie/test_surfquake_core/testing_data"
+    path_to_project = "source_estimations/data"
     project_tobe_saved = os.path.join(path_to_project, "surfquake_project_test.pkl")
     print("project:", project_tobe_saved)
     ms = MseedUtil()
@@ -23,8 +23,9 @@ if __name__ == "__main__":
     working_directory = os.path.join(cwd, "source_estimations")
 
     # inventory path must be placed inside config_file
-    # inventory_path = os.path.join(working_directory, "inventories", "inv_surfquakecore.xml")
+    inventory_path = os.path.join(working_directory, "inventories", "inv_surfquakecore.xml")
     path_to_configfiles = os.path.join(working_directory, "config/source_spec.conf")
     locations_directory = os.path.join(working_directory, "locations")
-    mg = Automag(project, locations_directory)
-    mg.estimate_magnitudes()
+    output_directory = os.path.join(working_directory, "output")
+    mg = Automag(project, locations_directory, inventory_path, path_to_configfiles, output_directory)
+    mg.estimate_source_parameters()
