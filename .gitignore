@@ -168,3 +168,4 @@ examples/earthquake_locate/stations
 examples/earthquake_locate/temp
 examples/earthquake_locate/loc
 examples/source_estimations/data
+examples/source_estimations/output

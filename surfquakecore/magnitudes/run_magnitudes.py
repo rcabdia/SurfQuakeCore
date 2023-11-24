@@ -2,7 +2,22 @@ import os
 from obspy import read, read_events, UTCDateTime
 from surfquakecore.utils.obspy_utils import MseedUtil
 from surfquakecore.magnitudes.structures import SoursceSpecOptions
-
+from sourcespec.ssp_setup import configure, setup_logging,ssp_exit
+from sourcespec.ssp_read_traces import read_traces
+from sourcespec.ssp_process_traces import process_traces
+from sourcespec.ssp_build_spectra import build_spectra
+from sourcespec.ssp_plot_traces import plot_traces
+from sourcespec.ssp_inversion import spectral_inversion
+from sourcespec.ssp_radiated_energy import radiated_energy
+from sourcespec.ssp_local_magnitude import local_magnitude
+from sourcespec.ssp_summary_statistics import compute_summary_statistics
+from sourcespec.ssp_output import write_output
+from sourcespec.ssp_residuals import spectral_residuals
+from sourcespec.ssp_plot_spectra import plot_spectra
+from sourcespec.ssp_plot_stacked_spectra import plot_stacked_spectra
+from sourcespec.ssp_plot_params_stats import box_plots
+from sourcespec.ssp_plot_stations import plot_stations
+from sourcespec.ssp_html_report import html_report
 class Automag:
 
     def __init__(self, project, locations_directory, inventory_path, config_path, output_directory):
@@ -77,6 +92,56 @@ class Automag:
 
         return stations
 
+    def __run_core_source(self, event,  id_name):
+        options = SoursceSpecOptions(config_file=self.config_path, evid=None, evname=id_name, hypo_file=None,
+                                     outdir=self.output_directory, pick_file=None, qml_file=event, run_id="",
+                                     sampleconf=False, station=None,
+                                     station_metadata=self.inventory_path, trace_path=self.files_path, updateconf=None)
+
+        # Setup stage
+        config = configure(options, progname='source_spec')
+        setup_logging(config)
+        st = read_traces(config)
+
+        # Deconvolve, filter, cut traces:
+        proc_st = process_traces(config, st)
+
+        # Build spectra (amplitude in magnitude units)
+        spec_st, specnoise_st, weight_st = build_spectra(config, proc_st)
+        plot_traces(config, proc_st)
+
+        # Spectral inversion
+        sspec_output = spectral_inversion(config, spec_st, weight_st)
+
+        # Radiated energy
+        radiated_energy(config, spec_st, specnoise_st, sspec_output)
+
+        # Local magnitude
+        if config.compute_local_magnitude:
+            local_magnitude(config, st, proc_st, sspec_output)
+
+        # Compute summary statistics from station spectral parameters
+        compute_summary_statistics(config, sspec_output)
+
+        # Save output
+        write_output(config, sspec_output)
+
+        # Save residuals
+        spectral_residuals(config, spec_st, sspec_output)
+
+        # Plotting
+        plot_spectra(config, spec_st, specnoise_st, plot_type='regular')
+        plot_spectra(config, weight_st, plot_type='weight')
+        plot_stacked_spectra(config, spec_st, sspec_output)
+        box_plots(config, sspec_output)
+        if config.plot_station_map:
+            plot_stations(config, sspec_output)
+
+        if config.html_report:
+            html_report(config, sspec_output)
+
+        ssp_exit()
+
     def estimate_source_parameters(self):
 
         self.scan_folder()
@@ -86,80 +151,8 @@ class Automag:
             self.get_now_files(date)
             for event in events:
                 print(event)
-                try:
-                    options = SoursceSpecOptions(config_file=self.config_path, evid=None, evname=None, hypo_file=None,
-                        outdir=self.output_directory, pick_file=None, qml_file=event, run_id="", sampleconf=False, station=None,
-                        station_metadata=self.inventory_path, trace_path=self.files_path, updateconf=None)
-
-                    # Setup stage
-                    from sourcespec.ssp_setup import (
-                        configure, move_outdir, remove_old_outdir, setup_logging,
-                        save_config, ssp_exit)
-                    config = configure(options, progname='source_spec')
-                    setup_logging(config)
-
-                    from sourcespec.ssp_read_traces import read_traces
-                    st = read_traces(config)
-
-                    # Now that we have an evid, we can rename the outdir and the log file
-                    move_outdir(config)
-                    setup_logging(config, config.hypo.evid)
-                    remove_old_outdir(config)
-
-                    # Save config to out dir
-                    save_config(config)
-                    # Deconvolve, filter, cut traces:
-                    from sourcespec.ssp_process_traces import process_traces
-                    proc_st = process_traces(config, st)
-
-                    # Build spectra (amplitude in magnitude units)
-                    from sourcespec.ssp_build_spectra import build_spectra
-                    spec_st, specnoise_st, weight_st = build_spectra(config, proc_st)
-
-                    from sourcespec.ssp_plot_traces import plot_traces
-                    plot_traces(config, proc_st)
-
-                    # Spectral inversion
-                    from sourcespec.ssp_inversion import spectral_inversion
-                    sspec_output = spectral_inversion(config, spec_st, weight_st)
-
-                    # Radiated energy
-                    from sourcespec.ssp_radiated_energy import radiated_energy
-                    radiated_energy(config, spec_st, specnoise_st, sspec_output)
-
-                    # Local magnitude
-                    if config.compute_local_magnitude:
-                        from sourcespec.ssp_local_magnitude import local_magnitude
-                        local_magnitude(config, st, proc_st, sspec_output)
-
-                    # Compute summary statistics from station spectral parameters
-                    from sourcespec.ssp_summary_statistics import compute_summary_statistics
-                    compute_summary_statistics(config, sspec_output)
-
-                    # Save output
-                    from sourcespec.ssp_output import write_output
-                    write_output(config, sspec_output)
-
-                    # Save residuals
-                    from sourcespec.ssp_residuals import spectral_residuals
-                    spectral_residuals(config, spec_st, sspec_output)
-
-                    # Plotting
-                    from sourcespec.ssp_plot_spectra import plot_spectra
-                    plot_spectra(config, spec_st, specnoise_st, plot_type='regular')
-                    plot_spectra(config, weight_st, plot_type='weight')
-                    from sourcespec.ssp_plot_stacked_spectra import plot_stacked_spectra
-                    plot_stacked_spectra(config, spec_st, sspec_output)
-                    from sourcespec.ssp_plot_params_stats import box_plots
-                    box_plots(config, sspec_output)
-                    if config.plot_station_map:
-                        from sourcespec.ssp_plot_stations import plot_stations
-                        plot_stations(config, sspec_output)
-
-                    if config.html_report:
-                        from sourcespec.ssp_html_report import html_report
-                        html_report(config, sspec_output)
-
-                    ssp_exit()
-                except:
-                    pass
+                #try:
+                run_id_name = os.path.basename(event)
+                self.__run_core_source(event, run_id_name)
+                #except:
+                #    pass
