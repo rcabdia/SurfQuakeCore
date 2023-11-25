@@ -18,7 +18,6 @@ from ..utils.subprocess_utils import exc_cmd
 class RealManager:
 
     REAL_BIN: str = real_bin
-    #OUT_DIR = out_data_dir
     DEGREE_TO_KM = 111.19
 
     def __init__(self, pick_dir: str, station_file: str, time_travel_table_file: str, out_data_dir: str, **kwargs):

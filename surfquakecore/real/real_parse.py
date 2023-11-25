@@ -60,7 +60,7 @@ def load_real_configuration(config_file: str) -> RealConfig:
     depth_range=Cast(real_config_ini['TRAVEL_TIME_GRID_SEARCH']['DEPTH_RANGE'], float),
     depth_grid_resolution_size=Cast(real_config_ini['TRAVEL_TIME_GRID_SEARCH']['DEPTH_GRID_RESOLUTION_SIZE'], float),
     horizontal_grid_resolution_size=Cast(real_config_ini['TRAVEL_TIME_GRID_SEARCH']['HORIZONTAL_GRID_RESOLUTION_SIZE'], float)),
-    threshold_picks=ThresholdPicks(min_num_p_wave_picks=Cast(real_config_ini['THRESHOLD_PICKS']['MIN_NUM_P_WAVE_PICKS'], float),
-    min_num_s_wave_picks=Cast(real_config_ini['THRESHOLD_PICKS']['MIN_NUM_S_WAVE_PICKS'], float),
-    num_stations_recorded=Cast(real_config_ini['THRESHOLD_PICKS']['NUM_STATIONS_RECORDED'], float)))
+    threshold_picks=ThresholdPicks(min_num_p_wave_picks=Cast(real_config_ini['THRESHOLD_PICKS']['MIN_NUM_P_WAVE_PICKS'], int),
+    min_num_s_wave_picks=Cast(real_config_ini['THRESHOLD_PICKS']['MIN_NUM_S_WAVE_PICKS'], int),
+    num_stations_recorded=Cast(real_config_ini['THRESHOLD_PICKS']['NUM_STATIONS_RECORDED'], int)))
 

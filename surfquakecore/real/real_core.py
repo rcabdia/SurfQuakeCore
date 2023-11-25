@@ -4,6 +4,7 @@ from obspy import read_inventory
 from obspy.geodetics import gps2dist_azimuth, kilometers2degrees
 from surfquakecore.real.real_manager import RealManager
 from surfquakecore.real.real_parse import load_real_configuration
+from surfquakecore.real.structures import RealConfig
 from surfquakecore.real.tt_db.taup_tt import create_tt_db
 from surfquakecore.utils import obspy_utils
 from surfquakecore.utils.conversion_utils import ConversionUtils
@@ -21,12 +22,16 @@ class RealCore:
         parameters_file: .init file with the full configuration to run real
         """
 
+        self.__get_real_config(parameters_file)
         self.metadata_file = metadata_file
-        self.parameters_file = parameters_file
         self.picking_directory = picking_directory
         self.working_directory = working_directory
         self.output_directory = output_directory
         self._start_folder_tree()
+
+    def __get_real_config(self, config_file_path):
+
+        self.real_config: RealConfig = load_real_configuration(config_file_path)
 
 
     def _start_folder_tree(self):
@@ -48,17 +53,13 @@ class RealCore:
         inv = read_inventory(self.metadata_file)
         return inv
 
-    def _get_files_from_config(self, real_config_path):
-        parameters = None
-        real_config = load_real_configuration(real_config_path)
-        self.parameters = real_config.to_dict()
 
     def _get_real_grid(self):
 
-        lon_min = self.parameters['geographic_frame']['lon_ref_min']
-        lon_max = self.parameters['geographic_frame']['lon_ref_max']
-        lat_max = self.parameters['geographic_frame']['lat_ref_max']
-        lat_min = self.parameters['geographic_frame']['lat_ref_min']
+        lon_min = self.real_config.geographic_frame.lon_ref_min
+        lon_max = self.real_config.geographic_frame.lon_ref_max
+        lat_max = self.real_config.geographic_frame.lat_ref_max
+        lat_min = self.real_config.geographic_frame.lat_ref_min
         self.latitude_center = (lat_min + lat_max) / 2
         self.longitude_center = (lon_min + lon_max) / 2
         distance, az1, az2 = gps2dist_azimuth(self.latitude_center, self.longitude_center, lat_max, lon_max)
@@ -66,14 +67,13 @@ class RealCore:
 
     def __get_lat_mean(self):
 
-        lat_max = self.parameters['geographic_frame']['lat_ref_max']
-        lat_min = self.parameters['geographic_frame']['lat_ref_min']
+        lat_max = self.real_config.geographic_frame.lat_ref_max
+        lat_min = self.real_config.geographic_frame.lat_ref_min
         latitude_center = (lat_min + lat_max) / 2
         return latitude_center
 
     def run_real(self):
         inventory = self._return_inventory()
-        self._get_files_from_config(self.parameters_file)
 
         obspy_utils.ObspyUtil.realStation(inventory, self.working_directory)
         stationfile = os.path.join(self.working_directory, "station.dat")
@@ -84,43 +84,28 @@ class RealCore:
         # create travel times
         self._get_real_grid()
         tt_db = create_tt_db()
+
         tt_db.run_tt_db(ttime=self.working_directory, dist=self.h_range,
-                        depth=self.parameters['geographic_frame']['depth'], ddist=0.01, ddep=1)
+                        depth=self.real_config.geographic_frame.depth, ddist=0.01, ddep=1)
 
-        # real_handler = RealManager(pick_dir=self.picking_directory, station_file=stationfile,
-        # out_data_dir=self.output_directory,
-        # time_travel_table_file=ttime_file,
-        # gridSearchParamHorizontalRange=self.parameters['grid_search_parameters']['horizontal_search_range'],
-        # HorizontalGridSize=self.parameters['grid_search_parameters']['horizontal_search_grid_size'],
-        # DepthSearchParamHorizontalRange=self.parameters['grid_search_parameters']['depth_search_range'],
-        # DepthGridSize=self.parameters['grid_search_parameters']['depth_search_grid_size'],
-        # EventTimeW=self.parameters['grid_search_parameters']['event_time_window'],
-        # TTHorizontalRange=self.parameters['travel_time_grid_search']['horizontal_range'],
-        # TTHorizontalGridSize=self.parameters['travel_time_grid_search']['horizontal_grid_resolution_size'],
-        # TTDepthGridSize=self.parameters['travel_time_grid_search']['depth_grid_resolution_size'],
-        # TTDepthRange=self.parameters['travel_time_grid_search']['depth_range'],
-        # ThresholdPwave=self.parameters['threshold_picks']['min_num_p_wave_picks'],
-        # ThresholdSwave=self.parameters['threshold_picks']['min_num_s_wave_picks'],
-        # number_stations_picks=self.parameters['threshold_picks']['num_stations_recorded'])
-
-
-        real_handler = RealManager(pick_dir="/Users/admin/Documents/iMacROA/SurfQuake/surfquake/data/picks",
-                                   station_file="/Users/admin/Documents/iMacROA/SurfQuake/surfquake/data/station/station.dat",
+        ThresholdPwave = self.real_config.threshold_picks.min_num_p_wave_picks
+        ThresholdSwave = self.real_config.threshold_picks.min_num_s_wave_picks
+        number_stations_picks = self.real_config.threshold_picks.min_num_s_wave_picks
+        real_handler = RealManager(pick_dir=self.picking_directory, station_file=stationfile,
         out_data_dir=self.output_directory,
         time_travel_table_file=ttime_file,
-        gridSearchParamHorizontalRange=4.8,
-        HorizontalGridSize=0.6,
-        DepthSearchParamHorizontalRange=50,
-        DepthGridSize=10,
-        EventTimeW=120,
-        TTHorizontalRange=5,
-        TTHorizontalGridSize=0.01,
-        TTDepthGridSize=10,
-        TTDepthRange=50,
-        ThresholdPwave=3,
-        ThresholdSwave=1,
-        number_stations_picks=1)
-
+        gridSearchParamHorizontalRange=self.real_config.grid_search_parameters.horizontal_search_range,
+        HorizontalGridSize=self.real_config.grid_search_parameters.horizontal_search_grid_size,
+        DepthSearchParamHorizontalRange=self.real_config.grid_search_parameters.depth_search_range,
+        DepthGridSize=self.real_config.grid_search_parameters.depth_search_grid_size,
+        EventTimeW=self.real_config.grid_search_parameters.event_time_window,
+        TTHorizontalRange=self.real_config.travel_time_grid_search.horizontal_range,
+        TTHorizontalGridSize=self.real_config.travel_time_grid_search.horizontal_grid_resolution_size,
+        TTDepthGridSize=self.real_config.travel_time_grid_search.depth_grid_resolution_size,
+        TTDepthRange=self.real_config.travel_time_grid_search.depth_range,
+        ThresholdPwave=ThresholdPwave,
+        ThresholdSwave=ThresholdSwave,
+        number_stations_picks=number_stations_picks)
 
         real_handler.latitude_center = self.__get_lat_mean()
         for events_info in real_handler:
