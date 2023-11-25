@@ -1,10 +1,11 @@
+import gc
 import os
-from obspy import read, read_events, UTCDateTime
+from obspy import read, read_events, UTCDateTime, Stream
 from surfquakecore.utils.obspy_utils import MseedUtil
 from surfquakecore.magnitudes.structures import SoursceSpecOptions
-from sourcespec.ssp_setup import configure, setup_logging,ssp_exit
+from sourcespec.ssp_setup import configure
 from sourcespec.ssp_read_traces import read_traces
-from sourcespec.ssp_process_traces import process_traces
+from surfquakecore.magnitudes.ssp_process_traces_mod import process_traces
 from sourcespec.ssp_build_spectra import build_spectra
 from sourcespec.ssp_plot_traces import plot_traces
 from sourcespec.ssp_inversion import spectral_inversion
@@ -18,15 +19,18 @@ from sourcespec.ssp_plot_stacked_spectra import plot_stacked_spectra
 from sourcespec.ssp_plot_params_stats import box_plots
 from sourcespec.ssp_plot_stations import plot_stations
 from sourcespec.ssp_html_report import html_report
+from surfquakecore.magnitudes.ssp_setup_mod import setup_logging
+
 class Automag:
 
-    def __init__(self, project, locations_directory, inventory_path, config_path, output_directory):
+    def __init__(self, project, locations_directory, inventory_path, config_path, output_directory, scale):
 
         self.project = project
         self.locations_directory = locations_directory
         self.inventory_path = inventory_path
         self.config_path = config_path
         self.output_directory = output_directory
+        self.sacale = scale
         self._check_folders()
 
 
@@ -92,7 +96,31 @@ class Automag:
 
         return stations
 
-    def __run_core_source(self, event,  id_name):
+    def __cut_signal_wise(self, st,  origin_time, regional=True):
+
+        all_traces = []
+        st.merge()
+
+        if regional:
+            dt_noise = 10
+            dt_signal = 10 * 60
+        else:
+            dt_noise = 10
+            dt_signal = 2700
+
+        start = origin_time - dt_noise
+        end = origin_time + dt_signal
+
+        for tr in st:
+
+            tr.trim(starttime=start, endtime=end)
+            all_traces.append(tr)
+            # TODO: It is not still checked the fill_gaps functionality
+            #tr = cls.fill_gaps(tr)
+        st = Stream(traces=all_traces)
+        return st
+
+    def __run_core_source(self, event,  id_name, focal_parameters):
         options = SoursceSpecOptions(config_file=self.config_path, evid=None, evname=id_name, hypo_file=None,
                                      outdir=self.output_directory, pick_file=None, qml_file=event, run_id="",
                                      sampleconf=False, station=None,
@@ -102,9 +130,10 @@ class Automag:
         config = configure(options, progname='source_spec')
         setup_logging(config)
         st = read_traces(config)
+        st_trim = self.__cut_signal_wise(st, origin_time=focal_parameters[0])
 
         # Deconvolve, filter, cut traces:
-        proc_st = process_traces(config, st)
+        proc_st = process_traces(config, st_trim)
 
         # Build spectra (amplitude in magnitude units)
         spec_st, specnoise_st, weight_st = build_spectra(config, proc_st)
@@ -140,19 +169,27 @@ class Automag:
         if config.html_report:
             html_report(config, sspec_output)
 
-        ssp_exit()
+        del options
+        del config
+        del st
+        del st_trim
+        gc.collect()
 
     def estimate_source_parameters(self):
 
         self.scan_folder()
-        for date in self.dates:
+        for date in self.dates.keys():
             events = self.dates[date]
-            #events = list(set(events))
+
             self.get_now_files(date)
             for event in events:
                 print(event)
-                #try:
-                run_id_name = os.path.basename(event)
-                self.__run_core_source(event, run_id_name)
-                #except:
-                #    pass
+                cat = read_events(event)
+                focal_parameters = [cat[0].origins[0]["time"], cat[0].origins[0]["latitude"],
+                                    cat[0].origins[0]["longitude"],
+                                    cat[0].origins[0]["depth"] * 1E-3]
+                try:
+                    run_id_name = os.path.basename(event)
+                    self.__run_core_source(event, run_id_name, focal_parameters)
+                except:
+                    pass

@@ -27,5 +27,5 @@ if __name__ == "__main__":
     path_to_configfiles = os.path.join(working_directory, "config/source_spec.conf")
     locations_directory = os.path.join(working_directory, "locations")
     output_directory = os.path.join(working_directory, "output")
-    mg = Automag(project, locations_directory, inventory_path, path_to_configfiles, output_directory)
+    mg = Automag(project, locations_directory, inventory_path, path_to_configfiles, output_directory, "regional")
     mg.estimate_source_parameters()
