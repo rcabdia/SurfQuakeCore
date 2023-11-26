@@ -2,6 +2,8 @@ import os
 import pickle
 import re
 from multiprocessing import Pool
+from typing import Tuple, List
+
 import pandas as pd
 from obspy import read, UTCDateTime
 
@@ -15,50 +17,42 @@ class MseedUtil:
         self.obsfiles = []
         self.pos_file = []
         self.robust = robust
-        self.use_ind_files = False
-        self.search_file = []
 
+        self._data_files = []
+
+        self._project = {}
 
     @classmethod
     def load_project(cls, file: str):
-        project = {}
-        try:
-            project = pickle.load(open(file, "rb"))
+        return pickle.load(open(file, "rb"))
 
-        except:
-            pass
-        return project
-    @staticmethod
-    def list_folder_files(folder):
-        list_of_files = []
-        for top_dir, sub_dir, files in os.walk(folder):
+    def get_files(self, folder: str):
+        self._data_files = [os.path.join(top_dir, file)
+                            for top_dir, sub_dir, files in os.walk(folder) for file in files]
+
+        return self._data_files
+
+    def _create_project(self, stations_dir: str):
+
+        # TODO Improve this method and replace search_files()
+
+        if not os.path.isdir(stations_dir):
+            raise ValueError(f"The path {stations_dir} is not a valid directory")
+
+        print("Not done yet")
+        return self.get_files(stations_dir)
+
+    def search_files(self, root_path: str):
+        self._data_files = []
+        for top_dir, sub_dir, files in os.walk(root_path):
             for file in files:
-                list_of_files.append(os.path.join(top_dir, file))
-        return list_of_files
+                self._data_files.append(os.path.join(top_dir, file))
 
-    def search_indiv_files(self, list_files: list):
-
-        self.use_ind_files = True
-        self.list_files = list_files
-        with Pool(processes=os.cpu_count()) as pool:
-            returned_list = pool.map(self.create_dict, range(len(self.list_files)))
-
-        project = self.convert2dict(returned_list)
-        self.use_ind_files = False
-
-        return project
-
-    def search_files(self, rooth_path: str):
-        self.search_file = []
-        for top_dir, sub_dir, files in os.walk(rooth_path):
-            for file in files:
-                self.search_file.append(os.path.join(top_dir, file))
-
-        cpus = min(len(self.search_file), os.cpu_count())
+        cpus = min(len(self._data_files), os.cpu_count())
         with Pool(processes=cpus) as pool:
-            returned_list = pool.map(self.create_dict, range(len(self.search_file)))
+            returned_list = pool.map(self._parse_data_file, self._data_files)
 
-        project = self.convert2dict(returned_list)
+        project = self._convert2dict(returned_list)
 
         return project
 
@@ -142,43 +136,31 @@ class MseedUtil:
 
         return result
 
-    def create_dict(self, i):
-        key = None
-        data_map = None
+    def _parse_data_file(self, file: str):
 
         try:
-            if self.use_ind_files:
-                header = read(self.list_files[i], headeronly=True)
-                print(self.list_files[i])
-                net = header[0].stats.network
-                sta = header[0].stats.station
-                chn = header[0].stats.channel
-                key = net + "." + sta + "." + chn
-                data_map = [self.list_files[i], header[0].stats]
-            else:
-                header = read(self.search_file[i], headeronly=True)
-                print(self.search_file[i])
-                net = header[0].stats.network
-                sta = header[0].stats.station
-                chn = header[0].stats.channel
-                key = net + "." + sta + "." + chn
-                data_map = [self.search_file[i], header[0].stats]
+            header = read(file, headeronly=True)
+        except TypeError:
+            return [None, None]
 
-        except:
-            pass
+        net = header[0].stats.network
+        sta = header[0].stats.station
+        chn = header[0].stats.channel
+        key = f"{net}.{sta}.{chn}"
+        data_map = [file, header[0].stats]
 
-        return [key, data_map]
+        return key, data_map
 
-    def convert2dict(self, project):
-        project_converted = {}
-        for name in project:
-            if name[0] in project_converted.keys() and name[0] is not None:
-                project_converted[name[0]].append([name[1][0],name[1][1]])
+    def _convert2dict(self, data: Tuple[str, List[str]]):
+        self._project = {}
+        for name in data:
+            if name[0] in self._project.keys() and name[0] is not None:
+                self._project[name[0]].append([name[1][0], name[1][1]])
 
-            elif name[0] not in project_converted.keys() and name[0] is not None:
-                project_converted[name[0]] = [[name[1][0],name[1][1]]]
+            elif name[0] not in self._project.keys() and name[0] is not None:
+                self._project[name[0]] = [[name[1][0], name[1][1]]]
 
-        return project_converted
+        return self._project
 
     def convert2dataframe(self, project):
         project_converted = []

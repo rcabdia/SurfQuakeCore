@@ -1,8 +1,13 @@
+import re
 from configparser import ConfigParser
 from datetime import datetime
+
+import numpy as np
+
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, StationConfig, InversionParameters, \
     SignalProcessingParameters
 from surfquakecore.utils import Cast
+from surfquakecore.utils.string_utils import is_float
 
 
 def _read_config_file(file_path: str):
@@ -90,3 +95,75 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             rms_thresh=Cast(mti_config_ini["SIGNAL_PROCESSING"]["RMS_THRESH"], float),
         )
     )
+
+
+def read_isola_log(file: str):
+    """
+    Reads the ISOLA-ObsPy output log file.
+
+    Parameters
+    ----------
+    file : string
+        The full path to the log.txt file.
+
+    Returns
+    -------
+    log_dict : dict
+        A dictionary containing the results from the moment tensor inversion.
+
+    """
+
+    with open(file, 'r') as f:
+        lines = f.readlines()
+
+    ri = 0
+    for i, line in enumerate(lines):
+        if line == "Centroid location:\n":
+            ri = i
+            break
+
+    lat_log_dep_line = tuple(v for v in lines[ri + 2].split(' ') if is_float(v))
+    log_dict = {
+        "latitude": float(lat_log_dep_line[0]),
+        "longitude": float(lat_log_dep_line[1]),
+        "depth": float(lat_log_dep_line[2]),
+        "VR": float(lines[ri + 7].strip('\n').split(':')[1].strip(' %')),
+        "CN": float(lines[ri + 8].strip('\n').split(':')[1].strip(' '))
+    }
+
+    # log_dict["Time"] = obspy.UTCDateTime('T'.join(lines[ri+1].strip('\n').split(' ')[4:]))
+
+    MT_exp = float(lines[ri + 10].split('*')[1].strip(' \n'))
+    MT = np.array([float(x) for x in lines[ri + 10].split('*')[0].strip('[ ]').split(' ') if x != ''])
+    MT *= MT_exp
+
+    mrr, mtt, mpp, mrt, mrp, mtp = MT
+    log_dict["mrr"] = mrr
+    log_dict["mtt"] = mtt
+    log_dict["mpp"] = mpp
+    log_dict["mrt"] = mrt
+    log_dict["mrp"] = mrp
+    log_dict["mtp"] = mtp
+
+    log_dict["mo"] = float(lines[ri + 12].split('M0')[1].split('Nm')[0].strip(' ='))
+    log_dict["mw_mt"] = float(lines[ri + 12].split('M0')[1].split('Nm')[1].strip('\n ( ) Mw = '))
+
+    regex = re.compile('[a-zA-Z =:%,\n]')
+
+    dc, clvd, iso = [float(x) for x in re.sub(regex, ' ', lines[ri + 13]).split(' ') if x != '']
+    log_dict["dc"] = dc
+    log_dict["clvd"] = clvd
+    log_dict["iso"] = iso
+
+    fp1_strike, fp1_dip, fp1_rake = [float(x) for x in re.sub(regex, ' ', lines[ri + 14].split(':')[1]).split(' ') if
+                                     x != '' and x != '-']
+    fp2_strike, fp2_dip, fp2_rake = [float(x) for x in re.sub(regex, ' ', lines[ri + 15].split(':')[1]).split(' ') if
+                                     x != '' and x != '-']
+    log_dict["strike_mt"] = fp1_strike
+    log_dict["dip_mt"] = fp1_dip
+    log_dict["rake_mt"] = fp1_rake
+    log_dict["fp2_strike"] = fp2_strike
+    log_dict["fp2_dip"] = fp2_dip
+    log_dict["fp2_rake"] = fp2_rake
+
+    return log_dict

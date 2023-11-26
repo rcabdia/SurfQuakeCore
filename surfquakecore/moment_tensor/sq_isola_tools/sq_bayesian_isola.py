@@ -77,7 +77,7 @@ class BayesianIsolaCore:
             os.makedirs(self.ouput_directory)
         inventory = read_inventory(self.metadata_file)
         ms = MseedUtil()
-        list_of_earthquakes = ms.list_folder_files(self.parameters)
+        list_of_earthquakes = ms.get_files(self.parameters)
         for num, earthquake in enumerate(list_of_earthquakes):
             mti_config = load_mti_configuration(earthquake)
             files_list = self._get_files_from_config(mti_config)

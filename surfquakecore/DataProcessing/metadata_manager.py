@@ -1,3 +1,4 @@
+from surfquakecore.Structures.structures import StationCoordinates
 from surfquakecore.utils.obspy_utils import MseedUtil, ObspyUtil
 
 class MetadataManager:

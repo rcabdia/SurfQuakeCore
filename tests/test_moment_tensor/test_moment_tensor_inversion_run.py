@@ -1,11 +1,13 @@
 import os
+import shutil
 import unittest
 
+from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import BayesianIsolaCore
 from surfquakecore.utils.obspy_utils import MseedUtil
 from tests.test_resources.mti.mti_run_inversion_resources import test_inversion_resource_path
 
 
-class MyTestCase(unittest.TestCase):
+class TestBayesianIsolaCore(unittest.TestCase):
 
     def setUp(self):
         root_resource = test_inversion_resource_path
@@ -16,21 +18,19 @@ class MyTestCase(unittest.TestCase):
         self.working_directory = os.path.join(root_resource, "working_directory")
         self.output_directory = os.path.join(root_resource, "output_directory")
 
-        # project_tobe_saved = os.path.join(path_to_project, project_name)
-        # ms = MseedUtil()
-        # project = ms.search_files(data_dir_path)
-        # print("End of project creation, number of files ", len(project))
-        #
-        # # it is possible to save the project for later use
-        # # project = ms.save_project(project, project_tobe_saved)
-        #
-        # # alternatively one can load the project
-        # # project = MseedUtil.load_project(file=project_tobe_saved)
-        #
-        # # build the class
-        # bic = BayesianIsolaCore(project, inventory_path, path_to_configfiles, working_directory, output_directory,
-        #                         save_plots=True)
-        # bic.run_mti_inversion()
+    def tearDown(self):
+        try:
+            shutil.rmtree(self.output_directory)
+            shutil.rmtree(self.working_directory)
+        except FileNotFoundError:
+            pass
+
+    def test_create_project(self):
+        project = MseedUtil().search_files(self.data_dir_path)
+        print(project)
+
+        project = MseedUtil()._create_project(self.data_dir_path)
+        print(project)
 
     def test_run_mti_inversion(self):
 
@@ -39,6 +39,13 @@ class MyTestCase(unittest.TestCase):
         project = MseedUtil().search_files(self.data_dir_path)
         self.assertIsInstance(project, dict)
 
+        bic = BayesianIsolaCore(project, self.inventory_path, self.path_to_configfiles,
+                                self.working_directory, self.output_directory,
+                                save_plots=False)
+        bic.run_mti_inversion()
+
+        log_file = os.path.join(self.output_directory, "0", "log.txt")
+        self.assertTrue(os.path.isfile(log_file))
 
 
 if __name__ == '__main__':

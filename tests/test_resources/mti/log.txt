@@ -1,0 +1,62 @@
+
+Hypocenter location:
+  Agency: 
+  Origin time: 2018-08-21 00:28:57
+  Lat   42.706   Lon   -7.697   Depth11.0 km
+Station coordinates: C:\pyProjects\SurfQuakeCore\tests\test_resources\mti\mti_run_inversion_resources\working_directory\stations.txt
+Crustal model(s): ../test_resources/mti/mti_run_inversion_resources/Iberia_test.dat
+
+Sampling frequencies:
+  Data sampling: 100.0 Hz, 100.0 Hz, 100.0 Hz
+  Common sampling: 100.0
+  Decimation factor: 156 x
+  Sampling used:   0.6 Hz
+
+Grid parameters:
+  number of points:  729
+  horizontal step:   834 m
+  vertical step:   834 m
+  grid radius:  3.592 km
+  minimal depth:  7.408 km
+  maximal depth: 14.592 km
+Estimated rupture length:  0.592 km
+
+Grid-search over time:
+  min = -0.50 s (-48 samples)
+  max =  0.74 s ( 74 samples)
+  step = 0.12 s ( 12 samples)
+
+Green's function calculation:
+  npts:  128
+  tl: 199.68
+  freq:   65
+  npts for inversion:   70
+  source time function: triangle in velocity, length = 2.0 s
+
+Components used in inversion and their weights
+station     	   	 Z 	 N 	 E 	dist	azimuth	fmin	fmax
+            	   	   	   	   	(km)    	(deg)	(Hz)	(Hz)
+ ES:EPON    	HH 	1.0	1.0	1.0	  82    	 33	0.04	0.08
+ ES:ELOB    	HH 	1.0	1.0	1.0	  98    	198	0.04	0.08
+ ES:EMAZ    	HH 	1.0	1.0	1.0	 108    	285	0.04	0.08
+
+Creating covariance matrix
+Inversion of deviatoric part of moment tensor (5 components)
+
+Centroid location:
+  Centroid time: 2018-08-21 00:28:56
+  Lat   42.721   Lon   -7.708   Depth   7.7 km
+  ( 1668 m to the north and  -834 m to the east with respect to epicenter)
+  Warning: the solution lies on the edge of the grid!
+  time:  0.48 s before origin time
+
+  Warning: the solution lies on the edge of the time-grid!
+  VR:   81 %
+  CN:    3
+  MT [ Mrr    Mtt    Mpp    Mrt    Mrp    Mtp  ]:
+     [-0.42  -0.69   1.12   0.32  -0.35  -1.56 ] * 1e+14
+
+Scalar Moment: M0 = 2.10e+14 Nm (Mw = 3.5)
+  DC component:  53 %,   CLVD component:  47 %,   ISOtropic component:   0 %
+  Fault plane 1: strike = 196, dip =  79, slip-rake =   4
+  Fault plane 2: strike = 105, dip =  86, slip-rake = 169
