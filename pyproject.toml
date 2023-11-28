@@ -32,5 +32,9 @@ exclude = ["docs*", "tests*", "examples*"]
 "surfquakecore.bin.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
 "surfquakecore.bin.mac_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
 "surfquakecore.bin.win_bin" = ["mti_green/*"]
+"surfquakecore.earthquake_location.loc_structure" = ["ak135/*", "loc/*", "local_models/*", "loc/*", "model1D/*",
+"model3D/*", "obs/*", "run/*", "stations/*", "temp/*", "time/*"]
+"surfquakecore.models" = ["190703-214543/*", "global_earth_model.nd"]
+"surfquakecore.real" = ["tt_db/*"]
 
 

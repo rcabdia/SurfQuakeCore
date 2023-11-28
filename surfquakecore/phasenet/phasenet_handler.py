@@ -1108,7 +1108,7 @@ class PhasenetUtils:
                 for j in np.arange(0, len(pprob)):
                     # ppick = pick samples from file waveform starttime
                     # t0 = datetime of the starttime
-                    if float(pprob[j]) >= prob_threshold:
+                    if float(pprob[j]) >= prob_threshold and j <= len(ppick)-1:
                         fname = network + '.' + station + '.' + 'P'
                         delta_time = int(ppick[j])*samplingrate
                         tp = delta_time+ss
@@ -1141,12 +1141,13 @@ class PhasenetUtils:
                             samp.append(samp_um[j])
 
                 for j in np.arange(0, len(sprob)):
-                    if float(sprob[j]) >= prob_threshold:
+                    if float(sprob[j]) >= prob_threshold and j <= len(spick)-1:
                         fname = network + '.' + station + '.' + 'S'
-                        delta_time = int(ppick[j]) * samplingrate
+                        # TODO CHECK ISSUE ppick --> spick
+                        delta_time = int(spick[j]) * samplingrate
                         tp = delta_time+ss
                         amp = float(samp[j]) * 2080 * 25 if len(s_amp) > 0 else 0
-                        t_pick = date_start + + timedelta(seconds=delta_time)
+                        t_pick = date_start + timedelta(seconds=delta_time)
                         t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
                         split_aux_s.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station, 1,
                                             tp, t_pick_string, sprob[j], amp, "S"])
