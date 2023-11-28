@@ -407,7 +407,7 @@ class NllManager:
         return exc_cmd(command, cwd=output_path.parent)
 
 
-    def stations_to_nll_v2(self, latitude_f, longitude_f, limit, transform="SIMPLE"):
+    def stations_to_nll_v2(self, latitude_f, longitude_f, depth, limit, transform="SIMPLE"):
 
         try:
             metadata_manager = MetadataManager(self.__dataless_dir)
