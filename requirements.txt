@@ -5,3 +5,4 @@ pyproj
 pandas
 tensorflow
 sourcespec
+PyYAML
