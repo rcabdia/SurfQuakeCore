@@ -1,7 +1,7 @@
 #Type parameters
 CONTROL 1 54321
 TRANS SIMPLE 42.10 0.90 0.00
-VGGRID 2 100 50 0.0 0.0 -3.00  1.00 1.00 1.00 SLOW_LEN
+VGGRID 2 400 100 0.0 0.0 -3.00  1.00 1.00 1.00 SLOW_LEN
 VGOUT /Users/roberto/Documents/SurfQuakeCore/examples/earthquake_locate/model/layer
 VGTYPE S
 LAYER   0.0  6.1 0.0    3.49  0.0  2.7 0.0

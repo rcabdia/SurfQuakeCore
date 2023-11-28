@@ -29,6 +29,7 @@ def exc_cmd(cmd, **kwargs):
             std_out, std_err = p.communicate()  # try again if timeout fails.
         if p.returncode != 0:  # Bad error.
             raise sb.CalledProcessError(p.returncode, std_err)
-        elif len(std_err) != 0:  # Some possible errors trowed by the running subprocess, but not critical.
-            raise sb.SubprocessError(std_err)
+        elif len(std_err) != 0:
+            pass# Some possible errors trowed by the running subprocess, but not critical.
+            #raise sb.SubprocessError(std_err)
         return std_out

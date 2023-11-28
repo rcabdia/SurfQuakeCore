@@ -371,7 +371,7 @@ class NllManager:
 
         if self.nll_config.grid_configuration.p_wave_type:
             waves.append("P")
-        elif self.nll_config.grid_configuration.s_wave_type:
+        if self.nll_config.grid_configuration.s_wave_type:
             waves.append("S")
         self.stations_to_nll_v2(latitude, longitude, depth, limit)
 
@@ -407,7 +407,7 @@ class NllManager:
         return exc_cmd(command, cwd=output_path.parent)
 
 
-    def stations_to_nll_v2(self, latitude_f, longitude_f, depth, limit, transform="SIMPLE"):
+    def stations_to_nll_v2(self, latitude_f, longitude_f, depth=0, limit=20000, transform="SIMPLE"):
 
         try:
             metadata_manager = MetadataManager(self.__dataless_dir)

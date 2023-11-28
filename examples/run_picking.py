@@ -15,7 +15,13 @@ if __name__ == '__main__':
     freeze_support()
 
     project = MseedUtil.load_project(file=project_file)
-    phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=0.90, min_s_prob=0.65)
+    # conservative mode
+    #phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=0.90, min_s_prob=0.65)
+
+    # Full mode
+    phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=0.30, min_s_prob=0.30)
+
+    # Running Stage
     picks = phISP.phasenet()
 
     """ PHASENET OUTPUT TO REAL INPUT """
@@ -23,6 +29,7 @@ if __name__ == '__main__':
     picks_results = PhasenetUtils.split_picks(picks)
     PhasenetUtils.convert2real(picks_results, output_picks)
     PhasenetUtils.save_original_picks(picks_results, output_picks)
+
 
 
 
