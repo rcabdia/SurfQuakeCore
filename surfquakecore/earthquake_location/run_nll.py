@@ -6,21 +6,24 @@ Created on Tue Dec 17 20:26:28 2019
 @author: robertocabieces
 """
 
+import re
 import os
 from pathlib import Path
 import fnmatch
 import platform
+import random
+import string
 import numpy as np
 import pandas as pd
 import shutil
 from obspy.core.event import Origin
 from obspy.geodetics import gps2dist_azimuth
-
 from surfquakecore import nll_templates, nll_ak135
 from surfquakecore.DataProcessing.metadata_manager import MetadataManager
 from surfquakecore.bin import nll_bin_dir
 from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
 from surfquakecore.earthquake_location.structures import NLLConfig
+from surfquakecore.utils import read_nll_performance
 from surfquakecore.utils.subprocess_utils import exc_cmd
 from surfquakecore.utils.obspy_utils import ObspyUtil
 _os = platform.system()
@@ -613,3 +616,90 @@ class NllManager:
         new_file.write(transf)
         new_file.close()
         shutil.copy(file_name, self.get_model_dir)
+
+class Nllcatalog:
+
+    def __init__(self, working_directory):
+        self.working_directory = os.path.join(working_directory, "loc")
+        self.obsfiles = []
+    def find_files(self):
+        pattern = re.compile(r'.*\.grid0\.loc\.hyp$')
+        for top_dir, _ , files in os.walk(self.working_directory):
+            for file in files:
+                    self.obsfiles.append(os.path.join(top_dir, file))
+
+        self.obsfiles = [file for file in self.obsfiles if pattern.match(file) and file != "location.sum.grid0.loc.hyp"]
+
+    def generate_id(self, length: int) -> str:
+        """
+        Generate a random string with the combination of lowercase and uppercase letters.
+
+        :param length: The size of the id key
+
+        :return: An id of size length formed by lowe and uppercase letters.
+        """
+        letters = string.ascii_letters
+        return "".join(random.choice(letters) for _ in range(length))
+
+    def __create_from_origin(self, origin: Origin):
+
+        # origin_id = generate_id_from_origin(origin)
+        event_dict = {"id": self.generate_id(16), "origin_time": origin.time.datetime, "transformation": "SIMPLE",
+                      "rms": origin.quality.standard_error, "latitude": origin.latitude,
+                      "longitude": origin.longitude, "depth": origin.depth,
+                      "uncertainty": origin.depth_errors["uncertainty"],
+                      "max_horizontal_error": origin.origin_uncertainty.max_horizontal_uncertainty,
+                      "min_horizontal_error": origin.origin_uncertainty.min_horizontal_uncertainty,
+                      "ellipse_azimuth": origin.origin_uncertainty.azimuth_max_horizontal_uncertainty,
+                      "number_of_phases": origin.quality.used_phase_count,
+                      "azimuthal_gap": origin.quality.azimuthal_gap,
+                      "max_distance": origin.quality.maximum_distance,
+                      "min_distance": origin.quality.minimum_distance}
+
+        return event_dict
+    def run_catalog(self, summary_path):
+        # TODO INCLUDE TRANSFORMATION
+        dates = []
+        transformations = []
+        rmss = []
+        lats = []
+        longs = []
+        depths = []
+        uncertainties = []
+        max_hor_errors = []
+        min_hor_errors = []
+        ellipses_azs = []
+        no_phases = []
+        azs_gap = []
+        max_dists = []
+        min_dists = []
+        print("Creating Catalog")
+        self.find_files()
+        for event_file in self.obsfiles:
+            origin: Origin = ObspyUtil.reads_hyp_to_origin(event_file)
+            origin_time_formatted_string = origin.time.datetime.strftime("%m/%d/%Y, %H:%M:%S.%f")
+            dates.append(origin_time_formatted_string)
+            transformations.append("SIMPLE")
+            rmss.append(origin.quality.standard_error)
+            longs.append(origin.longitude)
+            lats.append(origin.latitude)
+            depths.append(origin.depth/1000)
+            uncertainties.append(origin.depth_errors["uncertainty"])
+            max_hor_errors.append(origin.origin_uncertainty.max_horizontal_uncertainty)
+            min_hor_errors.append(origin.origin_uncertainty.min_horizontal_uncertainty)
+            ellipses_azs.append(origin.origin_uncertainty.azimuth_max_horizontal_uncertainty)
+            no_phases.append(origin.quality.used_phase_count)
+            azs_gap.append(origin.quality.azimuthal_gap)
+            max_dists.append(origin.quality.maximum_distance)
+            min_dists.append(origin.quality.minimum_distance)
+
+        events_dict = {'Origin Time': dates, 'RMS': rmss, 'lats': lats, 'longs': longs,
+        'depths': depths, 'Uncertainty':uncertainties, 'Max_Hor_Error': max_hor_errors, 'Min_Hor_Error': min_hor_errors,
+        'Ellipse_Az': ellipses_azs, 'No_phases': no_phases, 'Az_gap': azs_gap, 'Max_Dist': max_dists, 'Min Dist': min_dists}
+
+        self.__write_dict(events_dict, summary_path)
+
+    def __write_dict(self, events_dict, output):
+        output = os.path.join(output, "catalog.txt")
+        df_magnitudes = pd.DataFrame.from_dict(events_dict)
+        df_magnitudes.to_csv(output, sep=";", index=False)

@@ -6,6 +6,10 @@ from typing import Tuple, List
 
 import pandas as pd
 from obspy import read, UTCDateTime
+from obspy.core.event import Origin
+
+from surfquakecore.utils import read_nll_performance
+from surfquakecore.utils.nllOrgErrors import computeOriginErrors
 
 
 class MseedUtil:
@@ -236,3 +240,30 @@ class ObspyUtil:
                             f"{info_channel[0].code}\t{float(stations.elevation) / 1000: .3f}\n")
 
             f.close()
+
+    @staticmethod
+    def reads_hyp_to_origin(hyp_file_path: str) -> Origin:
+
+        import warnings
+        warnings.filterwarnings("ignore")
+
+        """
+        Reads an hyp file and returns the Obspy Origin.
+        :param hyp_file_path: The file path to the .hyp file
+        :return: An Obspy Origin
+        """
+
+        if os.path.isfile(hyp_file_path):
+            cat = read_nll_performance.read_nlloc_hyp_ISP(hyp_file_path)
+            event = cat[0]
+            origin = event.origins[0]
+            modified_origin_90 = computeOriginErrors(origin)
+            origin.depth_errors["uncertainty"] = modified_origin_90['depth_errors'].uncertainty
+            origin.origin_uncertainty.max_horizontal_uncertainty = modified_origin_90[
+                'origin_uncertainty'].max_horizontal_uncertainty
+            origin.origin_uncertainty.min_horizontal_uncertainty = modified_origin_90[
+                'origin_uncertainty'].min_horizontal_uncertainty
+            origin.origin_uncertainty.azimuth_max_horizontal_uncertainty = modified_origin_90[
+                'origin_uncertainty'].azimuth_max_horizontal_uncertainty
+
+        return origin
