@@ -31,8 +31,8 @@ if __name__ == "__main__":
     summary_path = '/Users/roberto/Documents/SurfQuakeCore/examples/source_estimations/source_summary'
 
     # Running stage
-    mg = Automag(project, locations_directory, inventory_path, path_to_configfiles, output_directory, "regional")
-    mg.estimate_source_parameters()
+    #mg = Automag(project, locations_directory, inventory_path, path_to_configfiles, output_directory, "regional")
+    #mg.estimate_source_parameters()
 
     # Now we can read the output and even write a txt summarizing the results
     rs = ReadSource(output_directory)

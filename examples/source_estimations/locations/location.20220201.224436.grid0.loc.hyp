@@ -1,0 +1,33 @@
+NLLOC "/Users/roberto/Documents/SurfQuakeCore/examples/earthquake_locate/loc/location.20220201.224436.grid0" "LOCATED" "Location completed."
+PUBLIC_ID None
+SIGNATURE "Integrated Seismic Program   obs:/Users/roberto/Documents/SurfQuakeCore/examples/earthquake_locate/nll_picks/nll_input.txt   NLLoc:v7.00.13(17Jan2022)   run:29Nov2023 09h21m46"
+COMMENT ""
+GRID  80 80 50  0 0 -3  1 1 1 PROB_DENSITY
+SEARCH OCTREE nInitial 1000 nEvaluated 25000 smallestNodeSide 0.024688/0.246875/1.531250 oct_tree_integral 1.272945e+02 scatter_volume 1.258699e+02
+HYPOCENTER  x 56.5961 y 45.7953 z 13.0781  OT 41.7957  ix -1 iy -1 iz -1 MAXIMUM_LIKELIHOOD
+GEOGRAPHIC  OT 2022 02 01  22 44 41.795671  Lat 42.511847 Long 1.590482 Depth 13.078125
+QUALITY  Pmax 4.15144e+06 MFmin 5.67104 MFmax 6.83773 RMS 0.0172422 Nphs 5 Gap 285.481 Dist 3.87867 Mamp -9.90 0 Mdur -9.90 0
+VPVSRATIO  VpVsRatio -1  Npair 1  Diff 0
+STATISTICS  ExpectX 61.071243 Y 46.793803 Z 10.954246  CovXX 131.135 XY 45.3125 XZ -48.1278 YY 89.7833 YZ 15.5019 ZZ 73.4562 EllAz1  134.828 Dip1  42.4053 Len1  9.22663 Az2  173.406 Dip2  -40.563 Len2  18.5903 Len3  2.466602e+01
+STAT_GEOG  ExpectLat 42.520826 Long 1.645187 Depth 10.954246
+TRANSFORM  SIMPLE LatOrig 42.100000  LongOrig 0.900000  RotCW 0.000000
+QML_OriginQuality  assocPhCt 12  usedPhCt 5  assocStaCt -1  usedStaCt 4  depthPhCt -1  stdErr 0.0172422  azGap 285.481  secAzGap 286.082  gtLevel -  minDist 3.87867 maxDist 40.4725 medDist 33.9005
+QML_OriginUncertainty  horUnc -1  minHorUnc 11.811  maxHorUnc 19.1992  azMaxHorUnc 57.2634
+QML_ConfidenceEllipsoid  semiMajorAxisLength 24.666  semiMinorAxisLength 9.22663  semiIntermediateAxisLength 18.5903  majorAxisPlunge -20.4747  majorAxisAzimuth 64.7667  majorAxisRotation 53.9337
+FOCALMECH  Hyp  42.511847 1.590482 13.078125 Mech  0 0 0 mf  0 nObs -1
+PHASE ID Ins Cmp On Pha  FM Date     HrMn   Sec     Err  ErrMag    Coda      Amp       Per  >   TTpred    Res       Weight    StaLoc(X  Y         Z)        SDist    SAzim  RAz  RDip RQual    Tcorr 
+PAND   ?    ?    ? P      ? 20220201 2244   44.3100 GAU  2.00e-02 -1.00e+00  1.36e+09 -1.00e+00 >    2.5143    0.0000    1.2505   52.9482   47.1134   -1.8400    3.8787 289.87 289.9 164.7  9     0.0000
+CEST   ?    ?    ? P      ? 20220201 2244   47.1300 GAU  2.00e-02 -1.00e+00  6.74e+06 -1.00e+00 >    5.3204    0.0139    1.2483   28.9805   55.4475   -1.3250   29.2538 289.27 289.3 110.9  9     0.0000
+CORG   ?    ?    ? P      ? 20220201 2244   48.4700 GAU  7.50e-03 -1.00e+00  1.32e+07 -1.00e+00 >    6.6759   -0.0016    1.2522   34.2955   14.3539   -0.7200   38.5471 215.35 215.3 102.8  9     0.0000
+CORG   ?    ?    ? S      ? 20220201 2244   53.4500 GAU  2.00e-02 -1.00e+00  6.86e+06 -1.00e+00 >   11.6696   -0.0152    1.2483   34.2955   14.3539   -0.7200   38.5471 215.35 215.3 102.9  9     0.0000
+CSOR   ?    ?    ? P      ? 20220201 2244   49.9100 GAU  2.00e-02 -1.00e+00  8.06e+06 -1.00e+00 >    7.0008    1.1135    0.0008   19.1189   30.5152   -1.2270   40.4725 247.82 247.8 102.4  9     0.0000
+FNEB   ?    ?    ? P      ? 20220201 2244   36.9300 GAU  2.00e-02 -1.00e+00  1.97e+09 -1.00e+00 >    0.0000    0.0000    0.0000   98.2626   89.3008   -0.6000    0.0000   0.00 359.0  -1.0  0     0.0000
+SALF   ?    ?    ? P      ? 20220201 2244   46.2800 GAU  2.00e-02 -1.00e+00  7.07e+08 -1.00e+00 >    0.0000    0.0000    0.0000   23.5372   73.2776   -0.9030    0.0000   0.00 359.0  -1.0  0     0.0000
+FNEB   ?    ?    ? S      ? 20220201 2244   46.0300 GAU  2.00e-02 -1.00e+00  1.51e+09 -1.00e+00 >    0.0000    0.0000    0.0000   98.2626   89.3008   -0.6000    0.0000   0.00 359.0  -1.0  0     0.0000
+CARF   ?    ?    ? P      ? 20220201 2244   37.4400 GAU  2.00e-02 -1.00e+00  1.91e+09 -1.00e+00 >    0.0000    0.0000    0.0000   98.4149   68.3739   -1.2200    0.0000   0.00 359.0  -1.0  0     0.0000
+VALC   ?    ?    ? P      ? 20220201 2244   39.1400 GAU  7.50e-03 -1.00e+00  2.95e+07 -1.00e+00 >    0.0000    0.0000    0.0000   93.6562   31.9810   -1.5600    0.0000   0.00 359.0  -1.0  0     0.0000
+VALC   ?    ?    ? S      ? 20220201 2244   40.8900 GAU  1.00e-02 -1.00e+00  3.13e+07 -1.00e+00 >    0.0000    0.0000    0.0000   93.6562   31.9810   -1.5600    0.0000   0.00 359.0  -1.0  0     0.0000
+GENF   ?    ?    ? P      ? 20220201 2244   42.7100 GAU  2.00e-02 -1.00e+00  6.49e+06 -1.00e+00 >    0.0000    0.0000    0.0000   54.8304   80.4274   -0.9600    0.0000   0.00 359.0  -1.0  0     0.0000
+END_PHASE
+END_NLLOC
+

@@ -17,8 +17,21 @@ class ReadSource:
 
     def __read_yaml_file(self, file_path):
         with open(file_path, 'r') as file:
-            yaml_data = yaml.safe_load(file)
+            try:
+                yaml_data = yaml.safe_load(file)
+            except:
+                print("Conflictive file at ", file_path)
         return yaml_data
+
+    def __key_exists(self, dictionary, key):
+        if isinstance(dictionary, dict):
+            if key in dictionary:
+                return True
+            else:
+                for value in dictionary.values():
+                    if self.__key_exists(value, key):
+                        return True
+        return False
 
     # def scan_yaml_files(self, file_paths):
     #     return [file for file in file_paths if self.__is_yaml_file(file)]
@@ -73,6 +86,7 @@ class ReadSource:
 
 
         for item in summary:
+            #try:
             # extract_info
             # origin_time_object = datetime.strptime(origin_time, "%Y-%m-%dT%H:%M:%S.%fZ")
             lats.append(item['event_info']['latitude'])
@@ -85,34 +99,78 @@ class ReadSource:
             Mw_std.append(item['summary_spectral_parameters']['Mw']['weighted_mean']['uncertainty'])
             ML.append(item['summary_spectral_parameters']['Ml']['mean']['value'])
             ML_std.append(item['summary_spectral_parameters']['Ml']['mean']['uncertainty'])
+
             Mo.append(item['summary_spectral_parameters']['Mo']['weighted_mean']['value'])
-            Mo_std.append(item['summary_spectral_parameters']['Mo']['weighted_mean']['upper_uncertainty'] -
-             item['summary_spectral_parameters']['Mo']['weighted_mean']['lower_uncertainty'])
+            if (self.__key_exists(item['summary_spectral_parameters']['Mo']['weighted_mean'], 'upper_uncertainty')
+                    and self.__key_exists(item['summary_spectral_parameters']['Mo']['weighted_mean'], 'lower_uncertainty')):
+
+                Mo_std.append(item['summary_spectral_parameters']['Mo']['weighted_mean']['upper_uncertainty'] -
+                              item['summary_spectral_parameters']['Mo']['weighted_mean']['lower_uncertainty'])
+            else:
+                Mo_std.append("NaN")
+
             fc.append(item['summary_spectral_parameters']['fc']['mean']['value'])
-            fc_std.append(item['summary_spectral_parameters']['fc']['mean']['upper_uncertainty'] -
-             item['summary_spectral_parameters']['fc']['mean']['lower_uncertainty'])
+
+            if (self.__key_exists(item['summary_spectral_parameters']['fc']['mean'], 'upper_uncertainty') and
+                    self.__key_exists(item['summary_spectral_parameters']['fc']['mean'], 'lower_uncertainty')):
+                fc_std.append(item['summary_spectral_parameters']['fc']['mean']['upper_uncertainty'] -
+                              item['summary_spectral_parameters']['fc']['mean']['lower_uncertainty'])
+            else:
+                fc_std.append("NaN")
+
             radius.append(item['summary_spectral_parameters']['radius']['weighted_mean']['value'])
-            radius_std.append(item['summary_spectral_parameters']['radius']['weighted_mean']['upper_uncertainty'] -
-             item['summary_spectral_parameters']['radius']['mean']['lower_uncertainty'])
+
+            if (self.__key_exists(item['summary_spectral_parameters']['radius']['weighted_mean'], 'upper_uncertainty') and
+                    self.__key_exists(item['summary_spectral_parameters']['radius']['mean'], 'lower_uncertainty')):
+                radius_std.append(item['summary_spectral_parameters']['radius']['weighted_mean']['upper_uncertainty'] -
+                                  item['summary_spectral_parameters']['radius']['mean']['lower_uncertainty'])
+            else:
+                radius_std.append("NaN")
+
             Er.append(item['summary_spectral_parameters']['Er']['mean']['value'])
-            Er_std.append(item['summary_spectral_parameters']['Er']['mean']['upper_uncertainty'] -
-             item['summary_spectral_parameters']['Er']['mean']['lower_uncertainty'])
+
+            if (self.__key_exists(
+                    item['summary_spectral_parameters']['Er']['mean'],'upper_uncertainty') and
+                    self.__key_exists(item['summary_spectral_parameters']['Er']['mean'], 'lower_uncertainty')):
+                if not isinstance(item['summary_spectral_parameters']['Er']['mean']['upper_uncertainty'], str):
+
+                    Er_std.append(item['summary_spectral_parameters']['Er']['mean']['upper_uncertainty'] -
+                                  item['summary_spectral_parameters']['Er']['mean']['lower_uncertainty'])
+                else:
+                    Er_std.append("NaN")
+            else:
+                Er_std.append("NaN")
+
             t_star.append(item['summary_spectral_parameters']['t_star']['weighted_mean']['value'])
             t_star_std.append(item['summary_spectral_parameters']['t_star']['weighted_mean']['uncertainty'])
             bsd.append(item['summary_spectral_parameters']['bsd']['weighted_mean']['value'])
-            bsd_std.append(item['summary_spectral_parameters']['bsd']['weighted_mean']['upper_uncertainty'] -
-             item['summary_spectral_parameters']['bsd']['mean']['lower_uncertainty'])
-            Qo.append(item['summary_spectral_parameters']['Qo']['mean']['value'])
-            Qo_std.append(item['summary_spectral_parameters']['Qo']['mean']['uncertainty'])
 
-        Mo = [format(value, ".2e") for value in Mo]
-        Mo_std = [format(value, ".2e") for value in Mo_std]
-        Er = [format(value, ".2e") for value in Er]
-        Er_std = [format(value, ".2e") for value in Er_std]
-        fc_std = [format(float(value), ".2f") for value in fc_std]
-        radius_std = [format(float(value), ".2f") for value in radius_std]
-        bsd = [format(float(value), ".2f") for value in bsd]
-        bsd_std = [format(float(value), ".2f") for value in bsd_std]
+            if (self.__key_exists(item['summary_spectral_parameters']['bsd']['weighted_mean'], 'upper_uncertainty')
+                    and self.__key_exists(item['summary_spectral_parameters']['bsd']['weighted_mean'], 'lower_uncertainty')):
+
+                bsd_std.append(item['summary_spectral_parameters']['bsd']['weighted_mean']['upper_uncertainty'] -
+                 item['summary_spectral_parameters']['bsd']['weighted_mean']['lower_uncertainty'])
+            else:
+                bsd_std.append("NaN")
+            Qo.append(item['summary_spectral_parameters']['Qo']['mean']['value'])
+            if self.__key_exists(item['summary_spectral_parameters']['Qo']['mean'], 'uncertainty'):
+                Qo_std.append(item['summary_spectral_parameters']['Qo']['mean']['uncertainty'])
+            else:
+                Qo_std.append("NaN")
+            # except:
+            #     pass
+
+        try:
+            Mo = [format(value, ".2e") for value in Mo]
+            Mo_std = [format(value, ".2e") for value in Mo_std]
+            Er = [format(value, ".2e") for value in Er]
+            Er_std = [format(value, ".2e") for value in Er_std]
+            fc_std = [format(float(value), ".2f") for value in fc_std]
+            radius_std = [format(float(value), ".2f") for value in radius_std]
+            bsd = [format(float(value), ".2f") for value in bsd]
+            bsd_std = [format(float(value), ".2f") for value in bsd_std]
+        except:
+            pass
 
         magnitudes_dict = {'date_id': dates, 'lats': lats, 'longs': longs, 'depths': depths,
         'Mw': Mw, 'Mw_error': Mw_std, 'ML': ML, 'ML_error': ML_std, 'Mo':Mo, 'Mo_std': Mo_std, 'radius': radius,

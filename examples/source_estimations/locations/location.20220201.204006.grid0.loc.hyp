@@ -1,0 +1,30 @@
+NLLOC "/Users/roberto/Documents/SurfQuakeCore/examples/earthquake_locate/loc/location.20220201.204006.grid0" "LOCATED" "Location completed."
+PUBLIC_ID None
+SIGNATURE "Integrated Seismic Program   obs:/Users/roberto/Documents/SurfQuakeCore/examples/earthquake_locate/nll_picks/nll_input.txt   NLLoc:v7.00.13(17Jan2022)   run:29Nov2023 09h21m46"
+COMMENT ""
+GRID  80 80 50  0 0 -3  1 1 1 PROB_DENSITY
+SEARCH OCTREE nInitial 1000 nEvaluated 25008 smallestNodeSide 0.012344/0.123438/0.765625 oct_tree_integral 2.939469e+01 scatter_volume 2.912228e+01
+HYPOCENTER  x 43.9684 y 47.1531 z 4.65625  OT 4.52272  ix -1 iy -1 iz -1 MAXIMUM_LIKELIHOOD
+GEOGRAPHIC  OT 2022 02 01  20 40 4.522723  Lat 42.524058 Long 1.436527 Depth 4.656250
+QUALITY  Pmax 4.61999e+07 MFmin 5.63658 MFmax 6.22979 RMS 0.0410014 Nphs 5 Gap 151.293 Dist 8.97989 Mamp -9.90 0 Mdur -9.90 0
+VPVSRATIO  VpVsRatio 0.5  Npair 2  Diff 0.69
+STATISTICS  ExpectX 44.327248 Y 48.078173 Z 3.433923  CovXX 7.36162 XY 1.42975 XZ -0.457205 YY 17.6855 YZ -1.64447 ZZ 15.329 EllAz1  97.476 Dip1  1.67843 Len1  5.02758 Az2  184.117 Dip2  -63.4268 Len2  7.15243 Len3  8.129811e+00
+STAT_GEOG  ExpectLat 42.532377 Long 1.440978 Depth 3.433923
+TRANSFORM  SIMPLE LatOrig 42.100000  LongOrig 0.900000  RotCW 0.000000
+QML_OriginQuality  assocPhCt 9  usedPhCt 5  assocStaCt -1  usedStaCt 3  depthPhCt -1  stdErr 0.0410014  azGap 151.293  secAzGap 208.707  gtLevel -  minDist 8.97989 maxDist 29.9052 medDist 17.13
+QML_OriginUncertainty  horUnc -1  minHorUnc 4.06014  maxHorUnc 6.41277  azMaxHorUnc 7.74082
+QML_ConfidenceEllipsoid  semiMajorAxisLength 8.12981  semiMinorAxisLength 5.02758  semiIntermediateAxisLength 7.15243  majorAxisPlunge 26.5117  majorAxisAzimuth 188.313  majorAxisRotation 176.883
+FOCALMECH  Hyp  42.524058 1.436527 4.656250 Mech  0 0 0 mf  0 nObs -1
+PHASE ID Ins Cmp On Pha  FM Date     HrMn   Sec     Err  ErrMag    Coda      Amp       Per  >   TTpred    Res       Weight    StaLoc(X  Y         Z)        SDist    SAzim  RAz  RDip RQual    Tcorr 
+PAND   ?    ?    ? P      ? 20220201 2040    6.2900 GAU  2.50e-03 -1.00e+00  3.96e+09 -1.00e+00 >    1.8181   -0.0508    0.9927   52.9482   47.1134   -1.8400    8.9799  90.25  90.3 125.8  9     0.0000
+PAND   ?    ?    ? S      ? 20220201 2040    7.7400 GAU  2.50e-03 -1.00e+00  5.05e+09 -1.00e+00 >    3.1778    0.0395    1.0020   52.9482   47.1134   -1.8400    8.9799  90.25  90.3 125.8  9     0.0000
+CEST   ?    ?    ? P      ? 20220201 2040    7.5600 GAU  7.50e-03 -1.00e+00  7.59e+06 -1.00e+00 >    2.9811    0.0562    0.9899   28.9805   55.4475   -1.3250   17.1300 298.96 299.0 109.2  9     0.0000
+CEST   ?    ?    ? S      ? 20220201 2040    9.7000 GAU  7.50e-03 -1.00e+00  6.60e+06 -1.00e+00 >    5.2105   -0.0332    1.0041   28.9805   55.4475   -1.3250   17.1300 298.96 299.0 109.2  9     0.0000
+CSOR   ?    ?    ? S      ? 20220201 2040   13.2700 GAU  2.00e-02 -1.00e+00  9.40e+06 -1.00e+00 >    8.7533   -0.0060    1.0113   19.1189   30.5152   -1.2270   29.9052 236.20 236.2 101.6  9     0.0000
+GENF   ?    ?    ? S      ? 20220201 2040   14.8500 GAU  2.00e-02 -1.00e+00  5.20e+06 -1.00e+00 >    0.0000    0.0000    0.0000   54.8304   80.4274   -0.9600    0.0000   0.00 359.0  -1.0  0     0.0000
+SALF   ?    ?    ? P      ? 20220201 2040   10.4600 GAU  1.00e-02 -1.00e+00  1.80e+09 -1.00e+00 >    0.0000    0.0000    0.0000   23.5372   73.2776   -0.9030    0.0000   0.00 359.0  -1.0  0     0.0000
+SALF   ?    ?    ? S      ? 20220201 2040   14.1700 GAU  7.50e-03 -1.00e+00  1.05e+09 -1.00e+00 >    0.0000    0.0000    0.0000   23.5372   73.2776   -0.9030    0.0000   0.00 359.0  -1.0  0     0.0000
+GENF   ?    ?    ? P      ? 20220201 2040   14.8100 GAU  2.00e-02 -1.00e+00  5.20e+06 -1.00e+00 >    0.0000    0.0000    0.0000   54.8304   80.4274   -0.9600    0.0000   0.00 359.0  -1.0  0     0.0000
+END_PHASE
+END_NLLOC
+
