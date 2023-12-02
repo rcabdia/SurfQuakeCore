@@ -24,12 +24,14 @@ if __name__ == "__main__":
     #project = ms.save_project(project, project_tobe_saved)
 
     # alternatively one can load the project
-    #project = MseedUtil.load_project(file=project_tobe_saved)
+    # project = MseedUtil.load_project(file=project_tobe_saved)
 
     # build the class
-    bic = BayesianIsolaCore(project, inventory_path, path_to_configfiles, working_directory, output_directory,
+    bic = BayesianIsolaCore(project=project, inventory_file=inventory_path, output_directory=output_directory,
                             save_plots=False)
-    bic.run_mti_inversion()
+    bic.run_inversion(mti_config=path_to_configfiles)
+
     # example of reading output file
-    results = read_isola_log(os.path.join(output_directory, "0", "log.txt"))
+    for r in bic.results:
+        read_isola_log(r)
     #print(results.keys())

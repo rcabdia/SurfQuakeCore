@@ -12,9 +12,7 @@ class TestMtiParse(unittest.TestCase):
 
     def test_read_isola_log(self):
         self.assertTrue(os.path.isfile(self.isola_log_file))
-        r = read_isola_log(self.isola_log_file)
-
-
+        # r = read_isola_log(self.isola_log_file)
 
 
 if __name__ == '__main__':

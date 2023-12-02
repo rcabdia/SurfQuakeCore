@@ -3,7 +3,7 @@ import shutil
 import unittest
 
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
-from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import BayesianIsolaCore
+from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore, generate_mti_id_output
 from surfquakecore.utils.obspy_utils import MseedUtil
 from tests.test_resources.mti.mti_run_inversion_resources import test_inversion_resource_path
 
@@ -48,17 +48,16 @@ class TestBayesianIsolaCore(unittest.TestCase):
 
         bic = BayesianIsolaCore(
             project=project,
-            metadata_file=self.inventory_path,
-            working_directory=self.working_directory,
-            ouput_directory=self.output_directory,
+            inventory_file=self.inventory_path,
+            output_directory=self.output_directory,
             save_plots=False,
         )
 
-        bic.add_moment_tensor_inversion_configuration(mti_config=mti_config)
+        bic.run_inversion(mti_config=mti_config)
 
-        bic.run_mti_inversion()
+        self.assertFalse(os.path.isdir(self.working_directory))
 
-        log_file = os.path.join(self.output_directory, "0", "log.txt")
+        log_file = os.path.join(self.output_directory, generate_mti_id_output(mti_config=mti_config), "log.txt")
         self.assertTrue(os.path.isfile(log_file))
 
 

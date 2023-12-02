@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import datetime
 
@@ -88,6 +89,22 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             freq_max=Cast(mti_config_ini["SIGNAL_PROCESSING"]["MAX_FREQ"], float),
             rms_thresh=Cast(mti_config_ini["SIGNAL_PROCESSING"]["RMS_THRESH"], float),
         )
+    )
+
+
+def load_mti_configurations(dir_path: str):
+    """
+    Load moment tensor inversion from a directory with configuration from a .ini file.
+    Args:
+        dir_path:
+
+    Returns:
+
+    """
+
+    return (
+        load_mti_configuration(os.path.join(dir_path, file))
+        for file in os.listdir(dir_path) if file.endswith(".ini")
     )
 
 
