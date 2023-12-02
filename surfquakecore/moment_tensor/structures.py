@@ -1,19 +1,8 @@
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List
 
-from surfquakecore.utils import Cast
-
-
-@dataclass
-class BaseDataClass:
-
-    def to_dict(self):
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, dto: dict):
-        return Cast(dto, cls)
+from surfquakecore.utils import BaseDataClass
 
 
 @dataclass

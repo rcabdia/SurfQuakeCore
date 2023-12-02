@@ -1,21 +1,6 @@
-from configparser import ConfigParser
-from dataclasses import dataclass, asdict
-from surfquakecore.utils import Cast
+from dataclasses import dataclass
 
-def _read_config_file(file_path: str):
-    config = ConfigParser()
-    config.read(file_path)
-    return config
-
-@dataclass
-class BaseDataClass:
-
-    def to_dict(self):
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, dto: dict):
-        return Cast(dto, cls)
+from surfquakecore.utils import BaseDataClass
 
 
 @dataclass
@@ -39,15 +24,19 @@ class GridConfiguration(BaseDataClass):
     model_1D: bool
     model_3D: bool
 
+
 @dataclass
 class TravelTimesConfiguration(BaseDataClass):
     distance_limit: float
     grid1d: bool
     grid3d: bool
+
+
 @dataclass
 class LocationParameters(BaseDataClass):
     search: str
     method: str
+
 
 @dataclass
 class NLLConfig(BaseDataClass):

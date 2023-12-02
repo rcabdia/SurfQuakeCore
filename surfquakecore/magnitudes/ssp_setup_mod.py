@@ -15,33 +15,25 @@ Setup functions for sourcespec.
     CeCILL Free Software License Agreement v2.1
     (http://www.cecill.info/licences.en.html)
 """
-import sys
+import contextlib
+import json
+import logging
 import os
 import platform
 import shutil
-import logging
 import signal
+import sys
 import uuid
-import json
-import contextlib
 import warnings
-from datetime import datetime
 from collections import defaultdict
+from datetime import datetime
+
+from sourcespec._version import get_versions
+from sourcespec.config import Config
 from sourcespec.configobj import ConfigObj
 from sourcespec.configobj.validate import Validator
-from sourcespec.config import Config
-from sourcespec._version import get_versions
 
-# define ipshell(), if possible
-# note: ANSI colors do not work on Windows standard terminal
-if sys.stdout.isatty() and sys.platform != 'win32':
-    try:
-        from IPython.terminal.embed import InteractiveShellEmbed
-        ipshell = InteractiveShellEmbed()
-    except ImportError:
-        ipshell = None
-else:
-    ipshell = None
+ipshell = None
 
 # global variables
 OS = os.name
@@ -85,103 +77,96 @@ def _check_obspy_version():
         sys.exit(1)
 
 
-def _cartopy_download_gshhs():
-    """
-    Download GSHHS data for cartopy.
-    """
-    from cartopy.io.shapereader import GSHHSShpDownloader as Downloader
-    from cartopy import config as cartopy_config
-    from pathlib import Path
-    gshhs_downloader = Downloader.from_config(('shapefiles', 'gshhs'))
-    format_dict = {'config': cartopy_config, 'scale': 'f', 'level': 1}
-    target_path = gshhs_downloader.target_path(format_dict)
-    if not os.path.exists(target_path):
-        sys.stdout.write(
-            'Downloading GSHHS data for cartopy.\n'
-            'This is needed only the first time you use cartopy and may take '
-            'a while...\n')
-        sys.stdout.flush()
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            try:
-                path = gshhs_downloader.path(format_dict)
-            except Exception:
-                sys.stderr.write(
-                    '\nUnable to download data. '
-                    'Check your internet connection.\n')
-                sys.exit(1)
-        sys.stdout.write(f'Done! Data cached to {Path(path).parents[1]}\n\n')
+# def _cartopy_download_gshhs():
+#     """
+#     Download GSHHS data for cartopy.
+#     """
+#     from cartopy.io.shapereader import GSHHSShpDownloader as Downloader
+#     from cartopy import config as cartopy_config
+#     from pathlib import Path
+#     gshhs_downloader = Downloader.from_config(('shapefiles', 'gshhs'))
+#     format_dict = {'config': cartopy_config, 'scale': 'f', 'level': 1}
+#     target_path = gshhs_downloader.target_path(format_dict)
+#     if not os.path.exists(target_path):
+#         sys.stdout.write(
+#             'Downloading GSHHS data for cartopy.\n'
+#             'This is needed only the first time you use cartopy and may take '
+#             'a while...\n')
+#         sys.stdout.flush()
+#         with warnings.catch_warnings():
+#             warnings.simplefilter('ignore')
+#             try:
+#                 path = gshhs_downloader.path(format_dict)
+#             except Exception:
+#                 sys.stderr.write(
+#                     '\nUnable to download data. '
+#                     'Check your internet connection.\n')
+#                 sys.exit(1)
+#         sys.stdout.write(f'Done! Data cached to {Path(path).parents[1]}\n\n')
 
 
-def _cartopy_download_borders():
-    """
-    Download borders data for cartopy.
-
-    Inspired from
-    https://github.com/SciTools/cartopy/blob/main/tools/cartopy_feature_download.py
-    """
-    from cartopy.io import Downloader
-    from cartopy import config as cartopy_config
-    from pathlib import Path
-    category = 'cultural'
-    name = 'admin_0_boundary_lines_land'
-    scales = ('10m', '50m')
-    for scale in scales:
-        downloader = Downloader.from_config((
-            'shapefiles', 'natural_earth', category, name, scale))
-        format_dict = {
-            'config': cartopy_config, 'category': category, 'name': name,
-            'resolution': scale}
-        target_path = downloader.target_path(format_dict)
-        if not os.path.exists(target_path):
-            sys.stdout.write(
-                'Downloading border data for cartopy...\n')
-            sys.stdout.flush()
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                try:
-                    path = downloader.path(format_dict)
-                except Exception:
-                    sys.stderr.write(
-                        '\nUnable to download data. '
-                        'Check your internet connection.\n')
-                    sys.exit(1)
-            sys.stdout.write(
-                f'Done! Data cached to {Path(path).parents[0]}\n\n')
-
-
-def _check_cartopy_version():
-    cartopy_min_ver = (0, 18, 0)
-    try:
-        cartopy_ver = None
-        import cartopy  #NOQA
-        global CARTOPY_VERSION_STR
-        CARTOPY_VERSION_STR = cartopy.__version__
-        cartopy_ver = tuple(map(int, cartopy.__version__.split('.')[:3]))
-        if cartopy_ver < cartopy_min_ver:
-            raise ImportError
-        _cartopy_download_gshhs()
-        _cartopy_download_borders()
-    except ImportError as e:
-        cartopy_min_ver_str = '.'.join(map(str, cartopy_min_ver))
-        msg = (
-            f'\nPlease install cartopy >= {cartopy_min_ver_str} to plot maps.'
-            '\nHow to install: '
-            'https://scitools.org.uk/cartopy/docs/latest/installing.html\n\n'
-            'Alternatively, set "plot_station_map" and "html_report" to '
-            '"False" in config file.\n'
-        )
-        if cartopy_ver is not None:
-            msg += f'Installed cartopy version: {CARTOPY_VERSION_STR}.\n'
-        raise ImportError(msg) from e
+# def _cartopy_download_borders():
+#     """
+#     Download borders data for cartopy.
+#
+#     Inspired from
+#     https://github.com/SciTools/cartopy/blob/main/tools/cartopy_feature_download.py
+#     """
+#     from cartopy.io import Downloader
+#     from cartopy import config as cartopy_config
+#     from pathlib import Path
+#     category = 'cultural'
+#     name = 'admin_0_boundary_lines_land'
+#     scales = ('10m', '50m')
+#     for scale in scales:
+#         downloader = Downloader.from_config((
+#             'shapefiles', 'natural_earth', category, name, scale))
+#         format_dict = {
+#             'config': cartopy_config, 'category': category, 'name': name,
+#             'resolution': scale}
+#         target_path = downloader.target_path(format_dict)
+#         if not os.path.exists(target_path):
+#             sys.stdout.write(
+#                 'Downloading border data for cartopy...\n')
+#             sys.stdout.flush()
+#             with warnings.catch_warnings():
+#                 warnings.simplefilter('ignore')
+#                 try:
+#                     path = downloader.path(format_dict)
+#                 except Exception:
+#                     sys.stderr.write(
+#                         '\nUnable to download data. '
+#                         'Check your internet connection.\n')
+#                     sys.exit(1)
+#             sys.stdout.write(
+#                 f'Done! Data cached to {Path(path).parents[0]}\n\n')
 
 
-def _check_pyproj_version():
-    try:
-        import pyproj  #NOQA
-    except ImportError as e:
-        msg = '\nPlease install pyproj to plot maps.\n'
-        raise ImportError(msg) from e
+# def _check_cartopy_version():
+#     cartopy_min_ver = (0, 18, 0)
+#     try:
+#         cartopy_ver = None
+#         import cartopy  #NOQA
+#         global CARTOPY_VERSION_STR
+#         CARTOPY_VERSION_STR = cartopy.__version__
+#         cartopy_ver = tuple(map(int, cartopy.__version__.split('.')[:3]))
+#         if cartopy_ver < cartopy_min_ver:
+#             raise ImportError
+#         _cartopy_download_gshhs()
+#         _cartopy_download_borders()
+#     except ImportError as e:
+#         cartopy_min_ver_str = '.'.join(map(str, cartopy_min_ver))
+#         msg = (
+#             f'\nPlease install cartopy >= {cartopy_min_ver_str} to plot maps.'
+#             '\nHow to install: '
+#             'https://scitools.org.uk/cartopy/docs/latest/installing.html\n\n'
+#             'Alternatively, set "plot_station_map" and "html_report" to '
+#             '"False" in config file.\n'
+#         )
+#         if cartopy_ver is not None:
+#             msg += f'Installed cartopy version: {CARTOPY_VERSION_STR}.\n'
+#         raise ImportError(msg) from e
+
 
 
 def _check_nllgrid_version():
@@ -498,7 +483,6 @@ def _check_mandatory_config_params(config_obj):
     if messages:
         msg = '\n'.join(messages)
         sys.stderr.write(msg + '\n')
-        ssp_exit(1)
 
 
 def _init_instrument_codes(config):
@@ -530,15 +514,8 @@ def _init_traceid_map(traceid_map_file):
     global traceid_map
     if traceid_map_file is None:
         return
-    try:
-        with open(traceid_map_file, 'r') as fp:
-            traceid_map = json.loads(fp.read())
-    except Exception:
-        sys.stderr.write(
-            f'traceid mapping file "{traceid_map_file}" not found '
-            'or not in json format.\n')
-        ssp_exit(1)
-
+    with open(traceid_map_file, 'r') as fp:
+        traceid_map = json.loads(fp.read())
 
 def configure(options, progname, config_overrides=None):
     """
@@ -632,16 +609,6 @@ def configure(options, progname, config_overrides=None):
                 'The "html_report" option is selected but "plot_save_format" '
                 'is not "png" or "svg". HTML report will have no plots.')
             config.warnings.append(msg)
-
-    if config.plot_station_map:
-        try:
-            _check_cartopy_version()
-            _check_pyproj_version()
-        except ImportError as err:
-            for msg in config.warnings:
-                print(msg)
-            sys.stderr.write(str(err))
-            sys.exit(1)
 
     if config.NLL_time_dir is not None or config.NLL_model_dir is not None:
         try:
@@ -822,26 +789,3 @@ def setup_logging(config, basename=None, progname='source_spec'):
     for _ in range(len(config.warnings)):
         msg = config.warnings.pop(0)
         logger.warning(msg)
-
-
-def ssp_exit(retval=0, abort=False):
-    # ssp_exit might have already been called if multiprocessing
-    global ssp_exit_called
-    if ssp_exit_called:
-        return
-    ssp_exit_called = True
-    if abort:
-        print('\nAborting.')
-        if logger is not None:
-            logger.debug('source_spec ABORTED')
-    elif logger is not None:
-        logger.debug('source_spec END')
-    logging.shutdown()
-    sys.exit(retval)
-
-
-def sigint_handler(sig, frame):
-    ssp_exit(1, abort=True)
-
-
-signal.signal(signal.SIGINT, sigint_handler)

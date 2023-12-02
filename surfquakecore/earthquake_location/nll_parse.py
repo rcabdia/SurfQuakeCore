@@ -1,13 +1,7 @@
-from configparser import ConfigParser
 from surfquakecore.earthquake_location.structures import NLLConfig, GridConfiguration, TravelTimesConfiguration, \
     LocationParameters
 from surfquakecore.utils import Cast
-
-
-def _read_config_file(file_path: str):
-    config = ConfigParser()
-    config.read(file_path)
-    return config
+from surfquakecore.utils.configuration_utils import parse_configuration_file
 
 
 def load_nll_configuration(config_file: str) -> NLLConfig:
@@ -48,7 +42,7 @@ def load_nll_configuration(config_file: str) -> NLLConfig:
     :return: An instance of EarthquakeLocationConfig
     """
 
-    nll_config_ini = _read_config_file(config_file)
+    nll_config_ini = parse_configuration_file(config_file)
 
     return NLLConfig(grid_configuration=GridConfiguration(latitude=Cast(nll_config_ini['GRID_CONFIGURATION']['LATITUDE'], float),
             longitude=Cast(nll_config_ini['GRID_CONFIGURATION']['LONGITUDE'], float),

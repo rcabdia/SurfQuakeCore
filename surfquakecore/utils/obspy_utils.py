@@ -9,7 +9,7 @@ from obspy import read, UTCDateTime
 from obspy.core.event import Origin
 
 from surfquakecore.utils import read_nll_performance
-from surfquakecore.utils.nllOrgErrors import computeOriginErrors
+from surfquakecore.utils.nll_org_errors import computeOriginErrors
 
 
 class MseedUtil:

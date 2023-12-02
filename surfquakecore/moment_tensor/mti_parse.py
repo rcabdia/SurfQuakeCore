@@ -1,5 +1,4 @@
 import re
-from configparser import ConfigParser
 from datetime import datetime
 
 import numpy as np
@@ -7,13 +6,8 @@ import numpy as np
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, StationConfig, InversionParameters, \
     SignalProcessingParameters
 from surfquakecore.utils import Cast
+from surfquakecore.utils.configuration_utils import parse_configuration_file
 from surfquakecore.utils.string_utils import is_float
-
-
-def _read_config_file(file_path: str):
-    config = ConfigParser()
-    config.read(file_path)
-    return config
 
 
 def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
@@ -59,7 +53,7 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
     :return: An instance of MomentTensorInversionConfig
     """
 
-    mti_config_ini = _read_config_file(config_file)
+    mti_config_ini = parse_configuration_file(config_file)
 
     # load stations and channels
     stations = \

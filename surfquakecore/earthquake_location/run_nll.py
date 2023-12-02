@@ -19,7 +19,7 @@ import shutil
 from obspy.core.event import Origin
 from obspy.geodetics import gps2dist_azimuth
 from surfquakecore import nll_templates, nll_ak135
-from surfquakecore.DataProcessing.metadata_manager import MetadataManager
+from surfquakecore.data_processing.metadata_manager import MetadataManager
 from surfquakecore.bin import nll_bin_dir
 from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
 from surfquakecore.earthquake_location.structures import NLLConfig
