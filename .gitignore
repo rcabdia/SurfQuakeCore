@@ -169,6 +169,6 @@ examples/earthquake_locate/temp
 examples/earthquake_locate/loc
 examples/source_estimations/data
 examples/source_estimations/output
-#examples/source_estimations/locations
-#examples/source_estimations/source_summary
+examples/source_estimations/locations
+examples/source_estimations/source_summary
 
