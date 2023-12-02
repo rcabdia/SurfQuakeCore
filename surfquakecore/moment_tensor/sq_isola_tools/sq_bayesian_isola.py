@@ -1,6 +1,8 @@
 import gc
 import glob
 import os
+from typing import List
+
 from obspy import UTCDateTime, read_inventory
 from surfquakecore.bin import green_bin_dir
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
@@ -13,13 +15,12 @@ from surfquakecore.utils.obspy_utils import MseedUtil
 
 
 class BayesianIsolaCore:
-    def __init__(self, project: dict, metadata_file: str, parameters_folder: str, working_directory: str,
+    def __init__(self, project: dict, metadata_file: str, working_directory: str,
                  ouput_directory: str, save_plots=False):
         """
 
         :param project:
         :param metadata_file:
-        :param parameters_folder:
         :param working_directory:
         :param ouput_directory:
         :param save_plots:
@@ -27,7 +28,6 @@ class BayesianIsolaCore:
 
         self.metadata_file = metadata_file
         self.project = project
-        self.parameters = parameters_folder
         self.cpuCount = os.cpu_count() - 1
         self.working_directory = working_directory
         self.ouput_directory = ouput_directory
@@ -37,6 +37,18 @@ class BayesianIsolaCore:
             os.makedirs(self.working_directory)
         if not os.path.exists(self.ouput_directory):
             os.makedirs(self.ouput_directory)
+
+        self._mti_configurations: List[MomentTensorInversionConfig] = []
+
+    def add_moment_tensor_inversion_configuration(self, mti_config: MomentTensorInversionConfig):
+        self._mti_configurations.append(mti_config)
+
+    def load_moment_tensor_inversion_configuration_from_directory(self, dir_path: str):
+        mti_config_files: List[str] = [os.path.join(top_dir, file) for top_dir, sub_dir, files in os.walk(dir_path)
+                                       for file in files if file.endswith(".ini")]
+
+        self._mti_configurations: List[MomentTensorInversionConfig] = \
+            [load_mti_configuration(mti_config_file) for mti_config_file in mti_config_files]
 
 
     def _get_path_files(self, project, date, stations_list, channel_list):
@@ -76,19 +88,9 @@ class BayesianIsolaCore:
         if not os.path.exists(self.working_directory):
             os.makedirs(self.ouput_directory)
         inventory = read_inventory(self.metadata_file)
-        ms = MseedUtil()
-        list_of_earthquakes = ms.get_files(self.parameters)
-        for num, earthquake in enumerate(list_of_earthquakes):
-            mti_config = load_mti_configuration(earthquake)
+        for num, mti_config in enumerate(self._mti_configurations):
             files_list = self._get_files_from_config(mti_config)
             self._run_inversion(mti_config, inventory, files_list, str(num), save_stream_plot=save_stream_plot)
-            # try:
-            #     self._run_inversion(parameters, inventory, files_list, str(num), save_stream_plot=save_stream_plot)
-            # except Exception as e:
-            #     print(e)
-            #     print("Inversion not possible for earthquake: ", parameters['origin_date'], parameters['latitude'],
-            #           parameters['longitude'],
-            #           parameters['depth'], parameters['magnitude'])
 
     def _run_inversion(self, mti_config: MomentTensorInversionConfig, inventory, files_list, num, save_stream_plot=False):
 

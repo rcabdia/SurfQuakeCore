@@ -2,6 +2,7 @@ import os
 import shutil
 import unittest
 
+from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import BayesianIsolaCore
 from surfquakecore.utils.obspy_utils import MseedUtil
 from tests.test_resources.mti.mti_run_inversion_resources import test_inversion_resource_path
@@ -10,13 +11,13 @@ from tests.test_resources.mti.mti_run_inversion_resources import test_inversion_
 class TestBayesianIsolaCore(unittest.TestCase):
 
     def setUp(self):
-        root_resource = test_inversion_resource_path
+        self.root_resource = test_inversion_resource_path
 
-        self.inventory_path = os.path.join(root_resource, "inv_surfquakecore.xml")
-        self.data_dir_path = os.path.join(root_resource, "waveforms")
-        self.path_to_configfiles = os.path.join(root_resource, "configs")
-        self.working_directory = os.path.join(root_resource, "working_directory")
-        self.output_directory = os.path.join(root_resource, "output_directory")
+        self.inventory_path = os.path.join(self.root_resource, "inv_surfquakecore.xml")
+        self.data_dir_path = os.path.join(self.root_resource, "waveforms")
+        self.path_to_configfiles = os.path.join(self.root_resource, "configs")
+        self.working_directory = os.path.join(self.root_resource, "working_directory")
+        self.output_directory = os.path.join(self.root_resource, "output_directory")
 
     def tearDown(self):
         try:
@@ -39,9 +40,22 @@ class TestBayesianIsolaCore(unittest.TestCase):
         project = MseedUtil().search_files(self.data_dir_path)
         self.assertIsInstance(project, dict)
 
-        bic = BayesianIsolaCore(project, self.inventory_path, self.path_to_configfiles,
-                                self.working_directory, self.output_directory,
-                                save_plots=False)
+        mti_config = load_mti_configuration(os.path.join(self.path_to_configfiles, "mti_config_test.ini"))
+
+        self.assertTrue(os.path.isfile(os.path.join(self.path_to_configfiles, "mti_config_test.ini")))
+
+        mti_config.inversion_parameters.earth_model_file = os.path.join(self.root_resource, "Iberia_test.dat")
+
+        bic = BayesianIsolaCore(
+            project=project,
+            metadata_file=self.inventory_path,
+            working_directory=self.working_directory,
+            ouput_directory=self.output_directory,
+            save_plots=False,
+        )
+
+        bic.add_moment_tensor_inversion_configuration(mti_config=mti_config)
+
         bic.run_mti_inversion()
 
         log_file = os.path.join(self.output_directory, "0", "log.txt")
