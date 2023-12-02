@@ -24,7 +24,7 @@ class covariance_matrix:
         Length of covariance functions.    
 	"""
 
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._covariance_matrix import covariance_matrix_noise, covariance_matrix_SACF, covariance_matrix_ACF
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._covariance_matrix import covariance_matrix_noise, covariance_matrix_SACF, covariance_matrix_ACF
 
 	def __init__(self, data):
 		self.d = data

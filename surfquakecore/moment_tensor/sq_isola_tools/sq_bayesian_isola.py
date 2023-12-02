@@ -9,9 +9,10 @@ from obspy import UTCDateTime, read_inventory, Inventory
 
 from surfquakecore.bin import green_bin_dir
 from surfquakecore.moment_tensor.mti_parse import load_mti_configurations, load_mti_configuration
-from surfquakecore.moment_tensor.sq_isola_tools import BayesISOLA
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._covariance_matrix import covariance_matrix_noise
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.load_data import load_data
+from surfquakecore.moment_tensor.sq_isola_tools import bayes_isola
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola import ResolveMt
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._covariance_matrix import covariance_matrix_noise
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.load_data import load_data
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
 from surfquakecore.utils.obspy_utils import MseedUtil
@@ -82,13 +83,18 @@ class BayesianIsolaCore:
         Context manager to create and delete working directory.
         Returns:
         """
+        temp_dir = None
         try:
             if self.working_directory is None:
-                self.working_directory = TemporaryDirectory(ignore_cleanup_errors=True).name
+                temp_dir = TemporaryDirectory(ignore_cleanup_errors=True)
+                self.working_directory = temp_dir.name
             if not os.path.isdir(self.working_directory):
                 os.mkdir(self.working_directory)
             yield self.working_directory
         finally:
+            if temp_dir:
+                temp_dir.cleanup()
+
             if os.path.isdir(self.working_directory):
                 shutil.rmtree(self.working_directory)
 
@@ -132,7 +138,7 @@ class BayesianIsolaCore:
             raise ValueError(f"mti_config {mti_config} is not valid. It must be either a directory "
                              f"with valid .ini files or a MomentTensorInversionConfig instance.")
 
-        save_stream_plot = kwargs.pop('save_plot', True)
+        save_stream_plot = kwargs.pop('save_plot', self.save_plots)
 
         for mti_config in _mti_configurations:
             files_list = self._get_files_from_config(mti_config)
@@ -164,11 +170,19 @@ class BayesianIsolaCore:
 
         with self._load_work_directory() as green_func_dir:
 
-            mt = MTIManager(st, self.inventory, mti_config.latitude, mti_config.longitude,
-                            mti_config.depth, UTCDateTime(mti_config.origin_date),
-                            mti_config.inversion_parameters.min_dist*1000,
-                            mti_config.inversion_parameters.max_dist*1000, mti_config.magnitude,
-                            mti_config.signal_processing_parameters.rms_thresh, green_func_dir)
+            mt = MTIManager(
+                st=st,
+                inv=self.inventory,
+                lat0=mti_config.latitude,
+                lon0=mti_config.longitude,
+                depth=mti_config.depth,
+                o_time=UTCDateTime(mti_config.origin_date),
+                min_dist=mti_config.inversion_parameters.min_dist * 1000.,
+                max_dist=mti_config.inversion_parameters.max_dist * 1000.,
+                magnitude=mti_config.magnitude,
+                threshold=mti_config.signal_processing_parameters.rms_thresh,
+                working_directory=green_func_dir
+            )
 
             MTIManager.move_files2workdir(green_bin_dir, green_func_dir)
             [st, deltas] = mt.get_stations_index()
@@ -203,29 +217,30 @@ class BayesianIsolaCore:
             inputs.create_station_index()
             inputs.data_deltas = deltas
             #
-            grid = BayesISOLA.grid(inputs, green_func_dir,
-                                   location_unc=mti_config.inversion_parameters.location_unc,
-                                   depth_unc=mti_config.inversion_parameters.depth_unc,
-                                   time_unc=mti_config.inversion_parameters.time_unc,
-                                   step_x=200, step_z=200, max_points=500, circle_shape=False,
-                                   rupture_velocity=mti_config.inversion_parameters.rupture_velocity)
+            grid = bayes_isola.grid(inputs, green_func_dir,
+                                    location_unc=mti_config.inversion_parameters.location_unc,
+                                    depth_unc=mti_config.inversion_parameters.depth_unc,
+                                    time_unc=mti_config.inversion_parameters.time_unc,
+                                    step_x=200, step_z=200, max_points=500, circle_shape=False,
+                                    rupture_velocity=mti_config.inversion_parameters.rupture_velocity)
             #
             fmax = mti_config.signal_processing_parameters.freq_max
             fmin = mti_config.signal_processing_parameters.freq_min
-            data = BayesISOLA.process_data(inputs, green_func_dir, grid, threads=self._cpu_count,
-                                           use_precalculated_Green=False, fmin=fmin,
-                                           fmax=fmax, correct_data=False)
+            data = bayes_isola.process_data(inputs, green_func_dir, grid, threads=self._cpu_count,
+                                            use_precalculated_Green=False, fmin=fmin,
+                                            fmax=fmax, correct_data=False)
 
-            cova = BayesISOLA.covariance_matrix(data)
+            cova = bayes_isola.covariance_matrix(data)
             covariance_matrix_noise(cova, crosscovariance=mti_config.inversion_parameters.covariance,
                                     save_non_inverted=True)
             # deviatoric=True: force isotropic component to be zero
-            solution = BayesISOLA.resolve_MT(data, cova, green_func_dir,
-                                             deviatoric=mti_config.inversion_parameters.deviatoric, from_axistra=True)
+            solution = ResolveMt(data, cova, green_func_dir,
+                                 deviatoric=mti_config.inversion_parameters.deviatoric,
+                                 from_axistra=True)
 
             #if self.parameters['plot_save']:
             if self.save_plots:
-                plot_mti = BayesISOLA.plot(solution, green_func_dir, from_axistra=True)
+                plot_mti = bayes_isola.plot(solution, green_func_dir, from_axistra=True)
                 # plot_mti.html_log(h1='surfQuake MTI')
 
             del inputs

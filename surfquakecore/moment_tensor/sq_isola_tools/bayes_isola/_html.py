@@ -7,8 +7,8 @@ import textwrap
 
 import numpy as np
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.MT_comps import a2mt
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import rename_keys
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MT_comps import a2mt
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import rename_keys
 
 
 def imgpath(img, img2, html):

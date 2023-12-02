@@ -4,7 +4,7 @@
 import numpy as np
 from scipy import signal
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import decimate
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import decimate
 
 def tukeywin(window_length, alpha=0.5):
     '''

@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.fileformats import read_elemse, read_elemse_from_files
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import my_filter
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.fileformats import read_elemse, read_elemse_from_files
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import my_filter
 
 
 def align_yaxis(ax1, ax2, v1=0, v2=0):

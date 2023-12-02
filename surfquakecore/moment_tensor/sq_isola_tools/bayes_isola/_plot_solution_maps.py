@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 from mpl_toolkits.mplot3d import Axes3D
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.MT_comps import a2mt, decompose
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MT_comps import a2mt, decompose
 
 def plot_maps(self, outfile='$outdir/map.png', beachball_size_c=False):
 	"""

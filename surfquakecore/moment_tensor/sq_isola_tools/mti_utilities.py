@@ -70,7 +70,7 @@ class MTIManager:
             if ind.count(station):
                 pass
             else:
-                [dist, _, _] = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
+                dist, _, _ = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
 
                 item = '{net}:{station}::{channel}    {lat}    {lon}'.format(net=net,
                                                                              station=station, channel=channel[0:2],

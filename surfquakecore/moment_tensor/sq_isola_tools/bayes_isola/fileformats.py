@@ -12,7 +12,7 @@ import numpy as np
 import os.path
 from obspy import Trace, Stream, read_inventory
 from obspy.core import read, AttribDict
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import prefilter_data
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import prefilter_data
 
 def read_elemse_from_files(nr, path, stations, origin_time, samprate, npts_elemse, invert_displacement=False):
 	"""

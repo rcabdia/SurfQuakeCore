@@ -77,9 +77,9 @@ class process_data:
         Higher range of bandpass filter for data.
 	"""
 
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._green import set_Greens_parameters, write_Greens_parameters, verify_Greens_parameters, verify_Greens_headers, calculate_or_verify_Green, calculate_Green, use_elemse_from_files, use_elemse_from_syngine
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._parameters import set_frequencies, set_working_sampling, count_components, min_time, max_time, set_time_window, set_parameters, skip_short_records
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._process_data import correct_data, trim_filter_data, decimate_shift
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._green import set_Greens_parameters, write_Greens_parameters, verify_Greens_parameters, verify_Greens_headers, calculate_or_verify_Green, calculate_Green, use_elemse_from_files, use_elemse_from_syngine
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._parameters import set_frequencies, set_working_sampling, count_components, min_time, max_time, set_time_window, set_parameters, skip_short_records
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._process_data import correct_data, trim_filter_data, decimate_shift
 
 	def __init__(self, data, working_directory, grid, s_velocity=3000, velocity_ot_the_fastest_wave=8000, velocity_ot_the_slowest_wave = 1000,
 				 threads=2, invert_displacement=False, use_precalculated_Green=False, correct_data=True,

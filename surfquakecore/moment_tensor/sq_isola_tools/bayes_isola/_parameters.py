@@ -4,7 +4,7 @@
 import math
 import numpy as np
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import lcmm, next_power_of_2, glcm
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import lcmm, next_power_of_2, glcm
 
 
 def set_frequencies(self, fmax, fmin=0., wavelengths=5):

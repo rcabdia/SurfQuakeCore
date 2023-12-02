@@ -6,8 +6,8 @@ from obspy.imaging.beachball import beach#, beachball
 #from obspy.imaging.mopad_wrapper import beach as beach2   # nofill parameter results in a black circle
 import matplotlib.pyplot as plt
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.MT_comps import a2mt, decompose
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.histogram import histogram
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MT_comps import a2mt, decompose
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.histogram import histogram
 
 def plot_MT(self, outfile='$outdir/centroid.png', facecolor='red'):
 	"""

@@ -35,11 +35,11 @@ class plot:
     :type covariance_function: bool, optional
     """
 
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._plot import plot_stations, plot_covariance_matrix
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._plot_solution_summary import plot_MT, plot_uncertainty, plot_MT_uncertainty_centroid
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._plot_solution_maps import plot_maps, plot_slices, plot_maps_sum, plot_map_backend, plot_3D
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._plot_data import plot_seismo, plot_covariance_function, plot_noise, plot_spectra, plot_seismo_backend_1, plot_seismo_backend_2
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._html import html_log
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._plot import plot_stations, plot_covariance_matrix
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._plot_solution_summary import plot_MT, plot_uncertainty, plot_MT_uncertainty_centroid
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._plot_solution_maps import plot_maps, plot_slices, plot_maps_sum, plot_map_backend, plot_3D
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._plot_data import plot_seismo, plot_covariance_function, plot_noise, plot_spectra, plot_seismo_backend_1, plot_seismo_backend_2
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._html import html_log
 
 	def __init__(self, solution, working_directory, from_axistra=True, maps=True, slices=True, maps_sum=True, MT=True, uncertainty=400, seismo=False,
 				 seismo_sharey=True, seismo_cova=True, noise=True, spectra=True, stations=True, covariance_matrix=True,

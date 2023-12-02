@@ -3,7 +3,7 @@
 
 import os.path
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.MouseTrap import *
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MouseTrap import *
 
 def detect_mouse(self, mouse_len = 2.5*60, mouse_onset = 1*60, fit_t1=-20, fit_t2c=0, fit_t2v=1200, figures=None, figures_mkdir=True):
 	"""

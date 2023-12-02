@@ -5,8 +5,8 @@ import multiprocessing as mp
 import numpy as np
 import os.path
 import hashlib
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.axitra import Axitra_wrapper
-import surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.syngine as syngine
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.axitra import Axitra_wrapper
+import surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.syngine as syngine
 
 def set_Greens_parameters(self):
 	"""
@@ -142,15 +142,16 @@ def calculate_Green(self):
 	# run `gr_xyz` aand `elemse`
 	for model in self.d.models:
 		if self.threads > 1: # parallel
-			pool = mp.Pool(processes=self.threads)
-			results = [pool.apply_async(Axitra_wrapper, args=(i, model, grid[i]['x'], grid[i]['y'], grid[i]['z'], self.npts_exp, self.elemse_start_origin, self.working_directory, logfile)) for i in range(len(grid))]
-			output = [p.get() for p in results]
-			for i in range (len(grid)):
-				if output[i] == False:
+			with mp.Pool(processes=self.threads) as pool:
+				results = [pool.apply_async(Axitra_wrapper, args=(i, model, grid[i]['x'], grid[i]['y'], grid[i]['z'], self.npts_exp, self.elemse_start_origin, self.working_directory, logfile)) for i in range(len(grid))]
+				output = [p.get() for p in results]
+
+			for i in range(len(grid)):
+				if not output[i]:
 					grid[i]['err'] = 1
 					grid[i]['VR'] = -10
-		else: # serial
-			for i in range (len(grid)):
+		else:
+			for i in range(len(grid)):
 				gp = grid[i]
 				Axitra_wrapper(i, model, gp['x'], gp['y'], gp['z'], self.npts_exp, self.elemse_start_origin,
 							   self.working_directory, logfile)

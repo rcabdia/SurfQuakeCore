@@ -54,7 +54,7 @@ class grid:
         The same as the previous ones, but values in samples related to ``max_samprate``.
 	"""
 
-	from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._grid import set_grid, set_time_grid
+	from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._grid import set_grid, set_time_grid
 
 	def __init__(self, data, working_directory, location_unc=0, depth_unc=0, time_unc=0, step_x=500, step_z=500, max_points=100, grid_radius=0, grid_min_depth=0, grid_max_depth=0, grid_min_time=0, grid_max_time=0, circle_shape=True, add_rupture_length=True, rupture_velocity=1000):
 		self.location_unc = location_unc # m

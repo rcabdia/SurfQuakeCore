@@ -6,8 +6,8 @@ import urllib.request as urllib
 from obspy import read, Stream, read_inventory
 #from obspy.clients.arclink import Client # The ArcLink protocol is deprecated
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.fileformats import attach_xml_paz
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA._input_seismo_files import check_a_station_present
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.fileformats import attach_xml_paz
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola._input_seismo_files import check_a_station_present
 
 def load_streams_fdsnws(self, hosts, t_before=90, t_after=360, save_to=None):
 	"""

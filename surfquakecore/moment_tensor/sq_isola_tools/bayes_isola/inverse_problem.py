@@ -10,9 +10,9 @@ import numpy as np
 
 from obspy import UTCDateTime
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.fileformats import read_elemse, read_elemse_from_files
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import my_filter
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.MT_comps import decompose, a2mt
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.fileformats import read_elemse, read_elemse_from_files
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import my_filter
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MT_comps import decompose, a2mt
 
 def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, stations, npts_elemse, npts_slice, elemse_start_origin,
 		   origin_time, samprate, deviatoric=False, decomp=True, invert_displacement=False, elemse_path=None, from_axistra=True):
@@ -185,4 +185,3 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 	if decomp:
 		r.update(decompose(a2mt(r['a']))) # add MT decomposition to dict `r`
 	return r
- 

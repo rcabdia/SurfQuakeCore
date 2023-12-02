@@ -3,7 +3,7 @@
 
 import numpy as np
  
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.helpers import my_filter, prefilter_data, next_power_of_2
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import my_filter, prefilter_data, next_power_of_2
 
 def correct_data(self, water_level=20):
 	"""

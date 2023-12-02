@@ -5,7 +5,7 @@ import os.path
 import numpy as np
 from obspy import read, Trace, Stream, read_inventory
 
-from surfquakecore.moment_tensor.sq_isola_tools.BayesISOLA.fileformats import attach_ISOLA_paz, attach_xml_paz
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.fileformats import attach_ISOLA_paz, attach_xml_paz
 
 
 # TODO needs serious refactoring. Why this starts with self?? This is not inside a class!!!
