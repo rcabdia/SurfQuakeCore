@@ -175,7 +175,7 @@ class BayesianIsolaCore:
                 inv=self.inventory,
                 lat0=mti_config.latitude,
                 lon0=mti_config.longitude,
-                depth=mti_config.depth,
+                depth=mti_config.depth_km,
                 o_time=UTCDateTime(mti_config.origin_date),
                 min_dist=mti_config.inversion_parameters.min_dist * 1000.,
                 max_dist=mti_config.inversion_parameters.max_dist * 1000.,
@@ -187,7 +187,7 @@ class BayesianIsolaCore:
             MTIManager.move_files2workdir(green_bin_dir, green_func_dir)
             [st, deltas] = mt.get_stations_index()
             inputs = load_data(outdir=local_folder)
-            inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth,
+            inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth_km,
                                   mag=mti_config.magnitude, t=UTCDateTime(mti_config.origin_date))
 
             inputs.set_source_time_function(mti_config.inversion_parameters.source_type.lower(), green_func_dir,
@@ -224,8 +224,8 @@ class BayesianIsolaCore:
                                     step_x=200, step_z=200, max_points=500, circle_shape=False,
                                     rupture_velocity=mti_config.inversion_parameters.rupture_velocity)
             #
-            fmax = mti_config.signal_processing_parameters.freq_max
-            fmin = mti_config.signal_processing_parameters.freq_min
+            fmax = mti_config.signal_processing_parameters.max_freq
+            fmin = mti_config.signal_processing_parameters.min_freq
             data = bayes_isola.process_data(inputs, green_func_dir, grid, threads=self._cpu_count,
                                             use_precalculated_Green=False, fmin=fmin,
                                             fmax=fmax, correct_data=False)

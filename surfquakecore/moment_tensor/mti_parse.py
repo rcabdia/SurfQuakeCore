@@ -59,37 +59,17 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
     # load stations and channels
     stations = \
         [
-            StationConfig(name=name.strip().upper(), channels=[ch.strip() for ch in channels.split(',')])
+            {'name': name.strip().upper(), 'channels': [ch.strip() for ch in channels.split(',')]}
             for name, channels in mti_config_ini.items("STATIONS_AND_CHANNELS")
         ]
+    _params = {k.strip().lower(): v.strip() for k, v in mti_config_ini.items("ORIGIN")}
+    _params['inversion_parameters'] = \
+        {k.strip().lower(): v.strip() for k, v in mti_config_ini.items("MTI_PARAMETERS")}
+    _params['signal_processing_parameters'] = \
+        {k.strip().lower(): v.strip() for k, v in mti_config_ini.items("SIGNAL_PROCESSING")}
+    _params['stations'] = stations
 
-    return MomentTensorInversionConfig(
-        origin_date=Cast(mti_config_ini["ORIGIN"]["ORIGIN_DATE"], datetime),
-        latitude=Cast(mti_config_ini["ORIGIN"]["LATITUDE"], float),
-        longitude=Cast(mti_config_ini["ORIGIN"]["LONGITUDE"], float),
-        depth=Cast(mti_config_ini["ORIGIN"]["DEPTH_KM"], float),
-        magnitude=Cast(mti_config_ini["ORIGIN"]["MAGNITUDE"], float),
-        stations=stations,
-        inversion_parameters=InversionParameters(
-            earth_model_file=mti_config_ini["MTI_PARAMETERS"]["EARTH_MODEL_FILE"].strip(),
-            location_unc=Cast(mti_config_ini["MTI_PARAMETERS"]["LOCATION_UNC"], float),
-            time_unc=Cast(mti_config_ini["MTI_PARAMETERS"]["TIME_UNC"], float),
-            depth_unc=Cast(mti_config_ini["MTI_PARAMETERS"]["DEPTH_UNC"], float),
-            rupture_velocity=Cast(mti_config_ini["MTI_PARAMETERS"]["RUPTURE_VELOCITY"], float),
-            min_dist=Cast(mti_config_ini["MTI_PARAMETERS"]["MIN_DIST"], float),
-            max_dist=Cast(mti_config_ini["MTI_PARAMETERS"]["MAX_DIST"], float),
-            source_type=Cast(mti_config_ini["MTI_PARAMETERS"]["SOURCE_TYPE"], str),
-            covariance=Cast(mti_config_ini["MTI_PARAMETERS"]["COVARIANCE"], bool),
-            deviatoric=Cast(mti_config_ini["MTI_PARAMETERS"]["DEVIATORIC"], bool),
-            source_duration=Cast(mti_config_ini["MTI_PARAMETERS"]["SOURCE_DURATION"], float),
-        ),
-        signal_processing_parameters=SignalProcessingParameters(
-            remove_response=Cast(mti_config_ini["SIGNAL_PROCESSING"]["REMOVE_RESPONSE"], bool),
-            freq_min=Cast(mti_config_ini["SIGNAL_PROCESSING"]["MIN_FREQ"], float),
-            freq_max=Cast(mti_config_ini["SIGNAL_PROCESSING"]["MAX_FREQ"], float),
-            rms_thresh=Cast(mti_config_ini["SIGNAL_PROCESSING"]["RMS_THRESH"], float),
-        )
-    )
+    return MomentTensorInversionConfig.from_dict(_params)
 
 
 def load_mti_configurations(dir_path: str):

@@ -8,13 +8,13 @@ from surfquakecore.utils import BaseDataClass
 @dataclass
 class SignalProcessingParameters(BaseDataClass):
     remove_response: bool = True
-    freq_max: float = 0.15
-    freq_min: float = 0.02
+    max_freq: float = 0.15
+    min_freq: float = 0.02
     rms_thresh: float = 5.0
 
     def __post_init__(self):
 
-        if self.freq_min >= self.freq_max:
+        if self.min_freq >= self.max_freq:
             raise ValueError(f"freq_min >= freq_max. Minimum frequency cannot be bigger than maximum.")
 
 
@@ -36,7 +36,7 @@ class InversionParameters(BaseDataClass):
 @dataclass
 class StationConfig(BaseDataClass):
     name: str
-    channels: List[str]
+    channels: list[str]
 
     def validate_channels(self):
         if not self.channels or len(self.channels) > 3:
@@ -56,8 +56,8 @@ class MomentTensorInversionConfig(BaseDataClass):
     origin_date: datetime
     latitude: float
     longitude: float
-    depth: float  # km
+    depth_km: float  # km
     magnitude: float
-    stations: List[StationConfig]
+    stations: list[StationConfig]
     inversion_parameters: InversionParameters
     signal_processing_parameters: SignalProcessingParameters = field(default_factory=SignalProcessingParameters)

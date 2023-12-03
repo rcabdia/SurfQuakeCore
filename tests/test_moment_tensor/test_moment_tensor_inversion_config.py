@@ -13,7 +13,7 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
     def setUp(self):
         self.expect_mti_dto = {
             'origin_date': datetime(2022, 2, 28, 2, 7, 59, 433000),
-            'latitude': 42.5414, 'longitude': 1.4505, 'depth': 5.75, 'magnitude': 3.0,
+            'latitude': 42.5414, 'longitude': 1.4505, 'depth_km': 5.75, 'magnitude': 3.0,
             'stations': [{'name': 'TEST', 'channels': ['NNH', 'NNZ', 'NNE']}],
             'inversion_parameters': {'earth_model_file': "earthmodel/Iberia.txt", 'location_unc': 0.7,
                                      'time_unc': .2, 'depth_unc': 3.,
@@ -23,7 +23,7 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
                                      'deviatoric': False,
                                      'source_type': 'PointSource'
                                      },
-            'signal_processing_parameters': {'remove_response': True, 'freq_max': 0.15, 'freq_min': 0.02,
+            'signal_processing_parameters': {'remove_response': True, 'max_freq': 0.15, 'min_freq': 0.02,
                                              'rms_thresh': 5.0}
         }
 
@@ -35,7 +35,7 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
             origin_date=origin_date,
             latitude=42.5414,
             longitude=1.4505,
-            depth=5.75,
+            depth_km=5.75,
             magnitude=3.0,
             stations=[StationConfig(name="TEST", channels=["NNH", "NNZ", "NNE"])],
             inversion_parameters=InversionParameters(
