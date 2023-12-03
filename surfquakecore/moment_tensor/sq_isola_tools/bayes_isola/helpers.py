@@ -9,6 +9,8 @@ import fractions
 import math
 
 import numpy as np
+from scipy import signal
+from scipy.signal import decimate
 
 
 # TODO  Remove all unnecessary methods here. Lots of bad code
@@ -104,25 +106,40 @@ def prefilter_data(st, f):
 		tr_filt = np.fft.ifft(TR)
 		tr.data = np.real(tr_filt[0:npts])
 
+# TODO look at signal.decimate(y, q) from scipy. It seems it gives similar results and I would trust scipy method more.
 def decimate(a, n=2):
 	"""
 	Decimates given sequence.
-	
+
 	:param data: data
 	:type data: 1-D array
 	:param n: decimation factor
 	:type n: integer, optional
-	
+
 	Before decimating, filter out frequencies over Nyquist frequency using :func:`numpy.fft.fft`
 	"""
 	npts = len(a)
 	#NPTS = npts # next_power_of_2(npts)
-	NPTS = npts
-	A = np.fft.fft(a, NPTS)
-	idx = int(np.round(npts/n/2))
-	A[idx:NPTS-idx+1] = 0+0j
-	a = np.fft.ifft(A)
-	if npts % (2*n) == 1 or n!=2: # keep odd length for decimation factor 2
+	amp = np.fft.fft(a, npts)
+	idx = int(np.round(npts / n / 2. ))
+	amp[idx: npts - idx + 1] = .0 + .0j
+
+	a = np.fft.ifft(amp)
+	if npts % (2*n) == 1 or n != 2:  # keep odd length for decimation factor 2
 		return a[:npts:n].real
 	else:
 		return a[1:npts:n].real
+
+# TODO small example to compare the 2 methods
+# wave_duration = 3
+# sample_rate = 100
+# freq = 2
+# q = 5
+# samples = wave_duration*sample_rate
+# x = np.linspace(0, wave_duration, samples, endpoint=False)
+# y = np.cos(x*np.pi*freq*2)
+# corr = signal.decimate(y, q)
+# corr2 = decimate(y, q)
+# print(corr)
+# print(corr2)
+# print(np.abs(corr2 - corr))

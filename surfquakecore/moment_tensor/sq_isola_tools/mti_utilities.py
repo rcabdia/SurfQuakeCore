@@ -2,62 +2,56 @@ import math
 import os
 import shutil
 from trace import Trace
+from typing import Union, List, Optional
+
+import numpy as np
 import obspy
-from obspy import UTCDateTime, Stream, read
+import pandas as pd
+from obspy import UTCDateTime, read, Inventory
+from obspy.core.stream import Stream
+from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
 from obspy.signal.trigger import trigger_onset
 from obspy.taup import TauPyModel
-import pandas as pd
-from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
-import numpy as np
+
+from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
 
 
 class MTIManager:
 
-    def __init__(self, st, inv, lat0, lon0, depth, o_time, min_dist, max_dist, magnitude, threshold, working_directory):
+    def __init__(self,   stream: Stream, inventory:  Inventory,
+                 working_directory: str, mti_config:  MomentTensorInversionConfig):
         """
         Manage MTI files for run isola class program.
-        st: stream of seismograms
-        in: inventory
+
+        Args:
+            stream: an obspy Stream
+            inventory: an obspy Inventory
+            working_directory: A directory where some files will be saved temporary.
+            mti_config: A dataclass instance of MomentTensorInversionConfig
         """
-        self.__st = st
-        self.__inv = inv
-        self.lat = lat0
-        self.lon = lon0
-        self.depth = depth
-        self.min_dist = min_dist
-        self.max_dist = max_dist
+
+        self.__st = stream
+        self.__inv = inventory
+
+        self.lat = mti_config.latitude
+        self.lon = mti_config.longitude
+        self.depth = mti_config.depth_km
+        self.o_time = UTCDateTime(mti_config.origin_date)
+        self.min_dist = mti_config.inversion_parameters.min_dist * 1000.
+        self.max_dist = mti_config.inversion_parameters.max_dist * 1000.
+        self.magnitude = mti_config.magnitude
+        self.threshold = mti_config.signal_processing_parameters.rms_thresh
+
         self.working_directory = working_directory
-        self.o_time = o_time
-        self.magnitude = magnitude
-        self.threshold = threshold
         self.model = TauPyModel(model="iasp91")
         self.check_rms = {}
 
-    @staticmethod
-    def __validate_file(file_path):
-        if not os.path.isfile(file_path):
-            raise FileNotFoundError("The file {} doesn't exist.".format(file_path))
-
-    @staticmethod
-    def __validate_dir(dir_path):
-        if not os.path.isdir(dir_path):
-            raise FileNotFoundError("The dir {} doesn't exist.".format(dir_path))
-
-    @property
-    def root_path(self):
-        root_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
-        self.__validate_dir(root_path)
-        return root_path
-
-    @property
-    def get_stations_dir(self):
-        stations_dir = os.path.join(self.root_path, "input")
-        self.__validate_dir(stations_dir)
-        return stations_dir
+        self.stations_index: List[str] = []
+        self.streams: Optional[List[List[Trace]]] = None
 
     def get_stations_index(self):
 
-        ind = []
+        self.stations_index = []
         file_list = []
         dist1 = []
         for tr in self.__st:
@@ -67,9 +61,8 @@ class MTIManager:
             coords = self.__inv.get_coordinates(tr.id)
             lat = coords['latitude']
             lon = coords['longitude']
-            if ind.count(station):
-                pass
-            else:
+            if station not in self.stations_index:
+
                 dist, _, _ = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
 
                 item = '{net}:{station}::{channel}    {lat}    {lon}'.format(net=net,
@@ -77,27 +70,22 @@ class MTIManager:
                                                                              lat=lat, lon=lon)
 
                 # filter by distance
-                if self.min_dist < self.max_dist and self.min_dist <= dist and dist <= self.max_dist:
+                if self.min_dist < self.max_dist and self.min_dist <= dist <= self.max_dist:
                     # do the distance filter
-                    ind.append(station)
+                    self.stations_index.append(station)
                     file_list.append(item)
                     dist1.append(dist)
-                    keydict = dict(zip(file_list, dist1))
-                    file_list.sort(key=keydict.get)
-                else:
-                    # do not filter by distance
-                    pass
 
-        self.stations_index = ind
-        self.stream = self.sort_stream(dist1)
+        self.streams = self.sort_stream(dist1)
 
-        deltas = self.get_deltas()
+        file_list.sort(key=dict(zip(file_list, dist1)).get)
         data = {'item': file_list}
 
         df = pd.DataFrame(data, columns=['item'])
         outstations_path = os.path.join(self.working_directory, "stations.txt")
         df.to_csv(outstations_path, header=False, index=False)
-        return self.stream, deltas
+
+        return self.streams, self.get_deltas()
 
     def get_participation(self):
 
@@ -105,7 +93,7 @@ class MTIManager:
         Find which traces from self.stream are above RMS Threshold
         """
 
-        for st in self.stream:
+        for st in self.streams:
             for tr in st:
 
                 coords = self.__inv.get_coordinates(tr.id)
@@ -153,70 +141,48 @@ class MTIManager:
     def __find_in_stations(self, stations, key):
         # stations is a list of dictionaries
         network, code, loc, channelcode = key.split("_")
-        for iter, index_dict in enumerate(stations):
-            if index_dict["channelcode"] == channelcode[0:2] and index_dict["code"] == code and index_dict[
-                "network"] == network:
+        for _iter, index_dict in enumerate(stations):
+            if (index_dict["channelcode"] == channelcode[0:2] and index_dict["code"] == code and
+                    index_dict["network"] == network):
                 if channelcode[-1] == "Z" or channelcode[-1] == 3:
-                    stations[iter]["useZ"] = self.check_rms[key]
+                    stations[_iter]["useZ"] = self.check_rms[key]
                 elif channelcode[-1] == "N" or channelcode[-1] == "Y" or channelcode[-1] == 1:
-                    stations[iter]["useN"] = self.check_rms[key]
+                    stations[_iter]["useN"] = self.check_rms[key]
                 elif channelcode[-1] == "E" or channelcode[-1] == "X" or channelcode[-1] == 2:
-                    stations[iter]["useN"] = self.check_rms[key]
+                    stations[_iter]["useN"] = self.check_rms[key]
 
         return stations
 
     def sort_stream(self, dist1):
-        stream = []
-        stream_sorted_order = []
 
-        for station in self.stations_index:
-            st2 = self.__st.select(station=station)
-            stream.append(st2)
+        stream = (self.__st.select(station=station) for station in self.stations_index)
 
         # Sort by Distance
-        stream_sorted = [x for _, x in sorted(zip(dist1, stream))]
+        stream_sorted = (x for _, x in sorted(zip(dist1, stream)))
         # Bayesian isola require ZNE order
         # reverse from E N Z --> Z N E
         # reverse from X Y Z --> Z Y X
         # reverse from 1 2 Z --> Z 1 2
 
-        # TODO REVERSE DEPENDS ON THE NAMING BUT ALWAYS OUTPUT MUST BE IN THE ORDER ZNE
-        for stream_sort in stream_sorted:
-
-            if "1" in stream_sort and "2" in stream_sort:
-                stream_sorted_order.append(
-                    sorted(stream_sort, key=lambda x: (x.isnumeric(), int(x) if x.isnumeric() else x)))
-
-                # if len(stream_sorted_order) ==3:
-                #      stream_sorted_order[-2], stream_sorted_order[-1] = stream_sorted_order[-1], stream_sorted_order[-2]
-                # elif len(stream_sorted_order) ==2:
-                #     stream_sorted_order[-1], stream_sorted_order[0] = stream_sorted_order[0], stream_sorted_order[-1]
+        def _inner_sort(value: Stream):
+            # TODO How is it possible 1 or 2 be in a Stream ??
+            if "1" in value and "2" in value:
+                # noinspection PyTypeChecker
+                return sorted(value, key=lambda x: (x.isnumeric(), int(x) if x.isnumeric() else x))
 
             else:
-                stream_sorted_order.append(stream_sort.reverse())
+                return value.reverse()
 
-        return stream_sorted_order
+        # TODO REVERSE DEPENDS ON THE NAMING BUT ALWAYS OUTPUT MUST BE IN THE ORDER ZNE
+        return [_inner_sort(stream_sort) for stream_sort in stream_sorted]
 
     def get_deltas(self):
-        deltas = []
-        n = len(self.stream)
-        for j in range(n):
-            stream_unique = self.stream[j]
-            delta_unique = stream_unique[0].stats.delta
-            deltas.append(delta_unique)
+        return [st[0].stats.delta for st in self.streams]
 
-        return deltas
+    def copy_to_working_directory(self, src_dir: Union[str, os.PathLike[str]]):
 
-    @staticmethod
-    def move_files2workdir(src_dir, dest_dir):
-
-        # getting all the files in the source directory
-        files = os.listdir(src_dir)
-
-        for fname in files:
-            # copying the files to the
-            # destination directory
-            shutil.copy2(os.path.join(src_dir, fname), dest_dir)
+        for file in os.listdir(src_dir):
+            shutil.copy2(os.path.join(src_dir, file), self.working_directory)
 
     @classmethod
     def default_processing(cls, files_path, origin_time,
@@ -226,11 +192,11 @@ class MTIManager:
         origin_time = UTCDateTime(origin_time)
 
         if regional:
-            dt_noise = 10 * 60
-            dt_signal = 10 * 60
+            dt_noise = 10. * 60.
+            dt_signal = 10. * 60.
         else:
-            dt_noise = 10 * 60
-            dt_signal = 60 * 60
+            dt_noise = 10. * 60
+            dt_signal = 60. * 60.
 
         start = origin_time - dt_noise
         end = origin_time + dt_signal

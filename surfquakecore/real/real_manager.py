@@ -6,7 +6,7 @@ import subprocess
 import time
 import warnings
 from typing import Optional, Union, List, Dict, Tuple
-from ..bin import real_bin
+from ..bin import BINARY_REAL_FILE
 from .structs import RealD, RealR, RealG, RealV, RealS, Station, EventLocation, PhaseLocation, \
     EventsInfo
 from ..utils.subprocess_utils import exc_cmd
@@ -17,7 +17,7 @@ from ..utils.subprocess_utils import exc_cmd
 
 class RealManager:
 
-    REAL_BIN: str = real_bin
+    REAL_BIN: str = BINARY_REAL_FILE
     DEGREE_TO_KM = 111.19
 
     def __init__(self, pick_dir: str, station_file: str, time_travel_table_file: str, out_data_dir: str, **kwargs):

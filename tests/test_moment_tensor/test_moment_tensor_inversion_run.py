@@ -27,6 +27,7 @@ class TestBayesianIsolaCore(unittest.TestCase):
             pass
 
     def test_create_project(self):
+        # TODO implement a test for project here
         project = MseedUtil().search_files(self.data_dir_path)
         print(project)
 
