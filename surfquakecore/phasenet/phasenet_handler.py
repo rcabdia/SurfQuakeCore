@@ -1014,12 +1014,6 @@ class PhasenetUtils:
 
         print('TIME SAVING ALL FILES: ', _time.time() - start)
 
-    # @staticmethod
-    # def save_original_picks(original_picks):
-    #     print('saving_picks_original_format')
-    #     pick_path = os.path.join(original_p_dir, "original_picks")
-    #     original_picks = pd.DataFrame.from_dict(original_picks)
-    #     original_picks.to_csv(pick_path)
 
     @staticmethod
     def save_original_picks(original_picks, original_p_dir):
