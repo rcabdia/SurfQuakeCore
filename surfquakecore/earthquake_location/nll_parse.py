@@ -44,24 +44,30 @@ def load_nll_configuration(config_file: str) -> NLLConfig:
 
     nll_config_ini = parse_configuration_file(config_file)
 
-    return NLLConfig(grid_configuration=GridConfiguration(latitude=Cast(nll_config_ini['GRID_CONFIGURATION']['LATITUDE'], float),
-            longitude=Cast(nll_config_ini['GRID_CONFIGURATION']['LONGITUDE'], float),
-            depth=Cast(nll_config_ini['GRID_CONFIGURATION']['DEPTH_KM'], float),
-            x=Cast(nll_config_ini['GRID_CONFIGURATION']['X'], float), y=Cast(nll_config_ini['GRID_CONFIGURATION']['Y'], float),
-            z=Cast(nll_config_ini['GRID_CONFIGURATION']['Z'], float), dx=Cast(nll_config_ini['GRID_CONFIGURATION']['DX'], float),
-            dy=Cast(nll_config_ini['GRID_CONFIGURATION']['DY'], float), dz=Cast(nll_config_ini['GRID_CONFIGURATION']['DZ'], float),
-            geo_transformation=Cast(nll_config_ini['GRID_CONFIGURATION']['GEO_TRANSFORMATION'], str),
-            grid_type=Cast(nll_config_ini['GRID_CONFIGURATION']['GRID_TYPE'], str),
-            path_to_1d_model=Cast(nll_config_ini['GRID_CONFIGURATION']['PATH_TO_1D_MODEL'], str),
-            path_to_3d_model=Cast(nll_config_ini['GRID_CONFIGURATION']['PATH_TO_3D_MODEL'], str),
-            path_to_picks=Cast(nll_config_ini['GRID_CONFIGURATION']['PATH_TO_PICKS'], str),
-            p_wave_type=Cast(nll_config_ini['GRID_CONFIGURATION']['p_wave_type'], bool),
-            s_wave_type=Cast(nll_config_ini['GRID_CONFIGURATION']['s_wave_type'], bool),
-            model_1D=Cast(nll_config_ini['GRID_CONFIGURATION']['model_1D'], bool),
-            model_3D=Cast(nll_config_ini['GRID_CONFIGURATION']['model_3D'], bool)),
+    return NLLConfig(
+            grid_configuration=GridConfiguration(
+                    latitude=Cast(nll_config_ini['GRID_CONFIGURATION']['LATITUDE'], float),
+                    longitude=Cast(nll_config_ini['GRID_CONFIGURATION']['LONGITUDE'], float),
+                    depth=Cast(nll_config_ini['GRID_CONFIGURATION']['DEPTH_KM'], float),
+                    x=Cast(nll_config_ini['GRID_CONFIGURATION']['X'], float),
+                    y=Cast(nll_config_ini['GRID_CONFIGURATION']['Y'], float),
+                    z=Cast(nll_config_ini['GRID_CONFIGURATION']['Z'], float),
+                    dx=Cast(nll_config_ini['GRID_CONFIGURATION']['DX'], float),
+                    dy=Cast(nll_config_ini['GRID_CONFIGURATION']['DY'], float),
+                    dz=Cast(nll_config_ini['GRID_CONFIGURATION']['DZ'], float),
+                    geo_transformation=Cast(nll_config_ini['GRID_CONFIGURATION']['GEO_TRANSFORMATION'], str),
+                    grid_type=Cast(nll_config_ini['GRID_CONFIGURATION']['GRID_TYPE'], str),
+                    path_to_1d_model=Cast(nll_config_ini['GRID_CONFIGURATION']['PATH_TO_1D_MODEL'], str),
+                    path_to_3d_model=Cast(nll_config_ini['GRID_CONFIGURATION']['PATH_TO_3D_MODEL'], str),
+                    path_to_picks=Cast(nll_config_ini['GRID_CONFIGURATION']['PATH_TO_PICKS'], str),
+                    p_wave_type=Cast(nll_config_ini['GRID_CONFIGURATION']['p_wave_type'], bool),
+                    s_wave_type=Cast(nll_config_ini['GRID_CONFIGURATION']['s_wave_type'], bool),
+                    model_1D=Cast(nll_config_ini['GRID_CONFIGURATION']['model_1D'], bool),
+                    model_3D=Cast(nll_config_ini['GRID_CONFIGURATION']['model_3D'], bool)),
             travel_times_configuration=TravelTimesConfiguration(
-            distance_limit=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['DISTANCE_LIMIT'], float),
-            grid1d=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['GRID1D'], bool),
-            grid3d=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['GRID3D'], bool)),
-            location_parameters=LocationParameters(search=Cast(nll_config_ini['LOCATION_PARAMETERS']['SEARCH'], str),
-            method = Cast(nll_config_ini['LOCATION_PARAMETERS']['METHOD'], str)))
+                    distance_limit=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['DISTANCE_LIMIT'], float),
+                    grid1d=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['GRID1D'], bool),
+                    grid3d=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['GRID3D'], bool)),
+            location_parameters=LocationParameters(
+                    search=Cast(nll_config_ini['LOCATION_PARAMETERS']['SEARCH'], str),
+                    method=Cast(nll_config_ini['LOCATION_PARAMETERS']['METHOD'], str)))

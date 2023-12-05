@@ -30,7 +30,6 @@ _os = platform.system()
 
 class NllManager:
 
-    #working_directory, inventory_path, path_to_configfiles
     def __init__(self, config_file_path, dataless_path, working_directory):
         """
         Manage nll files for run nll program.
@@ -44,7 +43,6 @@ class NllManager:
         self.__create_dirs()
         self.__dataless_dir = dataless_path
         self.__metadata_manager = None
-        # self.__obs_file_path = obs_file_path
 
     def __get_nll_config(self, config_file_path):
 
@@ -233,20 +231,25 @@ class NllManager:
         data = pd.read_csv(run_path, header = None)
         travetimepath = os.path.join(self.get_time_dir, "layer")
         locationpath = os.path.join(self.get_loc_dir, "location")
+
+        # Grid search inside for location robustness
+        yNum = yNum - round(0.01*yNum + 1)
+        xNum = yNum
+        zNum = zNum - round(0.01*zNum + 1)
+        xOrig = round(0.01*xNum + 1)
+        yOrig = round(0.01*yNum + 1)
+        zOrig = zOrig + round(0.01*zNum + 1)
+
         df = pd.DataFrame(data)
         df.iloc[1, 0] = 'TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}'.format(lat=latitude, lon=longitude, depth=0.0)
         df.iloc[3, 0] = 'LOCFILES {obspath} NLLOC_OBS {timepath} {locpath}'.format(
             obspath=self.nll_config.grid_configuration.path_to_picks, timepath=travetimepath, locpath=locationpath)
-        if xNum == 2: # 1D Grid
 
-           xNum = int(yNum)
-           yNum = int(yNum)
-           df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=xNum,
-                            y=yNum, z=zNum, xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
-        else:
-
-            df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=xNum,
+        xNum = int(yNum)
+        yNum = int(yNum)
+        df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=xNum,
                         y=yNum, z=zNum, xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
+
 
         output = os.path.join(self.get_temp_dir, "run_temp.txt")
         df.to_csv(output, index=False, header=False, encoding='utf-8')
@@ -256,7 +259,7 @@ class NllManager:
         run_path = self.get_run_template_global_file_path
         data = pd.read_csv(run_path)
         travetimepath = os.path.join(nll_ak135, "ak135")
-        locationpath = os.path.join(self.get_loc_dir, "location")
+        locationpath = os.path.join(self.get_loc_dir, "location") + " 1"
         stations_path = os.path.join(self.get_stations_template_file_path)
         df = pd.DataFrame(data)
         df.iloc[1, 0] = 'TRANS GLOBAL'
