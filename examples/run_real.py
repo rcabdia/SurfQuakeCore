@@ -13,8 +13,7 @@ working_directory = '/Volumes/LaCie/test_surfquake_core/test_real/working_direct
 output_directory = '/Volumes/LaCie/test_surfquake_core/test_real/output_directory'
 
 # Set path to REAL configuration
-#config_path = os.path.join(test_resources_real_path, "real_config.ini")
-config_path = '/Users/admin/Documents/iMacROA/test_surfquakecore/examples/test_resources/real/real_config.ini'
+config_path = os.path.join(test_resources_real_path, "real_config.ini")
 # Run association
 rc = RealCore(inventory_path, config_path, picks_path, working_directory, output_directory)
 rc.run_real()

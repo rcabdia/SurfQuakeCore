@@ -33,7 +33,6 @@ class RealCore:
 
         self.real_config: RealConfig = load_real_configuration(config_file_path)
 
-
     def _start_folder_tree(self):
         if not os.path.exists(self.working_directory):
             os.makedirs(self.working_directory)
@@ -53,7 +52,6 @@ class RealCore:
         inv = read_inventory(self.metadata_file)
         return inv
 
-
     def _get_real_grid(self):
 
         lon_min = self.real_config.geographic_frame.lon_ref_min
@@ -63,7 +61,7 @@ class RealCore:
         self.latitude_center = (lat_min + lat_max) / 2
         self.longitude_center = (lon_min + lon_max) / 2
         distance, az1, az2 = gps2dist_azimuth(self.latitude_center, self.longitude_center, lat_max, lon_max)
-        self.h_range = kilometers2degrees(distance*0.001)
+        self.h_range = kilometers2degrees(distance * 0.001)
 
     def __get_lat_mean(self):
 
@@ -74,8 +72,7 @@ class RealCore:
 
     def run_real(self):
         inventory = self._return_inventory()
-
-        obspy_utils.ObspyUtil.realStation(inventory, self.working_directory)
+        obspy_utils.ObspyUtil.real_write_station_file(inventory, self.working_directory)
         stationfile = os.path.join(self.working_directory, "station.dat")
         ttime_file = os.path.join(self.working_directory, 'ttdb.txt')
         nllinput = os.path.join(self.output_directory, "nll_input.txt")
@@ -92,20 +89,20 @@ class RealCore:
         ThresholdSwave = self.real_config.threshold_picks.min_num_s_wave_picks
         number_stations_picks = self.real_config.threshold_picks.min_num_s_wave_picks
         real_handler = RealManager(pick_dir=self.picking_directory, station_file=stationfile,
-        out_data_dir=self.output_directory,
-        time_travel_table_file=ttime_file,
-        gridSearchParamHorizontalRange=self.real_config.grid_search_parameters.horizontal_search_range,
-        HorizontalGridSize=self.real_config.grid_search_parameters.horizontal_search_grid_size,
-        DepthSearchParamHorizontalRange=self.real_config.grid_search_parameters.depth_search_range,
-        DepthGridSize=self.real_config.grid_search_parameters.depth_search_grid_size,
-        EventTimeW=self.real_config.grid_search_parameters.event_time_window,
-        TTHorizontalRange=self.real_config.travel_time_grid_search.horizontal_range,
-        TTHorizontalGridSize=self.real_config.travel_time_grid_search.horizontal_grid_resolution_size,
-        TTDepthGridSize=self.real_config.travel_time_grid_search.depth_grid_resolution_size,
-        TTDepthRange=self.real_config.travel_time_grid_search.depth_range,
-        ThresholdPwave=ThresholdPwave,
-        ThresholdSwave=ThresholdSwave,
-        number_stations_picks=number_stations_picks)
+                                   out_data_dir=self.output_directory,
+                                   time_travel_table_file=ttime_file,
+                                   gridSearchParamHorizontalRange=self.real_config.grid_search_parameters.horizontal_search_range,
+                                   HorizontalGridSize=self.real_config.grid_search_parameters.horizontal_search_grid_size,
+                                   DepthSearchParamHorizontalRange=self.real_config.grid_search_parameters.depth_search_range,
+                                   DepthGridSize=self.real_config.grid_search_parameters.depth_search_grid_size,
+                                   EventTimeW=self.real_config.grid_search_parameters.event_time_window,
+                                   TTHorizontalRange=self.real_config.travel_time_grid_search.horizontal_range,
+                                   TTHorizontalGridSize=self.real_config.travel_time_grid_search.horizontal_grid_resolution_size,
+                                   TTDepthGridSize=self.real_config.travel_time_grid_search.depth_grid_resolution_size,
+                                   TTDepthRange=self.real_config.travel_time_grid_search.depth_range,
+                                   ThresholdPwave=ThresholdPwave,
+                                   ThresholdSwave=ThresholdSwave,
+                                   number_stations_picks=number_stations_picks)
 
         real_handler.latitude_center = self.__get_lat_mean()
         for events_info in real_handler:

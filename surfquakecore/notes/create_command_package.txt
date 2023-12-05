@@ -1,0 +1,54 @@
+mi_proyecto/
+├── mi_paquete/
+│   ├── __init__.py
+│   ├── script.py
+│   └── otro_script.py
+├── pyproject.toml
+└── README.md
+
+# mi_paquete/script.py
+
+# mi_paquete/mi_script.py
+import argparse
+
+def main(parametro1, parametro2):
+    print(f"Parámetro 1: {parametro1}")
+    print(f"Parámetro 2: {parametro2}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Script de ejemplo con dos parámetros.")
+
+    # Añadir argumentos
+    parser.add_argument("-t", "--parametro1", help="Primer parámetro")
+    parser.add_argument("-q", "--parametro2", help="Segundo parámetro")
+
+    # Mostrar ayuda si no se proporcionan argumentos
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    args = parser.parse_args()
+
+    main(args.parametro1, args.parametro2)
+
+# mi_paquete/otro_script.py
+
+def main():
+    print("Ejecutando otro_script")
+
+if __name__ == "__main__":
+    main()
+
+pyproject.toml
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[scripts]
+mi_script = "mi_paquete.script:main"
+otro_script = "mi_paquete.otro_script:main"
+
+pip install .
+
+mi_script.py -t "parametro1" -q "parametro2"
