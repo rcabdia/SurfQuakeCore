@@ -219,26 +219,6 @@ class ProjectSaveFailed(Exception):
 
 class ObspyUtil:
 
-
-    # @staticmethod
-    # def realStation(dataXml, working_directory):
-    #     """
-    #     :param Metadata: STATION XML
-    #     :param stationfile: REAL file with stations information
-    #     :return:
-    #     """
-    #     stationfile = os.path.join(working_directory, "station.dat")
-    #     channels = ['HNZ', 'HHZ', 'BHZ', 'EHZ']
-    #
-    #     with open(stationfile, 'w') as f:
-    #         for network in dataXml:
-    #             for stations in network.stations:
-    #                 info_channel = [ch for ch in stations.channels if ch.code in channels]
-    #                 f.write(f"{stations.longitude}\t{stations.latitude}\t{network.code}\t{stations.code}\t"
-    #                         f"{info_channel[0].code}\t{float(stations.elevation) / 1000: .3f}\n")
-    #
-    #         f.close()
-
     @staticmethod
     def real_write_station_file(Inventory: Inventory, working_directory):
 
@@ -252,14 +232,13 @@ class ObspyUtil:
         list_real_stations_coords_done = []
         for network in Inventory:
             for station in network.stations:
-                for channel in station.channels:
-                    item_done = '\t'.join([network.code, station.code])
-                    if item_done not in list_real_stations_coords_done:
-                        item = '\t'.join(
-                            [str(station.longitude), str(station.latitude), network.code, station.code, "XXK",
-                             str((station.elevation) / 1000)])
-                        list_real_stations_coords_done.append(item_done)
-                        list_real_stations_coords.append(item)
+                item_done = '\t'.join([network.code, station.code])
+                if item_done not in list_real_stations_coords_done:
+                    item = '\t'.join(
+                        [str(station.longitude), str(station.latitude), network.code, station.code, "XXK",
+                         str((station.elevation) / 1000)])
+                    list_real_stations_coords_done.append(item_done)
+                    list_real_stations_coords.append(item)
 
         with open(stations_file, 'w') as f:
             for item in list_real_stations_coords:
