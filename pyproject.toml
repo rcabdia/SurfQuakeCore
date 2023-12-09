@@ -41,4 +41,5 @@ exclude = ["docs*", "tests*", "examples*"]
 "surfquakecore.models" = ["190703-214543/*", "global_earth_model.nd"]
 "surfquakecore.real" = ["tt_db/*"]
 
-
+[project.scripts]
+surfquake = "surfquakecore.cli:main"
