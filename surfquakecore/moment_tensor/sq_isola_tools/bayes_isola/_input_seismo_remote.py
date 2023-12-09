@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os.path
 import urllib.request as urllib
 from obspy import read, Stream, read_inventory

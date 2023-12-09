@@ -1,5 +1,3 @@
-#! /usr/bin/env python
-
 """
 A class for detection of long-period disturbances by their modeling and fitting.
 

@@ -7,7 +7,7 @@ from typing import Optional, Union
 
 from obspy import UTCDateTime, read_inventory, Inventory
 
-from surfquakecore.bin import BINARY_GREEN_DIR
+from surfquakecore.binaries import BINARY_GREEN_DIR
 from surfquakecore.moment_tensor.mti_parse import load_mti_configurations, load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools import bayes_isola
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola import ResolveMt

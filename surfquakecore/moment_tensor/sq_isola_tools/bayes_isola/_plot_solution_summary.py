@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import numpy as np
 from obspy.imaging.beachball import beach#, beachball
 #from obspy.imaging.mopad_wrapper import beach as beach2   # nofill parameter results in a black circle

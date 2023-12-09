@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Solves inverse problem in a single grid point for multiple time shifts.
 

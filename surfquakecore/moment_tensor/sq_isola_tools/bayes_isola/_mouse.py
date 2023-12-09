@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os.path
 
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MouseTrap import *

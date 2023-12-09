@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Function for reading synthetic waveforms and response files in various fileformats.
 

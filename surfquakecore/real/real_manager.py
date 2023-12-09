@@ -6,7 +6,7 @@ import subprocess
 import time
 import warnings
 from typing import Optional, Union, List, Dict, Tuple
-from ..bin import BINARY_REAL_FILE
+from ..binaries import BINARY_REAL_FILE
 from .structs import RealD, RealR, RealG, RealV, RealS, Station, EventLocation, PhaseLocation, \
     EventsInfo
 from ..utils.subprocess_utils import exc_cmd

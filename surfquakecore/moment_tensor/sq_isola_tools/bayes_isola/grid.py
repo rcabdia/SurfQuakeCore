@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 class grid:
 	"""
     Creation of space and time grid for grid-searching MT solution.

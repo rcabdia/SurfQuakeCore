@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os.path
 import numpy as np
 from obspy import read, Trace, Stream, read_inventory

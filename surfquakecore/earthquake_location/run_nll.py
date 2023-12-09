@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Created on Tue Dec 17 20:26:28 2019
 
@@ -20,7 +18,7 @@ from obspy.core.event import Origin
 from obspy.geodetics import gps2dist_azimuth
 from surfquakecore import nll_templates, nll_ak135
 from surfquakecore.data_processing.metadata_manager import MetadataManager
-from surfquakecore.bin import BINARY_NLL_DIR
+from surfquakecore.binaries import BINARY_NLL_DIR
 from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
 from surfquakecore.earthquake_location.structures import NLLConfig
 from surfquakecore.utils import read_nll_performance
@@ -305,7 +303,7 @@ class NllManager:
         bin_file = os.path.join(BINARY_NLL_DIR, file_name)
         if not os.path.isfile(bin_file):
             raise FileNotFoundError("The file {} doesn't exist. Check typos in file_name or make sure to run: "
-                                    "python setup.py build_ext --inplace. These should create a bin folder fo nll with "
+                                    "python setup.py build_ext --inplace. These should create a binaries folder fo nll with "
                                     "the binary files."
                                     .format(bin_file))
         return bin_file

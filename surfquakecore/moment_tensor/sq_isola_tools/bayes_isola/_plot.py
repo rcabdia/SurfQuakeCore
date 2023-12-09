@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from math import sin,cos,radians
 import numpy as np
 import matplotlib.pyplot as plt

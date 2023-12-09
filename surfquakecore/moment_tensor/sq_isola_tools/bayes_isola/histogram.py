@@ -1,6 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Plots histogram (used by :func:`BayesISOLA.plot.plot_uncertainty`).
 
