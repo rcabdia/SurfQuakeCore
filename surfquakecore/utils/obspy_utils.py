@@ -41,7 +41,6 @@ class MseedUtil:
         if not os.path.isdir(stations_dir):
             raise ValueError(f"The path {stations_dir} is not a valid directory")
 
-        print("Not done yet")
         return self.get_files(stations_dir)
 
     def search_files(self, root_path: str):

@@ -5,6 +5,8 @@ Calculate Green's function using ``Axitra`` code.
 import os
 import subprocess
 import hashlib
+import platform
+
 
 def Axitra_wrapper(i, model, x, y, z, npts_exp, elemse_start_origin, working_directory, logfile='output/log_green.txt'):
 	"""

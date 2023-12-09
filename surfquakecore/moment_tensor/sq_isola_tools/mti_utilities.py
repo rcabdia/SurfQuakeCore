@@ -1,6 +1,7 @@
 import math
 import os
 import shutil
+import stat
 from trace import Trace
 from typing import Union, List, Optional
 
@@ -182,7 +183,11 @@ class MTIManager:
     def copy_to_working_directory(self, src_dir: Union[str, os.PathLike[str]]):
 
         for file in os.listdir(src_dir):
-            shutil.copy2(os.path.join(src_dir, file), self.working_directory)
+            shutil.copy(os.path.join(src_dir, file), self.working_directory)
+            if file == "gr_xyz" or file == "elemse":
+                file_path = os.path.join(self.working_directory, file)
+                st = os.stat(file_path)
+                os.chmod(file_path, st.st_mode | stat.S_IEXEC)
 
     @classmethod
     def default_processing(cls, files_path, origin_time,

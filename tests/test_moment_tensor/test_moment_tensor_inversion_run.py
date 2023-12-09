@@ -1,6 +1,7 @@
 import os
 import shutil
 import unittest
+import warnings
 
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore, generate_mti_id_output
@@ -11,6 +12,7 @@ from tests.test_resources.mti.mti_run_inversion_resources import test_inversion_
 class TestBayesianIsolaCore(unittest.TestCase):
 
     def setUp(self):
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
         self.root_resource = test_inversion_resource_path
 
         self.inventory_path = os.path.join(self.root_resource, "inv_surfquakecore.xml")
