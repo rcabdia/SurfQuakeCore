@@ -48,10 +48,10 @@ class TestBayesianIsolaCore(unittest.TestCase):
         mti_config.inversion_parameters.earth_model_file = os.path.join(self.root_resource, "Iberia_test.dat")
 
         bic = BayesianIsolaCore(
-            project=project,
-            inventory_file=self.inventory_path,
-            output_directory=self.output_directory,
-            save_plots=False,
+             project=project,
+             inventory_file=self.inventory_path,
+             output_directory=self.output_directory,
+             save_plots=False,
         )
 
         bic.run_inversion(mti_config=mti_config)
@@ -64,3 +64,4 @@ class TestBayesianIsolaCore(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

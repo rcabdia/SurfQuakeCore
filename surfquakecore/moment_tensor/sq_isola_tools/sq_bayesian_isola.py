@@ -1,6 +1,7 @@
 import gc
 import os
 import shutil
+import sys
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 from typing import Optional, Union
@@ -15,6 +16,7 @@ from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.load_data import loa
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
 from surfquakecore.utils.obspy_utils import MseedUtil
+from surfquakecore.utils.system_utils import get_python_major_version
 
 
 def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
@@ -85,7 +87,8 @@ class BayesianIsolaCore:
         temp_dir = None
         try:
             if self.working_directory is None:
-                temp_dir = TemporaryDirectory(ignore_cleanup_errors=True)
+                kw = {"ignore_cleanup_errors": True} if get_python_major_version() > 9 else {}
+                temp_dir = TemporaryDirectory(**kw)
                 self.working_directory = temp_dir.name
             if not os.path.isdir(self.working_directory):
                 os.mkdir(self.working_directory)
