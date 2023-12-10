@@ -8,7 +8,7 @@ from obspy import read, UTCDateTime, Inventory
 from obspy.core.event import Origin
 from surfquakecore.utils import read_nll_performance
 from surfquakecore.utils.nll_org_errors import computeOriginErrors
-
+from functools import partial
 
 class MseedUtil:
 
@@ -43,7 +43,7 @@ class MseedUtil:
 
         return self.get_files(stations_dir)
 
-    def search_files(self, root_path: str):
+    def search_files(self, root_path: str, verbose: bool):
         self._data_files = []
         for top_dir, sub_dir, files in os.walk(root_path):
             for file in files:
@@ -51,7 +51,8 @@ class MseedUtil:
 
         cpus = min(len(self._data_files), os.cpu_count())
         with Pool(processes=cpus) as pool:
-            returned_list = pool.map(self._parse_data_file, self._data_files)
+            partial_task = partial(self._parse_data_file, verbose=verbose)
+            returned_list = pool.map(partial_task, self._data_files)
 
         project = self._convert2dict(returned_list)
 
@@ -137,7 +138,7 @@ class MseedUtil:
 
         return result
 
-    def _parse_data_file(self, file: str):
+    def _parse_data_file(self, file: str, verbose: bool):
 
         try:
             header = read(file, headeronly=True)
@@ -149,6 +150,8 @@ class MseedUtil:
         chn = header[0].stats.channel
         key = f"{net}.{sta}.{chn}"
         data_map = [file, header[0].stats]
+        if verbose:
+            print("included in the project file ", file)
 
         return key, data_map
 

@@ -9,11 +9,15 @@ project_file_path = os.path.join(path_to_project, project_name)
 if __name__ == '__main__':
     freeze_support()
     ms = MseedUtil()
-    project = ms.search_files(data_dir_path)
+    project = ms.search_files(data_dir_path, verbose=True)
     print("End of project creation, number of files ", len(project))
+    # Filter project
+
+    #project_filtered, data = ms.filter_project_keys(project, net="FR", station="CARF")
+    #print(project_filtered)
 
     # it is possible to save the project for later use
-    project = ms.save_project(project, project_file_path)
+    ms.save_project(project, project_file_path)
     # alternatively one can load the project
     #project = MseedUtil.load_project(file=project_file_path)
     #print(project)
