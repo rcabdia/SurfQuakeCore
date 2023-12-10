@@ -32,12 +32,11 @@ exclude = ["docs*", "tests*", "examples*"]
 "surfquakecore.binaries.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
 "surfquakecore.binaries.mac_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
 "surfquakecore.binaries.win_bin" = ["mti_green/*"]
-# TODO Why do u need all this?? lots of data here seems not necessary.
-# TODO To me loc_structure seems output data...If thats the case this should be handle outside the project structure folder
-#"surfquakecore.earthquake_location.loc_structure" = [
-#    "ak135/*", "loc/*", "local_models/*", "loc/*", "model1D/*",
-#    "model3D/*", "obs/*", "run/*", "stations/*", "temp/*", "time/*"
-#]
+
+"surfquakecore.earthquake_location.loc_structure" = [
+    "ak135/*", "loc/*", "local_models/*", "loc/*", "model1D/*",
+    "model3D/*", "obs/*", "run/*", "stations/*", "temp/*", "time/*"
+]
 "surfquakecore.models" = ["190703-214543/*", "global_earth_model.nd"]
 "surfquakecore.real" = ["tt_db/*"]
 
