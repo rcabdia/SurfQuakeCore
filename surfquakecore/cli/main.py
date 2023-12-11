@@ -22,9 +22,14 @@ class _CliActions:
 def _create_actions():
     _actions = {
         "project": _CliActions(
-            name="project", run=_project, description=f"Type {__entry_point_name} remove -h for help.\n"),
+            name="project", run=_project, description=f"Type {__entry_point_name} -h for help.\n"),
+
         "pick": _CliActions(
-            name="pick", run=_pick, description=f"Type {__entry_point_name} remove -h for help.\n")
+            name="pick", run=_pick, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "check": _CliActions(
+            name="check", run=_check, description=f"Type {__entry_point_name} -h for help.\n")
+
     }
 
     return _actions
@@ -46,10 +51,18 @@ def main(argv: Optional[str] = None):
               f"{''.join([f'- {ac.description}' for ac in actions.values()])}")
 
 
+def _check():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} check")
+    arg_parse.usage = ("check: working check")
+    arg_parse.add_argument("-d", help="Path to data files directory", type=str, required=True)
+    parsed_args = arg_parse.parse_args()
+    print(parsed_args.d)
+
 def _project():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} project")
     arg_parse.usage = ("Creating project example: surfquake project -d [path to your data files] "
                        "-s [path to your saving directory] " "-n [project name] --verbose")
+
     arg_parse.add_argument("-d", help="Path to data files directory", type=str, required=True)
     arg_parse.add_argument("-s", help="Path to directory where project will be saved", type=str,
                            required=True)
@@ -79,10 +92,10 @@ def _pick():
     from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} pick")
     arg_parse.usage = ("Run picker: -f [path to your project file] "
-                       "-s [path to your pick saving directory] -p [P-wave threshoold] -s [S-wave threshold] --verbose")
+                       "-d [path to your pick saving directory] -p [P-wave threshoold] -s [S-wave threshold] --verbose")
 
     arg_parse.add_argument("-f", help="path to your project file", type=str, required=True)
-    arg_parse.add_argument("-s", help="Path to directory where picks will be saved", type=str,
+    arg_parse.add_argument("-d", help="Path to directory where picks will be saved", type=str,
                            required=True)
     arg_parse.add_argument("-p", help="P-wave threshoold", type=float,
                            required=True)
@@ -94,8 +107,8 @@ def _pick():
     parsed_args = arg_parse.parse_args()
 
     #project = MseedUtil.load_project(file=arg_parse.f)
-    sp_loaded = SurfProject.load_project(path_to_project_file=arg_parse.f)
-    if len(sp_loaded.project)>0 and isinstance(sp_loaded, SurfProject):
+    sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.f)
+    if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
         phISP = PhasenetISP(sp_loaded.project, modelpath=model_dir, amplitude=True, min_p_prob=parsed_args.p,
                             min_s_prob=parsed_args.s)
 
@@ -105,8 +118,8 @@ def _pick():
         """ PHASENET OUTPUT TO REAL INPUT """
         #
         picks_results = PhasenetUtils.split_picks(picks)
-        PhasenetUtils.convert2real(picks_results, parsed_args.s)
-        PhasenetUtils.save_original_picks(picks_results, parsed_args.s)
+        PhasenetUtils.convert2real(picks_results, parsed_args.d)
+        PhasenetUtils.save_original_picks(picks_results, parsed_args.d)
     else:
         print("Empty Project, Nothing to pick!")
 
