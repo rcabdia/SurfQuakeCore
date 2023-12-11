@@ -3,10 +3,10 @@ import sys
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from typing import Optional
-
 from surfquakecore import model_dir
 from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
-from surfquakecore.utils.obspy_utils import MseedUtil
+from surfquakecore.project.surf_project import SurfProject
+#from surfquakecore.utils.obspy_utils import MseedUtil
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -54,19 +54,26 @@ def _project():
     arg_parse.add_argument("-s", help="Path to directory where project will be saved", type=str,
                            required=True)
     arg_parse.add_argument("-n", help="Project Name", type=str, required=True)
+
     arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
                            action="store_true")
     parsed_args = arg_parse.parse_args()
 
     print(f"Project from {parsed_args.d} saving to {parsed_args.s} as {parsed_args.n}")
     if parsed_args.verbose is not None:
-        project = MseedUtil().search_files(parsed_args.d, verbose=True)
+        #project = MseedUtil().search_files(parsed_args.d, verbose=True)
+        sp = SurfProject(parsed_args.d)
+        sp.search_files(verbose=True)
+        print(sp)
     else:
-        project = MseedUtil().search_files(parsed_args.d, verbose=False)
+        #project = MseedUtil().search_files(parsed_args.d, verbose=False)
+        sp = SurfProject(parsed_args.d)
+        sp.search_files(verbose=False)
 
     project_file_path = os.path.join(parsed_args.s, parsed_args.n)
-    print("End of project creation, number of files ", len(project))
-    MseedUtil().save_project(project, project_file_path)
+    print("End of project creation, number of files ", len(sp.project))
+    #MseedUtil().save_project(project, project_file_path)
+    sp.save_project(path_file_to_storage=project_file_path)
 
 def _pick():
 
@@ -85,19 +92,23 @@ def _pick():
     arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
                            action="store_true")
     parsed_args = arg_parse.parse_args()
-    project = MseedUtil.load_project(file=arg_parse.f)
-    # # conservative mode
-    phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=parsed_args.p,
-                        min_s_prob=parsed_args.s)
 
-    # Running Stage
-    picks = phISP.phasenet()
-    #
-    """ PHASENET OUTPUT TO REAL INPUT """
-    #
-    picks_results = PhasenetUtils.split_picks(picks)
-    PhasenetUtils.convert2real(picks_results, parsed_args.s)
-    PhasenetUtils.save_original_picks(picks_results, parsed_args.s)
+    #project = MseedUtil.load_project(file=arg_parse.f)
+    sp_loaded = SurfProject.load_project(path_to_project_file=arg_parse.f)
+    if len(sp_loaded.project)>0 and isinstance(sp_loaded, SurfProject):
+        phISP = PhasenetISP(sp_loaded.project, modelpath=model_dir, amplitude=True, min_p_prob=parsed_args.p,
+                            min_s_prob=parsed_args.s)
+
+        # Running Stage
+        picks = phISP.phasenet()
+        #
+        """ PHASENET OUTPUT TO REAL INPUT """
+        #
+        picks_results = PhasenetUtils.split_picks(picks)
+        PhasenetUtils.convert2real(picks_results, parsed_args.s)
+        PhasenetUtils.save_original_picks(picks_results, parsed_args.s)
+    else:
+        print("Empty Project, Nothing to pick!")
 
 if __name__ == "__main__":
     main()

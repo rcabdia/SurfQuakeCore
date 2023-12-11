@@ -1,9 +1,9 @@
 from multiprocessing import freeze_support
 from surfquakecore.project.surf_project import SurfProject
 import time
-#path_to_data = "/Users/admin/Documents/iMacROA/SurfQuakeCore/tests/test_resources/mti/mti_run_inversion_resources/waveforms"
-path_to_data ="/Volumes/LaCie/test_surfquake_core/testing_data"
-path_to_project ="/Volumes/LaCie/test_surfquake_core/testing_data/surfquake_project_new.pkl"
+
+path_to_data = "/Volumes/LaCie/test_surfquake_core/testing_data"
+path_to_project = "/Volumes/LaCie/test_surfquake_core/testing_data/surfquake_project_new.pkl"
 
 if __name__ == '__main__':
 
