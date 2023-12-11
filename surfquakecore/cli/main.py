@@ -2,9 +2,9 @@ import os
 import sys
 from argparse import ArgumentParser
 from dataclasses import dataclass
+from multiprocessing import freeze_support
 from typing import Optional
 from surfquakecore import model_dir
-from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
 from surfquakecore.project.surf_project import SurfProject
 #from surfquakecore.utils.obspy_utils import MseedUtil
 
@@ -60,7 +60,7 @@ def _project():
     parsed_args = arg_parse.parse_args()
 
     print(f"Project from {parsed_args.d} saving to {parsed_args.s} as {parsed_args.n}")
-    if parsed_args.verbose is not None:
+    if parsed_args.verbose is not None and parsed_args.verbose == True:
         #project = MseedUtil().search_files(parsed_args.d, verbose=True)
         sp = SurfProject(parsed_args.d)
         sp.search_files(verbose=True)
@@ -76,7 +76,7 @@ def _project():
     sp.save_project(path_file_to_storage=project_file_path)
 
 def _pick():
-
+    from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} pick")
     arg_parse.usage = ("Run picker: -f [path to your project file] "
                        "-s [path to your pick saving directory] -p [P-wave threshoold] -s [S-wave threshold] --verbose")
@@ -111,4 +111,5 @@ def _pick():
         print("Empty Project, Nothing to pick!")
 
 if __name__ == "__main__":
+    freeze_support()
     main()

@@ -10,7 +10,7 @@ if __name__ == '__main__':
     freeze_support()
     sp = SurfProject(path_to_data)
     #sp.search_files(starttime="2022-01-30 23:55:00", endtime="2022-02-01 00:30:00", stations="SALF,VALC", channels="HHZ")
-    sp.search_files()
+    sp.search_files(verbose=False)
     #sp_original_project = copy.copy()
     sp.filter_project_keys(station="SALF|VALC|CEST")
     sp_original1 = sp.copy()
