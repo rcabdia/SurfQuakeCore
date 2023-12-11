@@ -6,12 +6,28 @@ from functools import partial
 from typing import Tuple, List
 import re
 from obspy import read, UTCDateTime
-#from collections import ChainMap
 import copy
 
 class SurfProject:
 
     def __init__(self, root_path):
+
+        """
+
+        SurfProject class is designed to be able to storage the path to seismograms
+        files plus the file metadata information (i.e. sampling_rate, starttime...)
+
+        Attributes:
+        - root_path (str): The root path to the folder where the user have the data files.
+
+        Methods:
+        - __init__(root_path): Initialize a new instance of MyClass.
+        - load_project(path_to_project_file: str): Load a project from a file storage in hard-drive
+        - save_project(path_file_to_storage: str): Saves a project as a pickle file in hard-drive
+        - search_files(verbose=True, **kwargs): Create a project. It can be used filters by nets,
+        stations, channels selection and/or filter by timestamp
+        - filter_project_keys(**kwargs): Filter a project (once is crated) using regular expressions.
+        """
 
         self.root_path = root_path
         self.project = {}
@@ -19,7 +35,6 @@ class SurfProject:
 
     def __add__(self, other):
         if isinstance(other, SurfProject):
-            #join_project = ChainMap(self.project, other.project)
 
             root_path = [self.root_path, other.root_path]
             data_files = self.data_files + other.data_files
@@ -55,17 +70,34 @@ class SurfProject:
     def load_project(path_to_project_file: str):
         return pickle.load(open(path_to_project_file, "rb"))
 
-    def save_project(self, path):
+    def save_project(self, path_file_to_storage: str):
 
         if len(self.project):
             try:
-                file_to_store = open(path, "wb")
-                pickle.dump(self.project, file_to_store)
+                file_to_store = open(path_file_to_storage, "wb")
+                pickle.dump(self, file_to_store)
                 print("Succesfully saved project")
             except ProjectSaveFailed as e:
                 print(f"Project couldn't be saved: {e}")
 
     def search_files(self, verbose=True, **kwargs):
+
+        """
+        Args:
+
+        - verbose (bool): Description of arg1.
+        - nets (str): String with the name of selected nets to be filtered (i.e., "WM,ES")
+        - stations (str): String with the name of selected stations to be filtered (i.e., "ARNO,UCM,EMAL")
+        - channels (str): String with the name of selected channels to be filtered (i.e., "HHN,HHZ,HHE")
+        - starttime (str "%Y-%m-%d %H:%M:%S" ): String with the reference starttime, upper time spam threshold
+        (i.e.,"2023-12-10 00:00:00")
+        - endtime (str "%Y-%m-%d %H:%M:%S" ): String with the reference endtime, lower time spam threshold
+        (i.e.,"2023-12-23 00:00:00")
+
+        Returns:
+        - type: Description of the return value.
+        """
+
         date_format = "%Y-%m-%d %H:%M:%S"  # "2023-12-11 14:30:00"
         start: str = kwargs.pop('starttime', None)
         end: str = kwargs.pop('endtime', None)
@@ -165,6 +197,13 @@ class SurfProject:
 
     def filter_project_keys(self, **kwargs):
 
+        """
+        Args:
+        - net (str): String with the name of selected nets to be filtered (i.e., ".")
+        - station (str): String with the name of selected stations to be filtered (i.e., "ARNO|UCM|EMAL")
+        - channel (str): String with the name of selected channels to be filtered (i.e., "HH.")
+        """
+
         self.data_files = []
 
         # filter dict by python wilcards remind
@@ -202,7 +241,37 @@ class SurfProject:
 
         return res
 
-    def filter_time(self, **kwargs):
+    def filter_project_time(self, starttime: str, endtime: str):
+
+        """
+
+        - starttime (str, "%Y-%m-%d %H:%M:%S"): String with the reference starttime, upper time spam threshold
+        (i.e., "2023-12-10 00:00:00")
+
+        - endtime (str, "%Y-%m-%d %H:%M:%S" ): String with the reference endtime, lower time spam threshold
+        (i.e., "2023-12-23 00:00:00")
+
+        """
+
+        date_format = "%Y-%m-%d %H:%M:%S"
+        start = datetime.strptime(starttime, date_format)
+        end = datetime.strptime(endtime, date_format)
+        if len(self.project) > 0:
+            for key in self.project:
+                item = self.project[key]
+                indices_to_remove = []
+                for index, value in enumerate(item):
+                    start_data = value[1].starttime
+                    end_data = value[1].endtime
+                    if start <= start_data and end >= end_data:
+                        pass
+                    else:
+                        indices_to_remove.append(index)
+                for index in reversed(indices_to_remove):
+                    item.pop(index)
+                self.project[key] = item
+
+    def filter_time(self, **kwargs) -> list:
 
         # filter the list output of filter_project_keys by trimed times
 
