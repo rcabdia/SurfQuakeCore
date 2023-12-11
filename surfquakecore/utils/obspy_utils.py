@@ -43,7 +43,7 @@ class MseedUtil:
 
         return self.get_files(stations_dir)
 
-    def search_files(self, root_path: str, verbose: bool):
+    def search_files(self, root_path: str, verbose=True):
         self._data_files = []
         for top_dir, sub_dir, files in os.walk(root_path):
             for file in files:

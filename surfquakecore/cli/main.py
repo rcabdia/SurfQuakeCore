@@ -4,6 +4,8 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from typing import Optional
 
+from surfquakecore import model_dir
+from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
 from surfquakecore.utils.obspy_utils import MseedUtil
 
 # should be equal to [project.scripts]
@@ -20,7 +22,9 @@ class _CliActions:
 def _create_actions():
     _actions = {
         "project": _CliActions(
-            name="project", run=_project, description=f"Type {__entry_point_name} remove -h for help.\n")
+            name="project", run=_project, description=f"Type {__entry_point_name} remove -h for help.\n"),
+        "pick": _CliActions(
+            name="pick", run=_pick, description=f"Type {__entry_point_name} remove -h for help.\n")
     }
 
     return _actions
@@ -64,6 +68,36 @@ def _project():
     print("End of project creation, number of files ", len(project))
     MseedUtil().save_project(project, project_file_path)
 
+def _pick():
+
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} pick")
+    arg_parse.usage = ("Run picker: -f [path to your project file] "
+                       "-s [path to your pick saving directory] -p [P-wave threshoold] -s [S-wave threshold] --verbose")
+
+    arg_parse.add_argument("-f", help="path to your project file", type=str, required=True)
+    arg_parse.add_argument("-s", help="Path to directory where picks will be saved", type=str,
+                           required=True)
+    arg_parse.add_argument("-p", help="P-wave threshoold", type=float,
+                           required=True)
+    arg_parse.add_argument("-s", help="S-wave threshold", type=float,
+                           required=True)
+
+    arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
+                           action="store_true")
+    parsed_args = arg_parse.parse_args()
+    project = MseedUtil.load_project(file=arg_parse.f)
+    # # conservative mode
+    phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=parsed_args.p,
+                        min_s_prob=parsed_args.s)
+
+    # Running Stage
+    picks = phISP.phasenet()
+    #
+    """ PHASENET OUTPUT TO REAL INPUT """
+    #
+    picks_results = PhasenetUtils.split_picks(picks)
+    PhasenetUtils.convert2real(picks_results, parsed_args.s)
+    PhasenetUtils.save_original_picks(picks_results, parsed_args.s)
 
 if __name__ == "__main__":
     main()
