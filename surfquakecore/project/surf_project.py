@@ -3,14 +3,15 @@ from datetime import datetime
 from multiprocessing import Pool
 import os
 from functools import partial
-from typing import Tuple, List
+from typing import Tuple, List, Union
 import re
 from obspy import read, UTCDateTime
 import copy
 
+
 class SurfProject:
 
-    def __init__(self, root_path):
+    def __init__(self, root_path: Union[str, List[str]]):
 
         """
 
@@ -52,9 +53,10 @@ class SurfProject:
                 print(f' {"Code"}      {"File"}     {"Sampling Rate"}     {"StartTime"}     {"EndTime"}')
                 item = self.project[key]
                 for value in item:
-                    print(key, os.path.basename(value[0]), value[1].sampling_rate,  value[1].starttime,
+                    print(key, os.path.basename(value[0]), value[1].sampling_rate, value[1].starttime,
                           value[1].endtime)
         return ""
+
     def __copy__(self):
         # Create a new instance of the class with the same data
         new_instance = self.__class__(self.root_path)
@@ -80,7 +82,7 @@ class SurfProject:
             except ProjectSaveFailed as e:
                 print(f"Project couldn't be saved: {e}")
 
-    def search_files(self, verbose=True, **kwargs):
+    def search_files(self, format="NONE", verbose=True, **kwargs):
 
         """
         Args:
@@ -129,19 +131,21 @@ class SurfProject:
 
         cpus = min(len(data_files), os.cpu_count())
         with Pool(processes=cpus) as pool:
-            partial_task = partial(self._parse_data_file, filter=filter, verbose=verbose)
+            partial_task = partial(self._parse_data_file, format=format, filter=filter, verbose=verbose)
             returned_list = pool.map(partial_task, data_files)
 
         self._convert2dict(returned_list)
 
-
-    def _parse_data_file(self, file: str, filter: dict, verbose: bool):
+    def _parse_data_file(self, file: str, format: str, filter: dict, verbose: bool):
 
         check_filter_time = True
         check_filter_selection = True
 
         try:
-            header = read(file, headeronly=True)
+            if format == "NONE":
+                header = read(file, headeronly=True)
+            else:
+                header = read(file, headeronly=True, format=format)
         except TypeError:
             return [None, None]
 
@@ -152,7 +156,8 @@ class SurfProject:
 
         # filter time
         if filter["start"] is not None and filter["end"] is not None:
-            if filter["start"] <= header[0].stats.starttime.datetime and header[0].stats.endtime.datetime <= filter["end"]:
+            if filter["start"] <= header[0].stats.starttime.datetime and header[0].stats.endtime.datetime <= filter[
+                "end"]:
                 pass
             else:
                 check_filter_time = False
@@ -193,7 +198,6 @@ class SurfProject:
 
             elif name[0] not in self.project.keys() and name[0] is not None:
                 self.project[name[0]] = [[name[1][0], name[1][1]]]
-
 
     def filter_project_keys(self, **kwargs):
 
@@ -276,8 +280,8 @@ class SurfProject:
         # filter the list output of filter_project_keys by trimed times
 
         result = []
-        st1 = kwargs.pop('starttime', None) # st1 is UTCDateTime
-        et1 = kwargs.pop('endtime', None) # st2 is UTCDateTime
+        st1 = kwargs.pop('starttime', None)  # st1 is UTCDateTime
+        et1 = kwargs.pop('endtime', None)  # st2 is UTCDateTime
 
         if st1 is None and et1 is None:
             for file in self.data_files:
@@ -318,6 +322,8 @@ class SurfProject:
         files_path = self.filter_time(list_files=self.data_files, starttime=start, endtime=end)
         return files_path
 
-class ProjectSaveFailed(Exception):
-    pass
 
+class ProjectSaveFailed(Exception):
+    def __init__(self, message="Error saving project"):
+        self.message = message
+        super().__init__(self.message)
