@@ -6,11 +6,12 @@ from multiprocessing import freeze_support
 from typing import Optional
 from surfquakecore import model_dir
 from surfquakecore.project.surf_project import SurfProject
+from surfquakecore.real.real_core import RealCore
 #from surfquakecore.utils.obspy_utils import MseedUtil
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
-
+web_tutorial_address = "https://projectisp.github.io/surfquaketutorial.github.io/"
 
 @dataclass
 class _CliActions:
@@ -27,8 +28,8 @@ def _create_actions():
         "pick": _CliActions(
             name="pick", run=_pick, description=f"Type {__entry_point_name} -h for help.\n"),
 
-        "check": _CliActions(
-            name="check", run=_check, description=f"Type {__entry_point_name} -h for help.\n")
+        "associate": _CliActions(
+            name="associate", run=_associate, description=f"Type {__entry_point_name} -h for help.\n")
 
     }
 
@@ -51,46 +52,71 @@ def main(argv: Optional[str] = None):
               f"{''.join([f'- {ac.description}' for ac in actions.values()])}")
 
 
-def _check():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} check")
-    arg_parse.usage = ("check: working check")
-    arg_parse.add_argument("-d", help="Path to data files directory", type=str, required=True)
-    parsed_args = arg_parse.parse_args()
-    print(parsed_args.d)
 
 def _project():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} project")
-    arg_parse.usage = ("Creating project example: surfquake project -d [path to your data files] "
-                       "-s [path to your saving directory] " "-n [project name] --verbose")
 
-    arg_parse.add_argument("-d", help="Path to data files directory", type=str, required=True)
-    arg_parse.add_argument("-s", help="Path to directory where project will be saved", type=str,
+    """
+    Command-line interface for creating a seismic project.
+    """
+
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} project", description="Create a seismic project by storing "
+                                                          "the paths to seismogram files and their metadata.")
+
+    arg_parse.epilog = """
+    Overview:
+      This command allows you to create a seismic project, which is essentially a dictionary
+      storing the paths to seismogram files along with their corresponding metadata.
+    
+    Usage:
+      surfquake project -d [path to data files] -s [path to save directory] -n [project name] --verbose
+    
+    Documentation:
+      https://projectisp.github.io/surfquaketutorial.github.io/
+    """
+
+
+    arg_parse.add_argument("-d", "--data-dir", help="Path to data files directory", type=str, required=True)
+    arg_parse.add_argument("-s", "--save-dir", help="Path to directory where project will be saved", type=str,
                            required=True)
-    arg_parse.add_argument("-n", help="Project Name", type=str, required=True)
+    arg_parse.add_argument("-n", "--project-name", help="Project Name", type=str, required=True)
 
     arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
                            action="store_true")
     parsed_args = arg_parse.parse_args()
 
     print(f"Project from {parsed_args.d} saving to {parsed_args.s} as {parsed_args.n}")
-    if parsed_args.verbose is not None and parsed_args.verbose == True:
-        #project = MseedUtil().search_files(parsed_args.d, verbose=True)
-        sp = SurfProject(parsed_args.d)
-        sp.search_files(verbose=True)
-        print(sp)
-    else:
-        #project = MseedUtil().search_files(parsed_args.d, verbose=False)
-        sp = SurfProject(parsed_args.d)
-        sp.search_files(verbose=False)
-
+    #project = MseedUtil().search_files(parsed_args.d, verbose=True)
+    sp = SurfProject(parsed_args.d)
     project_file_path = os.path.join(parsed_args.s, parsed_args.n)
+    sp.search_files(verbose=parsed_args.verbose)
+    print(sp)
     print("End of project creation, number of files ", len(sp.project))
     #MseedUtil().save_project(project, project_file_path)
     sp.save_project(path_file_to_storage=project_file_path)
 
 def _pick():
     from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} pick")
+
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} pick", description="Use Phasenet Neural Network to estimate "
+                                                                              "body waves arrival times")
+    arg_parse.epilog = """
+            Overview:
+              The Picking algorythm uses the Deep Neural Network of Phasenet to estimate 
+              the arrival times of P- and S-wave
+
+            Usage:
+              surfquake pick -f [path to your project file] -d [path to your pick saving directory] -p 
+              [P-wave threshoold] -s [S-wave threshold] --verbose"
+
+            Reference:
+              Liu, Min, et al. "Rapid characterization of the July 2019 Ridgecrest, California, 
+              earthquake sequence from raw seismic data using machine‐learning phase picker." 
+              Geophysical Research Letters
+
+            Documentation:
+              https://projectisp.github.io/surfquaketutorial.github.io/
+            """
+
     arg_parse.usage = ("Run picker: -f [path to your project file] "
                        "-d [path to your pick saving directory] -p [P-wave threshoold] -s [S-wave threshold] --verbose")
 
@@ -122,6 +148,38 @@ def _pick():
         PhasenetUtils.save_original_picks(picks_results, parsed_args.d)
     else:
         print("Empty Project, Nothing to pick!")
+
+def _associate():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} project", description="Use Associator to group correctly phase "
+                                                                                 "picks to unique seismic events ")
+    arg_parse.epilog = """
+        Overview:
+          You can correlate picks with the corresponding unique seismic events by using this command. 
+          The association was performed using REAL algorithm. 
+
+        Usage:
+          surfquake associate -i [inventory_file_path] -p [path to data picking file] -c [path to real_config_file.ini] -s 
+          [path to directory where project will be saved] --verbose
+          
+        Reference:
+          Zhang et al. 2019, Rapid Earthquake Association and Location, Seismol. Res. Lett. https://doi.org/10.1785/0220190052
+            
+        Documentation:
+          https://projectisp.github.io/surfquaketutorial.github.io/
+        """
+
+    arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless", type=str, required=True)
+    arg_parse.add_argument("-p", "--data-dir", help="Path to data picking file (output Picking File)", type=str, required=True)
+    arg_parse.add_argument("-c", "--config_file-path", help="Path to real_config_file.ini", type=str, required=True)
+    arg_parse.add_argument("-w", "--work_dir-path", help="Path to working_directory (Generated Travel Times)", type=str, required=True)
+    arg_parse.add_argument("-s", "--save-dir", help="Path to directory where project will be saved", type=str,
+                           required=True)
+    arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
+                           action="store_true")
+    parsed_args = arg_parse.parse_args()
+    rc = RealCore(parsed_args.i, parsed_args.c, parsed_args.p, parsed_args.w, parsed_args.s)
+    rc.run_real()
+    print("End of Events AssociationProcess, please see for results: ", parsed_args.s)
 
 if __name__ == "__main__":
     freeze_support()
