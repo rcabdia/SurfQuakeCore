@@ -7,11 +7,11 @@ from typing import Optional
 from surfquakecore import model_dir
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
-#from surfquakecore.utils.obspy_utils import MseedUtil
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
 web_tutorial_address = "https://projectisp.github.io/surfquaketutorial.github.io/"
+
 
 @dataclass
 class _CliActions:
@@ -52,15 +52,14 @@ def main(argv: Optional[str] = None):
               f"{''.join([f'- {ac.description}' for ac in actions.values()])}")
 
 
-
 def _project():
-
     """
     Command-line interface for creating a seismic project.
     """
 
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} project", description="Create a seismic project by storing "
-                                                          "the paths to seismogram files and their metadata.")
+                                                                                 "the paths to seismogram files and "
+                                                                                 "their metadata.")
 
     arg_parse.epilog = """
     Overview:
@@ -74,25 +73,25 @@ def _project():
       https://projectisp.github.io/surfquaketutorial.github.io/
     """
 
-
-    arg_parse.add_argument("-d", "--data-dir", help="Path to data files directory", type=str, required=True)
-    arg_parse.add_argument("-s", "--save-dir", help="Path to directory where project will be saved", type=str,
+    arg_parse.add_argument("-d", "--data_dir", help="Path to data files directory", type=str, required=True)
+    arg_parse.add_argument("-s", "--save_dir", help="Path to directory where project will be saved", type=str,
                            required=True)
-    arg_parse.add_argument("-n", "--project-name", help="Project Name", type=str, required=True)
+    arg_parse.add_argument("-n", "--project_name", help="Project Name", type=str, required=True)
 
     arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
                            action="store_true")
     parsed_args = arg_parse.parse_args()
 
-    print(f"Project from {parsed_args.d} saving to {parsed_args.s} as {parsed_args.n}")
-    #project = MseedUtil().search_files(parsed_args.d, verbose=True)
-    sp = SurfProject(parsed_args.d)
-    project_file_path = os.path.join(parsed_args.s, parsed_args.n)
+    print(f"Project from {parsed_args.data_dir} saving to {parsed_args.save_dir} as {parsed_args.project_name}")
+    # project = MseedUtil().search_files(parsed_args.d, verbose=True)
+    sp = SurfProject(parsed_args.data_dir)
+    project_file_path = os.path.join(parsed_args.save_dir, parsed_args.project_name)
     sp.search_files(verbose=parsed_args.verbose)
     print(sp)
     print("End of project creation, number of files ", len(sp.project))
-    #MseedUtil().save_project(project, project_file_path)
+    # MseedUtil().save_project(project, project_file_path)
     sp.save_project(path_file_to_storage=project_file_path)
+
 
 def _pick():
     from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
@@ -132,14 +131,14 @@ def _pick():
                            action="store_true")
     parsed_args = arg_parse.parse_args()
 
-    #project = MseedUtil.load_project(file=arg_parse.f)
+    # project = MseedUtil.load_project(file=arg_parse.f)
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.f)
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
-        phISP = PhasenetISP(sp_loaded.project, modelpath=model_dir, amplitude=True, min_p_prob=parsed_args.p,
-                            min_s_prob=parsed_args.s)
+        picker = PhasenetISP(sp_loaded.project, modelpath=model_dir, amplitude=True, min_p_prob=parsed_args.p,
+                             min_s_prob=parsed_args.s)
 
         # Running Stage
-        picks = phISP.phasenet()
+        picks = picker.phasenet()
         #
         """ PHASENET OUTPUT TO REAL INPUT """
         #
@@ -149,37 +148,45 @@ def _pick():
     else:
         print("Empty Project, Nothing to pick!")
 
+
 def _associate():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} project", description="Use Associator to group correctly phase "
-                                                                                 "picks to unique seismic events ")
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} associator", description="Use Associator to group correctly "
+                                                                                    "phase picks to unique seismic "
+                                                                                    "events")
     arg_parse.epilog = """
         Overview:
           You can correlate picks with the corresponding unique seismic events by using this command. 
           The association was performed using REAL algorithm. 
 
-        Usage:
-          surfquake associate -i [inventory_file_path] -p [path to data picking file] -c [path to real_config_file.ini] -s 
-          [path to directory where project will be saved] --verbose
+        Usage: surfquake associate -i [inventory_file_path] -p [path to data picking file] -c [path to 
+        real_config_file.ini] -s [path to directory where project will be saved] --verbose
           
-        Reference:
-          Zhang et al. 2019, Rapid Earthquake Association and Location, Seismol. Res. Lett. https://doi.org/10.1785/0220190052
+        Reference: Zhang et al. 2019, Rapid Earthquake Association and Location, Seismol. Res. Lett. 
+        https://doi.org/10.1785/0220190052
             
         Documentation:
           https://projectisp.github.io/surfquaketutorial.github.io/
+          # Time file is based on https://github.com/Dal-mzhang/LOC-FLOW/blob/main/LOCFLOW-CookBook.pdf
+          # reference for structs: https://github.com/Dal-mzhang/REAL/blob/master/REAL_userguide_July2021.pdf
         """
 
-    arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless", type=str, required=True)
-    arg_parse.add_argument("-p", "--data-dir", help="Path to data picking file (output Picking File)", type=str, required=True)
-    arg_parse.add_argument("-c", "--config_file-path", help="Path to real_config_file.ini", type=str, required=True)
-    arg_parse.add_argument("-w", "--work_dir-path", help="Path to working_directory (Generated Travel Times)", type=str, required=True)
-    arg_parse.add_argument("-s", "--save-dir", help="Path to directory where project will be saved", type=str,
+    arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless", type=str,
+                           required=True)
+    arg_parse.add_argument("-p", "--data-dir", help="Path to data picking file (output Picking File)", type=str,
+                           required=True)
+    arg_parse.add_argument("-c", "--config_file_path", help="Path to real_config_file.ini", type=str, required=True)
+    arg_parse.add_argument("-w", "--work_dir_path", help="Path to working_directory (Generated Travel Times)", type=str,
+                           required=True)
+    arg_parse.add_argument("-s", "--save_dir", help="Path to directory where project will be saved", type=str,
                            required=True)
     arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
                            action="store_true")
     parsed_args = arg_parse.parse_args()
-    rc = RealCore(parsed_args.i, parsed_args.c, parsed_args.p, parsed_args.w, parsed_args.s)
+    rc = RealCore(parsed_args.inventory_file_path, parsed_args.config_file_path, parsed_args.data_dir,
+                  parsed_args.work_dir_path, parsed_args.save_dir)
     rc.run_real()
-    print("End of Events AssociationProcess, please see for results: ", parsed_args.s)
+    print("End of Events AssociationProcess, please see for results: ", parsed_args.save_dir)
+
 
 if __name__ == "__main__":
     freeze_support()

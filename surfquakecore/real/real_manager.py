@@ -10,7 +10,7 @@ from ..binaries import BINARY_REAL_FILE
 from .structs import RealD, RealR, RealG, RealV, RealS, Station, EventLocation, PhaseLocation, \
     EventsInfo
 from ..utils.subprocess_utils import exc_cmd
-
+import stat
 
 # Time file is based on https://github.com/Dal-mzhang/LOC-FLOW/blob/main/LOCFLOW-CookBook.pdf
 # reference for structs: https://github.com/Dal-mzhang/REAL/blob/master/REAL_userguide_July2021.pdf
@@ -18,6 +18,9 @@ from ..utils.subprocess_utils import exc_cmd
 class RealManager:
 
     REAL_BIN: str = BINARY_REAL_FILE
+
+    st = os.stat(BINARY_REAL_FILE)
+    os.chmod(BINARY_REAL_FILE, st.st_mode | stat.S_IEXEC)
     DEGREE_TO_KM = 111.19
 
     def __init__(self, pick_dir: str, station_file: str, time_travel_table_file: str, out_data_dir: str, **kwargs):
