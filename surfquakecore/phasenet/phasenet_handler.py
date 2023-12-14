@@ -54,11 +54,37 @@ class Config:
 
 
 class PhasenetISP:
-    def __init__(self, files, batch_size=3, modelpath="", filepath="", hdf5_file="", hdf5_group="data",
-                 resultpath="results", result_fname="picks", highpass_filter=0.5, min_p_prob=0.3, min_s_prob=0.3,
-                 min_peak_distance=50, amplitude=False, format="mseed", stations="", plot_figure=False, save_prob=False,
-                 time_lm=1, time_rm=4):
+    def __init__(self, files, batch_size=3, highpass_filter=0.5, min_p_prob=0.3, min_s_prob=0.3,
+                 min_peak_distance=50, amplitude=False, plot_figure=False, save_prob=False):
+        """
 
+        Main class to initialize the picker
+
+        :param files: Dictionary with kewords addressing to seismograms file path and their corresponding metadata (i.e. sampling rate).
+        :type SurfProject: required (see Project section)
+
+        :param batch_size: Determines the number of samples in each batch (larger batch size uses more memory but can provide more accurate updates)
+        :type float:
+
+        :param highpass_filter: Lower corner frequency of highpass filter to be applied to the raw seismogram. Set to 0 to do not apply any pre-filter
+        :type float:
+
+        :param min_p_prob: Probability threshold for P pick
+        :type float:
+
+        :param min_s_prob: Probability threshold for S pick
+        :type float:
+
+        :param min_peak_distance: Minimum peak distance
+        :type float:
+
+        :param amplitude: if return amplitude value
+        :type float:
+
+        :returns:
+        :rtype: :class:`surfquakecore.phasenet.phasenet_handler.PhasenetISP`
+
+            """
         files_ = PhasenetUtils.convert2dataframe(files)
 
         self.batch_size = batch_size
@@ -66,21 +92,17 @@ class PhasenetISP:
         self.min_p_prob = min_p_prob
         self.min_s_prob = min_s_prob
         self.min_peak_distance = min_peak_distance
-        self.time_lm = time_lm
-        self.time_rm = time_rm
 
-        self.model_path = modelpath
-        self.file_path = filepath
-        self.hdf5_group = hdf5_group
-        self.result_path = resultpath
+        self.model_path = ""
+        self.file_path = ""
+        self.hdf5_group = "data"
+        self.result_path = "results"
 
         self.project = files_
         self.files = files_['fname']
-        self.hdf5_file = hdf5_file
-        self.result_fname = result_fname
-        self.stations = stations
-
-        self.format = format
+        self.hdf5_file = ""
+        self.result_fname = "picks"
+        self.stations = ""
 
         self.amplitude = amplitude
         self.plot_figure = plot_figure
@@ -91,7 +113,6 @@ class PhasenetISP:
     def phasenet(self):
         with tf.compat.v1.name_scope('create_inputs'):
             self.data_reader = PhasenetReader(
-                format=self.format,
                 data_dir=self.file_path,
                 data_list=self.files,
                 hdf5_file=self.hdf5_file,
@@ -172,7 +193,7 @@ class PhasenetISP:
 
 
 class PhasenetReader:
-    def __init__(self, format="mseed", amplitude=True, config=Config(), **kwargs):
+    def __init__(self, amplitude=True, config=Config(), **kwargs):
         self.buffer = {}
         self.n_channel = config.n_channel
         self.n_class = config.n_class
@@ -183,7 +204,6 @@ class PhasenetReader:
         self.label_shape = config.label_shape
         self.label_width = config.label_width
         self.config = config
-        self.format = format
         self.amplitude = amplitude
 
         if "highpass_filter" in kwargs:
@@ -1031,6 +1051,12 @@ class PhasenetUtils:
 
     @staticmethod
     def split_picks(picks):
+
+        """
+        :param picks: A DataFrame with all pick information
+        :type picks: Pandas DataFrame
+        """
+
         print('get_picks & converting to REAL associator format')
         prob_threshold = 0.3
         columns = ['date', 'fname', 'year', 'month', 'day', 'net', 'station', 'flag', 'tt', 'date_time',
