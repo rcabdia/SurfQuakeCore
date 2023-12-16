@@ -6,6 +6,7 @@ Created on Tue Dec 17 20:26:28 2019
 
 import re
 import os
+import stat
 from pathlib import Path
 import fnmatch
 import platform
@@ -253,6 +254,11 @@ class NllManager:
         df.to_csv(output, index=False, header=False, encoding='utf-8')
         return output
 
+    @staticmethod
+    def __secure_exec(bin_file:str):
+        st = os.stat(bin_file)
+        os.chmod(bin_file, st.st_mode | stat.S_IEXEC)
+
     def set_run_template_global(self):
         run_path = self.get_run_template_global_file_path
         data = pd.read_csv(run_path)
@@ -301,6 +307,7 @@ class NllManager:
 
     def get_bin_file(self, file_name):
         bin_file = os.path.join(BINARY_NLL_DIR, file_name)
+        self.__secure_exec(bin_file)
         if not os.path.isfile(bin_file):
             raise FileNotFoundError("The file {} doesn't exist. Check typos in file_name or make sure to run: "
                                     "python setup.py build_ext --inplace. These should create a binaries folder fo nll with "
