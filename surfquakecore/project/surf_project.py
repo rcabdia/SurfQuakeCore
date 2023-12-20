@@ -72,15 +72,17 @@ class SurfProject:
     def load_project(path_to_project_file: str):
         return pickle.load(open(path_to_project_file, "rb"))
 
-    def save_project(self, path_file_to_storage: str):
+    def save_project(self, path_file_to_storage: str)->bool:
 
         if len(self.project):
             try:
                 file_to_store = open(path_file_to_storage, "wb")
                 pickle.dump(self, file_to_store)
                 print("Succesfully saved project")
+                return True
             except ProjectSaveFailed as e:
                 print(f"Project couldn't be saved: {e}")
+                return False
 
     def search_files(self, format="NONE", verbose=True, **kwargs):
 
