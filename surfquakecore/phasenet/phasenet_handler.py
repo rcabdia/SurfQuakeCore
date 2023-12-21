@@ -11,6 +11,8 @@ from scipy.interpolate import interp1d
 from datetime import datetime, timedelta
 import json
 
+from surfquakecore import model_dir
+
 tf.compat.v1.disable_eager_execution()
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -93,7 +95,7 @@ class PhasenetISP:
         self.min_s_prob = min_s_prob
         self.min_peak_distance = min_peak_distance
 
-        self.model_path = ""
+        self.model_path = model_dir
         self.file_path = ""
         self.hdf5_group = "data"
         self.result_path = "results"
@@ -209,12 +211,12 @@ class PhasenetReader:
         if "highpass_filter" in kwargs:
             self.highpass_filter = kwargs["highpass_filter"]
 
-        if format == "mseed":
-            self.data_dir = kwargs["data_dir"]
-            self.data_list = kwargs["data_list"]
-            self.num_data = len(self.data_list)
-        else:
-            raise Exception(f"{format} not support!")
+        #if format == "mseed":
+        self.data_dir = kwargs["data_dir"]
+        self.data_list = kwargs["data_list"]
+        self.num_data = len(self.data_list)
+        #else:
+        #    raise Exception(f"{format} not support!")
 
         self.X_shape = self.get_data_shape()
 

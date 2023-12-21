@@ -19,7 +19,7 @@ if __name__ == '__main__':
     #phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=0.90, min_s_prob=0.65)
 
     # Full mode
-    phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=0.30, min_s_prob=0.30)
+    phISP = PhasenetISP(project, amplitude=True, min_p_prob=0.30, min_s_prob=0.30)
 
     # Running Stage
     picks = phISP.phasenet()
