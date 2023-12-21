@@ -1,5 +1,7 @@
 import glob
 import os
+from typing import Union
+
 from obspy import read_inventory
 from obspy.geodetics import gps2dist_azimuth, kilometers2degrees
 from surfquakecore.real.real_manager import RealManager
@@ -11,7 +13,7 @@ from surfquakecore.utils.conversion_utils import ConversionUtils
 
 
 class RealCore:
-    def __init__(self, metadata_file: str, parameters_file: str, picking_directory: str, working_directory: str,
+    def __init__(self, metadata_file: str, real_config: Union[str, RealConfig], picking_directory: str, working_directory: str,
                  output_directory: str):
 
         """
@@ -22,7 +24,14 @@ class RealCore:
         parameters_file: .init file with the full configuration to run real
         """
 
-        self.__get_real_config(parameters_file)
+        if isinstance(real_config, str) and os.path.isfile(real_config):
+            self.__get_real_config(real_config)
+        elif isinstance(real_config, RealConfig):
+            self.real_config = (RealConfig, )
+        else:
+            raise ValueError(f"mti_config {real_config} is not valid. It must be either a "
+                             f" valid real_config.ini file or a RealConfig instance.")
+
         self.metadata_file = metadata_file
         self.picking_directory = picking_directory
         self.working_directory = working_directory
