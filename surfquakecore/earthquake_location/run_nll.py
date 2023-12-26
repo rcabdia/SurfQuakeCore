@@ -249,7 +249,16 @@ class NllManager:
         df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=xNum,
                         y=yNum, z=zNum, xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
 
+        if self.nll_config.location_parameters.method == 'GAU_ANALYTIC':
+            df.iloc[8, 0] = ('LOCMETH GAU_ANALYTIC {maxDistStaGrid} {minNumberPhases} {maxNumberPhases} '
+                             '{minNumberSphases} {VpVsRatio} {maxNum3DGridMemory} {minDistStaGrid} '
+                             '{iRejectDuplicateArrivals}'.format(maxDistStaGrid=9999.0, minNumberPhases=4,
+                                                                 maxNumberPhases=-1, minNumberSphases=-1,
+                                                                 VpVsRatio=1.68, maxNum3DGridMemory=6, minDistStaGrid=5,
+                                                                 iRejectDuplicateArrivals=0))
 
+        #GAU_ANALYTIC 9999.0 4 - 1 - 1 1.68 6
+        #LOCMETH EDT_OT_WT 9999.0 4 -1 -1 1.68 6 -1.0 1
         output = os.path.join(self.get_temp_dir, "run_temp.txt")
         df.to_csv(output, index=False, header=False, encoding='utf-8')
         return output
