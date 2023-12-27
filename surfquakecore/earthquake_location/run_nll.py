@@ -417,11 +417,7 @@ class NllManager:
             output = self.set_run_template(latitude, longitude)
             output_path = Path(output)
             command = [self.get_bin_file("NLLoc"), output_path]
-            # include statistics
-            stats_file = os.path.join(self.root_path, 'loc/last.stat_totcorr')
-            temp_run_file = os.path.join(self.root_path, 'temp/run_temp.txt')
-            if os.path.isfile(stats_file) and os.path.isfile(temp_run_file):
-                self.__append_files(stats_file, temp_run_file)
+
 
         elif transform == "GLOBAL":
             self.stations_to_nll_v2(latitude, longitude, limit=20000, transform="GLOBAL")
@@ -431,6 +427,12 @@ class NllManager:
             output = self.set_run_template_global()
             output_path = Path(output)
             command = [self.get_bin_file("NLLoc"), output]
+
+        # include statistics
+        stats_file = os.path.join(self.root_path, 'loc/last.stat_totcorr')
+        temp_run_file = os.path.join(self.root_path, 'temp/run_temp.txt')
+        if os.path.isfile(stats_file) and os.path.isfile(temp_run_file):
+            self.__append_files(stats_file, temp_run_file)
 
         return exc_cmd(command, cwd=output_path.parent)
 
