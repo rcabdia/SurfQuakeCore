@@ -11,6 +11,8 @@ if __name__ == "__main__":
     nll_manager = NllManager(path_to_configfiles, inventory_path, working_directory)
     nll_manager.vel_to_grid()
     nll_manager.grid_to_time()
-    nll_manager.run_nlloc()
+    for iter in range(0, 10):
+        print('Locating ', iter)
+        nll_manager.run_nlloc()
     nll_catalog = Nllcatalog(working_directory)
     nll_catalog.run_catalog(working_directory)

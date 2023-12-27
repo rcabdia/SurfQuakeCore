@@ -223,7 +223,7 @@ def _locate():
           Further details can be found in formats section http://alomax.free.fr/nlloc/:
             
         Usage: surfquake locate -i [inventory_file_path] -c [path to 
-          nll_config_file.ini] -o [path_to output_path]
+          nll_config_file.ini] -o [path_to output_path] -g [travel_time_generation] -s [stations corrections]
 
         Reference: Lomax, A., A. Michelini, A. Curtis, 2009. Earthquake Location, Direct, Global-Search Methods, in 
         Complexity In Encyclopedia of Complexity and System Science, Part 5, Springer, New York, pp. 2449-2473, 
@@ -240,22 +240,35 @@ def _locate():
     arg_parse.add_argument("-c", "--config_file_path", help="Path to nll_config_file.ini", type=str,
                            required=True)
 
-    arg_parse.add_argument("-w", "--work_dir_path", help="Path to working_directory ", type=str,
+    arg_parse.add_argument("-o", "--out_dir_path", help="Path to output_directory ", type=str,
                            required=True)
 
     arg_parse.add_argument("-g", "--generate_grid", help=" In case first runninng also generate Travel-Times",
                            action="store_true")
 
+    arg_parse.add_argument("-s", "--stations_corrections", help=" If you want to iterate to include "
+                                                                "stations corrections", nargs="?", const=5,
+                           default=None, type=int,
+                           dest="stations_corrections_value")
+
     parsed_args = arg_parse.parse_args()
-    nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.work_dir_path)
+    nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
 
     if parsed_args.generate_grid:
         nll_manager.vel_to_grid()
         nll_manager.grid_to_time()
 
-    nll_manager.run_nlloc()
+    if parsed_args.stations_corrections is not None:
+        # including stations_corrections
+        for i in range(parsed_args.stations_corrections):
+            print("Running Location iteration", i)
+            nll_manager.run_nlloc()
+    else:
+        nll_manager.run_nlloc()
+
     nll_catalog = Nllcatalog(parsed_args.work_dir_path)
     nll_catalog.run_catalog(os.path.join(parsed_args.work_dir_path, "loc"))
+
 
 def _source():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} source parameters estimation",
@@ -294,6 +307,7 @@ def _source():
     rs = ReadSource(parsed_args.output_dir_path)
     summary = rs.generate_source_summary()
     rs.write_summary(summary, parsed_args.output_dir_pat)
+
 
 def _mti():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} Moment Tensor Inversion",
