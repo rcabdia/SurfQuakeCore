@@ -27,7 +27,7 @@ class RealCore:
         if isinstance(real_config, str) and os.path.isfile(real_config):
             self.__get_real_config(real_config)
         elif isinstance(real_config, RealConfig):
-            self.real_config = (RealConfig, )
+            self.real_config = RealConfig
         else:
             raise ValueError(f"mti_config {real_config} is not valid. It must be either a "
                              f" valid real_config.ini file or a RealConfig instance.")
