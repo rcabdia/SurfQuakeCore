@@ -48,7 +48,7 @@ class NllManager:
         if isinstance(nll_config, str) and os.path.isfile(nll_config):
             self.nll_config: NLLConfig = load_nll_configuration(nll_config)
         elif isinstance(nll_config, NLLConfig):
-            self.nll_config = NLLConfig
+            self.nll_config = nll_config
         else:
             raise ValueError(f"mti_config {nll_config} is not valid. It must be either a "
                              f" valid real_config.ini file or a NLLConfig instance.")
