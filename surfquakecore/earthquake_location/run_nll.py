@@ -12,6 +12,7 @@ import fnmatch
 import platform
 import random
 import string
+from typing import Union
 import numpy as np
 import pandas as pd
 import shutil
@@ -29,7 +30,7 @@ _os = platform.system()
 
 class NllManager:
 
-    def __init__(self, config_file_path, dataless_path, working_directory):
+    def __init__(self, nll_config: Union[str, NLLConfig], metadata_path, working_directory):
         """
         Manage nll files for run nll program.
 
@@ -37,15 +38,21 @@ class NllManager:
 
         :param obs_file_path: The file path of pick observations.
         """
-        self.__get_nll_config(config_file_path)
+        self.__get_nll_config(nll_config)
         self.__location_output = working_directory
         self.__create_dirs()
-        self.__dataless_dir = dataless_path
+        self.__dataless_dir = metadata_path
         self.__metadata_manager = None
 
-    def __get_nll_config(self, config_file_path):
+    def __get_nll_config(self, nll_config):
+        if isinstance(nll_config, str) and os.path.isfile(nll_config):
+            self.nll_config: NLLConfig = load_nll_configuration(nll_config)
+        elif isinstance(nll_config, NLLConfig):
+            self.nll_config = NLLConfig
+        else:
+            raise ValueError(f"mti_config {nll_config} is not valid. It must be either a "
+                             f" valid real_config.ini file or a NLLConfig instance.")
 
-        self.nll_config: NLLConfig = load_nll_configuration(config_file_path)
 
     def find_files(self,base, pattern):
         """
