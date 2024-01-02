@@ -148,49 +148,54 @@ class SurfProject:
                 header = read(file, headeronly=True)
             else:
                 header = read(file, headeronly=True, format=format)
-        except TypeError:
+        except (TypeError, Exception) as e:
+            print(f"Error occurred while parsing data file: {e}")
             return [None, None]
 
-        net = header[0].stats.network
-        sta = header[0].stats.station
-        chn = header[0].stats.channel
-        key = f"{net}.{sta}.{chn}"
+        try:
+            net = header[0].stats.network
+            sta = header[0].stats.station
+            chn = header[0].stats.channel
+            key = f"{net}.{sta}.{chn}"
 
-        # filter time
-        if filter["start"] is not None and filter["end"] is not None:
-            if filter["start"] <= header[0].stats.starttime.datetime and header[0].stats.endtime.datetime <= filter[
-                "end"]:
-                pass
+            # filter time
+            if filter["start"] is not None and filter["end"] is not None:
+                if filter["start"] <= header[0].stats.starttime.datetime and header[0].stats.endtime.datetime <= filter[
+                    "end"]:
+                    pass
+                else:
+                    check_filter_time = False
+
+            # filter selection
+            if filter["nets"] is not None:
+                if net in filter["nets"]:
+                    pass
+                else:
+                    check_filter_selection = False
+
+            if filter["stations"] is not None:
+                if sta in filter["stations"]:
+                    pass
+                else:
+                    check_filter_selection = False
+
+            if filter["channels"] is not None:
+                if chn in filter["channels"]:
+                    pass
+                else:
+                    check_filter_selection = False
+
+            if check_filter_time and check_filter_selection:
+                data_map = [file, header[0].stats]
+                if verbose:
+                    print("included in the project file ", file)
             else:
-                check_filter_time = False
+                data_map = [None, None]
 
-        # filter selection
-        if filter["nets"] is not None:
-            if net in filter["nets"]:
-                pass
-            else:
-                check_filter_selection = False
-
-        if filter["stations"] is not None:
-            if sta in filter["stations"]:
-                pass
-            else:
-                check_filter_selection = False
-
-        if filter["channels"] is not None:
-            if chn in filter["channels"]:
-                pass
-            else:
-                check_filter_selection = False
-
-        if check_filter_time and check_filter_selection:
-            data_map = [file, header[0].stats]
-            if verbose:
-                print("included in the project file ", file)
-        else:
-            data_map = [None, None]
-
-        return key, data_map
+            return key, data_map
+        except Exception as e:
+            print(f"Error occurred during further processing: {e}")
+            return [None, None]
 
     def _convert2dict(self, data: Tuple[str, List[str]]):
         self.project = {}
