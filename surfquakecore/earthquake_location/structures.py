@@ -21,15 +21,13 @@ class GridConfiguration(BaseDataClass):
     path_to_picks: str
     p_wave_type: bool
     s_wave_type: bool
-    model_1D: bool
-    model_3D: bool
+    model: str
 
 
 @dataclass
 class TravelTimesConfiguration(BaseDataClass):
     distance_limit: float
-    grid1d: bool
-    grid3d: bool
+    grid: str
 
 
 @dataclass
