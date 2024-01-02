@@ -62,12 +62,10 @@ def load_nll_configuration(config_file: str) -> NLLConfig:
                     path_to_picks=Cast(nll_config_ini['GRID_CONFIGURATION']['PATH_TO_PICKS'], str),
                     p_wave_type=Cast(nll_config_ini['GRID_CONFIGURATION']['p_wave_type'], bool),
                     s_wave_type=Cast(nll_config_ini['GRID_CONFIGURATION']['s_wave_type'], bool),
-                    model_1D=Cast(nll_config_ini['GRID_CONFIGURATION']['model_1D'], bool),
-                    model_3D=Cast(nll_config_ini['GRID_CONFIGURATION']['model_3D'], bool)),
+                    model=Cast(nll_config_ini['GRID_CONFIGURATION']['model'], str)),
             travel_times_configuration=TravelTimesConfiguration(
                     distance_limit=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['DISTANCE_LIMIT'], float),
-                    grid1d=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['GRID1D'], bool),
-                    grid3d=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['GRID3D'], bool)),
+                    grid=Cast(nll_config_ini['TRAVEL_TIMES_CONFIGURATION']['GRID'], str)),
             location_parameters=LocationParameters(
                     search=Cast(nll_config_ini['LOCATION_PARAMETERS']['SEARCH'], str),
                     method=Cast(nll_config_ini['LOCATION_PARAMETERS']['METHOD'], str)))

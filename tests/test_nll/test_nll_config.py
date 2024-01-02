@@ -26,12 +26,10 @@ class TestNLLConfig(unittest.TestCase):
                 path_to_picks="./SurfQuakeCore/examples/earthquake_locate/nll_picks/nll_input.txt",
                 p_wave_type=True,
                 s_wave_type=True,
-                model_1D=True,
-                model_3D=False),
+                model="1D"),
             travel_times_configuration=TravelTimesConfiguration(
                 distance_limit=400,
-                grid1d=True,
-                grid3d=False),
+                grid="1D"),
             location_parameters=LocationParameters(
                 search="OCT-TREE",
                 method="GAU_ANALYTIC"))

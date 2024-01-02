@@ -348,9 +348,9 @@ class NllManager:
         grid_type = self.nll_config.grid_configuration.grid_type
         p_wave_type = self.nll_config.grid_configuration.p_wave_type
         s_wave_type = self.nll_config.grid_configuration.s_wave_type
-        model_1D = self.nll_config.grid_configuration.model_1D
-        model_3D = self.nll_config.grid_configuration.model_3D
-        if model_1D:
+        model = self.nll_config.grid_configuration.model
+
+        if model == "1D":
             x_node = 2 #mandatory for 1D models
             if p_wave_type:
                 waves.append("P")
@@ -365,7 +365,7 @@ class NllManager:
                     command = [self.get_bin_file("Vel2Grid"), output_path]
                     exc_cmd(command, cwd=output_path.parent)
 
-        elif model_3D:
+        elif model == "3D":
             if p_wave_type:
                 waves.append("P")
             if s_wave_type:
@@ -381,15 +381,15 @@ class NllManager:
         latitude = self.nll_config.grid_configuration.latitude
         longitude = self.nll_config.grid_configuration.longitude
         depth = self.nll_config.grid_configuration.depth
-        grid1d = self.nll_config.travel_times_configuration.grid1d
-        grid3d = self.nll_config.travel_times_configuration.grid3d
+        grid = self.nll_config.travel_times_configuration.grid
+
         limit = self.nll_config.travel_times_configuration.distance_limit
         option = "ANGLES_YES"
-        dimension = "GRID2D" # DEFAULT
+        dimension = "GRID2D"
 
-        if grid1d:
+        if grid == "1D":
             dimension = "GRID2D"
-        elif grid3d:
+        elif grid == "3D":
             dimension = "GRID3D"
 
         if self.nll_config.grid_configuration.p_wave_type:
