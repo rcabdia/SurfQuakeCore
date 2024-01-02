@@ -1,12 +1,17 @@
+import json
 import math
 import os.path
 import shutil
+from dataclasses import dataclass
 
 from obspy import UTCDateTime
 from obspy.geodetics import gps2dist_azimuth
 
+from surfquakecore.moment_tensor.structures import MomentTensorResult
+from surfquakecore.utils.json_utils import DateTimeEncoder
 
-class load_data:
+
+class InversionDataManager:
     def __init__(self, outdir='output', logfile='$outdir/log.txt', output_mkdir=True):
         self.stations = []
         self.outdir = outdir
@@ -22,6 +27,7 @@ class load_data:
         self.event: dict = {}
         self.stations_index = {}
         self.nr = None
+        self.inversion_result: MomentTensorResult = MomentTensorResult()
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.__del__()
@@ -29,6 +35,10 @@ class load_data:
     def __del__(self):
         self.logfile.close()
         del self.data_raw
+
+    def save_inversion_results(self):
+        with open(os.path.join(self.outdir, "inversion.json"), 'w') as f:
+            json.dump(self.inversion_result.to_dict(), f, cls=DateTimeEncoder)
 
     def log(self, s, newline=True, printcopy=False):
         """
@@ -84,7 +94,6 @@ class load_data:
         This function writes file ``green/soutype.dat``, which is read by ``green/elemse``
         (function ``fsource()`` at the end of ``elemse.for``).
         """
-        source_time_function_file_path = os.path.join(working_directory, "soutype.dat")
         # icc parameter-1 is used as number of derivatives in complex domain (1 = no derivative, 2 = a derivative etc.)
         valid_sources = {
             "heaviside": {"description": "Step in displacement", "icc": 2, "ics": 7},
@@ -104,7 +113,7 @@ class load_data:
 
         # TODO source complex spectrum is given as array and written to a
         #  TODO file (uncomment reading file 301 in elemse.for)
-        with open(source_time_function_file_path, 'w') as f:
+        with open(os.path.join(working_directory, "soutype.dat"), 'w') as f:
             f.write(f"{ics:d}\n{t0:3.1f}\n{t1:3.1f}\n{icc:d}\n")
 
     def read_network_coordinates(self, filename, network='', location='', channelcode='LH',
@@ -137,11 +146,12 @@ class load_data:
             min_distance = 2 * self.rupture_length
         if max_distance is None:
             max_distance = 1000 * 2 ** (mag * 2.)
-        self.logtext['network'] = s = 'Station coordinates: ' + filename
-        self.log(s)
-        inp = open(filename, 'r')
-        lines = inp.readlines()
-        inp.close()
+        msg = f'Station coordinates: {filename}'
+        self.logtext['network'] = msg
+        self.log(msg)
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+
         stats = []
         for line in lines:
             if line == '\n':  # skip empty lines

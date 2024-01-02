@@ -1,14 +1,13 @@
+import json
 import os
 import re
-from datetime import datetime
 
 import numpy as np
 
-from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, StationConfig, InversionParameters, \
-    SignalProcessingParameters
-from surfquakecore.utils import Cast
+from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, MomentTensorResult
 from surfquakecore.utils.configuration_utils import parse_configuration_file
 from surfquakecore.utils.string_utils import is_float
+from surfquakecore.utils.system_utils import deprecated
 
 
 def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
@@ -88,6 +87,18 @@ def load_mti_configurations(dir_path: str):
     )
 
 
+def read_isola_result(file: str) -> MomentTensorResult:
+    """
+    Reads the ISOLA-ObsPy output inversion.json file.
+
+    :param file: The location of inversion.json from isola.
+    :return:
+    """
+    with open(file, 'r') as f:
+        return MomentTensorResult.from_dict(json.load(f))
+
+
+@deprecated("Use read_isola_result instead.")
 def read_isola_log(file: str):
     """
     Reads the ISOLA-ObsPy output log file.

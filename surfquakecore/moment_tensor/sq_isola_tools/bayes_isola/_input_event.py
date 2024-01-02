@@ -50,7 +50,7 @@ def read_event_info(self, filename):
 	self.rupture_length = math.sqrt(111 * 10**self.event['mag'])		# M6 ~ 111 km2, M5 ~ 11 km2 		REFERENCE NEEDED
 
 
-# TODO moved to class load_data
+# TODO moved to class InversionDataManager
 # def set_event_info(self, lat, lon, depth, mag, t, agency=''):
 # 	"""
 # 	Sets event coordinates, magnitude, and time from parameters given to this function

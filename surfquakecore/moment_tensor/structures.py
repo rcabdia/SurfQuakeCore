@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List
 
 from surfquakecore.utils import BaseDataClass
 
@@ -61,3 +60,41 @@ class MomentTensorInversionConfig(BaseDataClass):
     stations: list[StationConfig]
     inversion_parameters: InversionParameters
     signal_processing_parameters: SignalProcessingParameters = field(default_factory=SignalProcessingParameters)
+
+
+@dataclass
+class MomentTensorCentroid(BaseDataClass):
+    time: datetime = field(default_factory=datetime.now)
+    origin_shift: float = 0.
+    latitude: float = 0.
+    longitude: float = 0.
+    depth: float = 0.
+    vr: float = 0.
+    cn: float = 0.
+    mrr: float = 0.
+    mtt: float = 0.
+    mpp: float = 0.
+    mrt: float = 0.
+    mrp: float = 0.
+    mtp: float = 0.
+
+
+@dataclass
+class MomentTensorScalar(BaseDataClass):
+    mo: float = 0.
+    mw: float = 0.
+    dc: float = 0.
+    clvd: float = 0.
+    isotropic_component: float = 0.
+    plane_1_strike: float = 0.
+    plane_1_dip: float = 0.
+    plane_1_slip_rake: float = 0.
+    plane_2_strike: float = 0.
+    plane_2_dip: float = 0.
+    plane_2_slip_rake: float = 0.
+
+
+@dataclass
+class MomentTensorResult(BaseDataClass):
+    centroid: MomentTensorCentroid = field(default_factory=MomentTensorCentroid)
+    scalar: MomentTensorScalar = field(default_factory=MomentTensorScalar)

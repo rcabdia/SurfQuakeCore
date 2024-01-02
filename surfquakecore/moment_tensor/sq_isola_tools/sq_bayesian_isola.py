@@ -1,20 +1,18 @@
 import gc
 import os
 import shutil
-import sys
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 
 from obspy import UTCDateTime, read_inventory, Inventory
 
 from surfquakecore.binaries import BINARY_GREEN_DIR
-from surfquakecore.moment_tensor.mti_parse import load_mti_configurations, load_mti_configuration
+from surfquakecore.moment_tensor.mti_parse import load_mti_configurations, load_mti_configuration, read_isola_result
 from surfquakecore.moment_tensor.sq_isola_tools import bayes_isola
-from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola import ResolveMt
-from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.load_data import load_data
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola import ResolveMt, InversionDataManager
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
-from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
+from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, MomentTensorResult
 from surfquakecore.utils.obspy_utils import MseedUtil
 from surfquakecore.utils.system_utils import get_python_major_version
 
@@ -72,11 +70,18 @@ class BayesianIsolaCore:
         return self._inventory
 
     @property
-    def results(self):
+    def results(self, is_log=False):
+
+        filename = 'log.txt' if is_log else 'inversion.json'
 
         for out_dir in os.listdir(self.output_directory):
             if os.path.isdir(out_dir):
-                yield os.path.join(self.output_directory, out_dir, "log.txt")
+                yield os.path.join(self.output_directory, out_dir, filename)
+
+    @property
+    def inversion_results(self) -> Tuple[MomentTensorResult, ...]:
+
+        return tuple(read_isola_result(result_file) for result_file in self.results)
 
     @contextmanager
     def _load_work_directory(self):
@@ -182,7 +187,7 @@ class BayesianIsolaCore:
             mt.copy_to_working_directory(BINARY_GREEN_DIR)
             st, deltas = mt.get_stations_index()
 
-            inputs = load_data(outdir=local_folder)
+            inputs = InversionDataManager(outdir=local_folder)
             inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth_km,
                                   mag=mti_config.magnitude, t=UTCDateTime(mti_config.origin_date))
 
@@ -246,6 +251,8 @@ class BayesianIsolaCore:
                 deviatoric=mti_config.inversion_parameters.deviatoric,
                 from_axistra=True
             )
+
+            inputs.save_inversion_results()
 
             #if self.parameters['plot_save']:
             if self.save_plots:

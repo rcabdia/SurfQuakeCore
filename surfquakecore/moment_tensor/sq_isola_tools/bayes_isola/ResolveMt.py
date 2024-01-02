@@ -40,6 +40,7 @@ from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.inverse_problem impo
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MT_comps import a2mt, decompose, decompose_mopad
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.fileformats import read_elemse
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import my_filter
+from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.inversion_data_manager import InversionDataManager
 
 
 class ResolveMt:
@@ -49,7 +50,7 @@ class ResolveMt:
 	"""
 
 	def __init__(
-			self, data, cova, working_directory, deviatoric=False, decompose=True,
+			self, data: InversionDataManager, cova, working_directory, deviatoric=False, decompose=True,
 			run_inversion=True, find_best_grid_point=True,
 			save_seismo=False, VR_of_components=False, print_solution=True, print_fault_planes=True,
 			from_axistra=True
@@ -74,7 +75,7 @@ class ResolveMt:
 		"""
 		self.log = data.log
 		self.d = data
-		self.inp = data.d
+		self.inp: InversionDataManager = data.d
 		self.cova = cova
 		self.working_directory = working_directory
 		self.g = data.grid
@@ -213,6 +214,15 @@ class ResolveMt:
 				t=t.strftime('%Y-%m-%d %H:%M:%S'), lat=C['lat'], lon=C['lon'], d=C['z'] / 1e3))
 		self.log(
 			'  ({0:5.0f} m to the north and {1:5.0f} m to the east with respect to epicenter)'.format(C['x'], C['y']))
+
+		self.inp.inversion_result.centroid.latitude = C['lat']
+		self.inp.inversion_result.centroid.longitude = C['lon']
+		self.inp.inversion_result.centroid.depth = C['z'] / 1e3
+		self.inp.inversion_result.centroid.time = t.datetime
+		self.inp.inversion_result.centroid.origin_shift = C['shift']
+		self.inp.inversion_result.centroid.vr = C['VR'] * 100
+		self.inp.inversion_result.centroid.cn = C['CN']
+
 		if C['edge']:
 			self.log('  Warning: the solution lies on the edge of the grid!')
 		mt2 = a2mt(C['a'], system='USE')
@@ -225,7 +235,9 @@ class ResolveMt:
 			self.log('  time: {0:5.2f} s before origin time\n'.format(-C['shift']))
 		if C['shift'] in (self.d.shifts[0], self.d.shifts[-1]):
 			self.log('  Warning: the solution lies on the edge of the time-grid!')
+
 		self.log('  VR: {0:4.0f} %\n  CN: {1:4.0f}'.format(C['VR'] * 100, C['CN']))
+
 		# self.log('  VR: {0:8.4f} %\n  CN: {1:4.0f}'.format(C['VR']*100, C['CN'])) # DEBUG
 		self.log(
 			'  MT [ {1:{0}}  {2:{0}}  {3:{0}}  {4:{0}}  {5:{0}}  {6:{0}}]:'.format(mt_comp_precision + 3, 'Mrr', 'Mtt',
@@ -233,6 +245,13 @@ class ResolveMt:
 		self.log(
 			'     [{1:{7}.{8}f}  {2:{7}.{8}f}  {3:{7}.{8}f}  {4:{7}.{8}f}  {5:{7}.{8}f}  {6:{7}.{8}f} ] * {0:5.0e}'.format(
 				c, *MT2, mt_comp_precision + 3, mt_comp_precision))
+
+		self.inp.inversion_result.centroid.mrr = mt2[0]
+		self.inp.inversion_result.centroid.mtt = mt2[1]
+		self.inp.inversion_result.centroid.mpp = mt2[2]
+		self.inp.inversion_result.centroid.mrt = mt2[3]
+		self.inp.inversion_result.centroid.mrp = mt2[4]
+		self.inp.inversion_result.centroid.mtp = mt2[5]
 
 	def print_fault_planes(self, precision='3.0', tool=''):
 		"""
@@ -259,6 +278,18 @@ class ResolveMt:
 		msg += f"slip-rake = {self.mt_decomp['r2']: .0f}"
 
 		self.log(msg)
+		self.inp.inversion_result.scalar.mo = self.mt_decomp['mom']
+		self.inp.inversion_result.scalar.mw = self.mt_decomp['Mw']
+		self.inp.inversion_result.scalar.dc = self.mt_decomp['dc_perc']
+		self.inp.inversion_result.scalar.clvd = self.mt_decomp['clvd_perc']
+		self.inp.inversion_result.scalar.isotropic_component = self.mt_decomp['iso_perc']
+		self.inp.inversion_result.scalar.plane_1_strike = self.mt_decomp['s1']
+		self.inp.inversion_result.scalar.plane_1_dip = self.mt_decomp['d1']
+		self.inp.inversion_result.scalar.plane_1_slip_rake = self.mt_decomp['r1']
+		self.inp.inversion_result.scalar.plane_2_strike = self.mt_decomp['s2']
+		self.inp.inversion_result.scalar.plane_2_dip = self.mt_decomp['d2']
+		self.inp.inversion_result.scalar.plane_2_slip_rake = self.mt_decomp['r2']
+
 
 	def vr_of_components(self, n=1):
 		"""

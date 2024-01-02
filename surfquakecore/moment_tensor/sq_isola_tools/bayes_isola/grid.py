@@ -3,7 +3,7 @@ class grid:
     Creation of space and time grid for grid-searching MT solution.
 
     :param data: instance with data (event and seismograms)
-    :type data: :class:`~BayesISOLA.load_data`
+    :type data: :class:`~BayesISOLA.InversionDataManager`
     :param location_unc: horizontal uncertainty of the location in meters (default 0)
     :type location_unc: float, optional
     :type depth_unc: float, optional
