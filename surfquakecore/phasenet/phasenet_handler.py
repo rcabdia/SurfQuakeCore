@@ -13,6 +13,12 @@ import json
 
 from surfquakecore import model_dir
 
+import warnings
+
+# Adjust the warning behavior globally
+warnings.simplefilter("ignore")
+
+
 tf.compat.v1.disable_eager_execution()
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -282,7 +288,7 @@ class PhasenetReader:
     def __getitem__(self, i):
         base_name = self.data_list[i]
         meta = self.read(os.path.join(self.data_dir, base_name))
-        print('META: ', self.data_dir, base_name)
+        # print('META: ', self.data_dir, base_name)
         if meta == -1:
             return np.zeros(self.X_shape, dtype=self.dtype), base_name
 
@@ -291,7 +297,7 @@ class PhasenetReader:
         sample = np.zeros(self.X_shape, dtype=self.dtype)
         sample[: meta["data"].shape[0], ...] = PhasenetUtils.normalize_long(meta["data"])[: self.X_shape[0], ...]
 
-        print("T0: ", meta["t0"])
+        # print("T0: ", meta["t0"])
         if "t0" in meta:
             t0 = meta["t0"]
         else:
@@ -990,7 +996,7 @@ class PhasenetUtils:
         return dataset.map(index_to_entry, num_parallel_calls=num_parallel_calls)
 
     @staticmethod
-    def convert2real(picks, pick_dir: str):
+    def convert2real(picks, pick_dir: str, clean_output_folder = False):
         """
         :param picks: picks is output from method split_picks in mseedutils
         :param pick_dir: directory outpur where phases are storaged
@@ -1000,13 +1006,14 @@ class PhasenetUtils:
         dates = picks['date'].unique()
         fnames = picks['fname'].unique()
 
-        for path in os.listdir(pick_dir):
-            fpath = os.path.join(pick_dir, path)
+        if clean_output_folder:
+            for path in os.listdir(pick_dir):
+                fpath = os.path.join(pick_dir, path)
 
-            if os.path.isfile(fpath) or os.path.islink(fpath):
-                os.unlink(fpath)
-            else:
-                shutil.rmtree(fpath)
+                if os.path.isfile(fpath) or os.path.islink(fpath):
+                    os.unlink(fpath)
+                else:
+                    shutil.rmtree(fpath)
 
         for date in dates:
             pickpath = os.path.join(pick_dir, date)
@@ -1165,7 +1172,6 @@ class PhasenetUtils:
                 for j in np.arange(0, len(sprob)):
                     if float(sprob[j]) >= prob_threshold and j <= len(spick)-1:
                         fname = network + '.' + station + '.' + 'S'
-                        # TODO CHECK ISSUE ppick --> spick
                         delta_time = int(spick[j]) * samplingrate
                         tp = delta_time+ss
                         amp = float(samp[j]) * 2080 * 25 if len(s_amp) > 0 else 0

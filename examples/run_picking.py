@@ -1,25 +1,23 @@
 import os
 from multiprocessing import freeze_support
-from surfquakecore import model_dir
 from surfquakecore.phasenet.phasenet_handler import PhasenetUtils
 from surfquakecore.phasenet.phasenet_handler import PhasenetISP
-from surfquakecore.utils.obspy_utils import MseedUtil
+from surfquakecore.project.surf_project import SurfProject
 
 ### LOAD PROJECT ###
-path_to_project = "/Volumes/LaCie/test_surfquake_core/project"
-project_name = 'surfquake_project_test2.pkl'
-output_picks = '/Volumes/LaCie/test_surfquake_core/test_picking2'
+path_to_project = "/Volumes/LaCie/test_surfquake_core/minimal_data"
+project_name = 'surfquake_project_new.pkl'
+output_picks = '/Volumes/LaCie/test_surfquake_core/minimal_data/picks'
 project_file = os.path.join(path_to_project, project_name)
 
 if __name__ == '__main__':
     freeze_support()
 
-    project = MseedUtil.load_project(file=project_file)
-    # conservative mode
-    #phISP = PhasenetISP(project, modelpath=model_dir, amplitude=True, min_p_prob=0.90, min_s_prob=0.65)
+    # Load project
+    sp_loaded = SurfProject.load_project(path_to_project_file=project_file)
 
-    # Full mode
-    phISP = PhasenetISP(project, amplitude=True, min_p_prob=0.30, min_s_prob=0.30)
+    # Instantiate the class PhasenetISP
+    phISP = PhasenetISP(sp_loaded.project, amplitude=True, min_p_prob=0.90, min_s_prob=0.65)
 
     # Running Stage
     picks = phISP.phasenet()
