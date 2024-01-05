@@ -1,7 +1,6 @@
 import gc
 import os
 from obspy import read, read_events, UTCDateTime, Stream
-from surfquakecore.utils.obspy_utils import MseedUtil
 from surfquakecore.magnitudes.structures import SoursceSpecOptions
 from sourcespec.ssp_setup import configure
 from sourcespec.ssp_read_traces import read_traces
@@ -20,33 +19,52 @@ from sourcespec.ssp_plot_params_stats import box_plots
 from sourcespec.ssp_plot_stations import plot_stations
 from sourcespec.ssp_html_report import html_report
 from surfquakecore.magnitudes.ssp_setup_mod import setup_logging
+from surfquakecore.project.surf_project import SurfProject
+
 
 class Automag:
 
-    def __init__(self, project, locations_directory, inventory_path, config_path, output_directory, scale):
+    def __init__(self, project: SurfProject, locations_directory: str, inventory_path, source_config: str,
+                 output_directory: str, scale: str, gui_mod=None):
 
         self.project = project
         self.locations_directory = locations_directory
         self.inventory_path = inventory_path
-        self.config_path = config_path
         self.output_directory = output_directory
         self.sacale = scale
+        self.gui_mod = gui_mod
+        self.dates = None
         self._check_folders()
 
+        if isinstance(source_config, str) and os.path.isfile(source_config):
+            self.config_path = source_config
+        else:
+            raise ValueError(f"source_config {source_config} is not valid. It must be either a "
+                             f" valid real_config.ini file or a SourceConfig instance.")
+
+    def _get_config(self, event, id_name):
+        id_list = id_name.split(".")
+        id = id_list[0]+"/"+id_list[1]+"_"+id_list[2]
+
+        options = SoursceSpecOptions(config_file=self.config_path, evid=None, evname=id_name, hypo_file=None,
+            outdir=self.output_directory, pick_file=None, qml_file=event, run_id="", sampleconf=False, station=None,
+            station_metadata=self.inventory_path, trace_path=self.files_path, updateconf=None)
+
+        return options
 
     def _check_folders(self):
         if not os.path.exists(self.output_directory):
             os.makedirs(self.output_directory)
+
     def get_now_files(self, date):
 
-        selection = [".", ".", "."]
-
-        _, self.files_path = MseedUtil.filter_project_keys(self.project, net=selection[0], station=selection[1],
-                                                       channel=selection[2])
         start = date.split(".")
-        start = UTCDateTime(year=int(start[1]), julday=int(start[0]), hour=00, minute=00, second=00)+1
-        end = start+(24*3600-2)
-        self.files_path = MseedUtil.filter_time(list_files=self.files_path, starttime=start, endtime=end)
+        start = UTCDateTime(year=int(start[1]), julday=int(start[0]), hour=00, minute=00, second=00) + 1
+        end = start + (24 * 3600 - 2)
+        sp = self.project.copy()
+        sp.filter_project_keys()
+        self.files_path = sp.filter_time(starttime=start, endtime=end)
+
         print(self.files_path)
 
     def filter_station(self, station):
@@ -82,7 +100,7 @@ class Automag:
                 except:
                     pass
 
-        self.dates=dates
+        self.dates = dates
 
     def scan_from_origin(self, origin):
 
@@ -120,14 +138,20 @@ class Automag:
         st = Stream(traces=all_traces)
         return st
 
-    def __run_core_source(self, event,  id_name, focal_parameters):
-        options = SoursceSpecOptions(config_file=self.config_path, evid=None, evname=id_name, hypo_file=None,
-                                     outdir=self.output_directory, pick_file=None, qml_file=event, run_id="",
-                                     sampleconf=False, station=None,
-                                     station_metadata=self.inventory_path, trace_path=self.files_path, updateconf=None)
-
+    def modify_config(self, config):
+        for key in config:
+            for gui_key in self.gui_mod:
+                if key == gui_key:
+                    config[key] = self.gui_mod[key]
+        return config
+    def __run_core_source(self,  event,  id_name, focal_parameters):
+        options = self._get_config(event, id_name)
         # Setup stage
         config = configure(options, progname='source_spec')
+
+        if self.gui_mod:
+            config = self.modify_config(config)
+
         setup_logging(config)
         st = read_traces(config)
         st_trim = self.__cut_signal_wise(st, origin_time=focal_parameters[0])
@@ -179,10 +203,12 @@ class Automag:
 
         self.scan_folder()
         for date in self.dates.keys():
-            events = self.dates[date]
 
+            events = self.dates[date]
             self.get_now_files(date)
+
             for event in events:
+
                 print(event)
                 cat = read_events(event)
                 focal_parameters = [cat[0].origins[0]["time"], cat[0].origins[0]["latitude"],
@@ -192,4 +218,5 @@ class Automag:
                     run_id_name = os.path.basename(event)
                     self.__run_core_source(event, run_id_name, focal_parameters)
                 except:
-                    pass
+                    print(f"Error occurred trying to estimate source parameters at event, please review log file: "
+                          f"{run_id_name}")

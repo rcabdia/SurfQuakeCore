@@ -2,9 +2,9 @@ import os
 from multiprocessing import freeze_support
 from surfquakecore.utils.obspy_utils import MseedUtil
 
-data_dir_path = "/Volumes/LaCie/test_surfquake_core/minimal_data"
+data_dir_path = "/Volumes/LaCie/test_surfquake_core/testing_data"
 path_to_project = "/Volumes/LaCie/test_surfquake_core/project"
-project_name = 'surfquake_project_test2.pkl'
+project_name = 'surfquake_project.pkl'
 project_file_path = os.path.join(path_to_project, project_name)
 if __name__ == '__main__':
     freeze_support()

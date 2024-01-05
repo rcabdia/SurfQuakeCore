@@ -7,8 +7,8 @@ if __name__ == "__main__":
 
     cwd = os.path.dirname(__file__)
     ## Project definition ##
-    path_to_project = "/Volumes/LaCie/test_surfquake_core/testing_data"
-    project_path_file = os.path.join(path_to_project, "surfquake_project_new.pkl")
+    path_to_project = "/Volumes/LaCie/test_surfquake_core/project"
+    project_path_file = os.path.join(path_to_project, "surfquake_project.pkl")
     print("project:", project_path_file)
     #project = ms.search_files(path_to_project)
     #print("End of project creation, number of files ", len(project))
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     summary_path = '/Users/roberto/Documents/SurfQuakeCore/examples/source_estimations/source_summary'
 
     # Running stage
-    mg = Automag(sp_loaded.project, locations_directory, inventory_path, path_to_configfiles, output_directory, "regional")
+    mg = Automag(sp_loaded, locations_directory, inventory_path, path_to_configfiles, output_directory, "regional")
     mg.estimate_source_parameters()
 
     # Now we can read the output and even write a txt summarizing the results
