@@ -174,7 +174,7 @@ class ReadSource:
 
         magnitudes_dict = {'date_id': dates, 'lats': lats, 'longs': longs, 'depths': depths,
         'Mw': Mw, 'Mw_error': Mw_std, 'ML': ML, 'ML_error': ML_std, 'Mo':Mo, 'Mo_std': Mo_std, 'radius': radius,
-        'radius_std': radius_std, ' Er': Er, 'Er_std': Er_std, 'bsd': bsd, 'bsd_std': bsd_std, 'fc': fc, 'fc_std': fc_std,
+        'radius_std': radius_std, 'Er': Er, 'Er_std': Er_std, 'bsd': bsd, 'bsd_std': bsd_std, 'fc': fc, 'fc_std': fc_std,
         't_star': t_star, 't_star_std': t_star_std, 'Qo': Qo, 'Qo_std': Qo_std}
 
         self.__write_dict(magnitudes_dict, summary_path)
