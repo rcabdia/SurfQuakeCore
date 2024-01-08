@@ -1,8 +1,18 @@
 import os
 
-from surfquakecore.moment_tensor.mti_parse import read_isola_log
+from surfquakecore.moment_tensor.mti_parse import read_isola_log, read_isola_result
 from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import BayesianIsolaCore
 from surfquakecore.utils.obspy_utils import MseedUtil
+
+def list_files_with_iversion_json(root_folder):
+    iversion_json_files = []
+
+    for foldername, subfolders, filenames in os.walk(root_folder):
+        for filename in filenames:
+            if filename == "iversion.json":
+                iversion_json_files.append(os.path.join(foldername, filename))
+
+    return iversion_json_files
 
 if __name__ == "__main__":
     cwd = os.path.dirname(__file__)
@@ -31,7 +41,13 @@ if __name__ == "__main__":
                             save_plots=True)
     bic.run_inversion(mti_config=path_to_configfiles)
     print("Finished Inversion")
-    # example of reading output file
+    iversion_json_files = list_files_with_iversion_json(output_directory)
+
+    for result_file in iversion_json_files:
+        result = read_isola_result(result_file)
+        print(result)
+        
+    # example of reading log_output file
     # for r in bic.results:
     #     read_isola_log(r)
     #print(results.keys())
