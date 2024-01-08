@@ -80,7 +80,7 @@ def html_log(self, outfile='$outdir/index.html', reference=None, h1='ISOLA-ObsPy
 	plot_maps_sum = imgpath(plot_maps_sum, plots['maps_sum'], outfile)
 
 	e = self.inp.event
-	C = self.MT.centroid
+	C = self.MT._centroid
 	decomp = self.MT.mt_decomp.copy()
 	out.write(textwrap.dedent("""\
 		<!DOCTYPE html>

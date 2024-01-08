@@ -49,7 +49,7 @@ def plot_maps(self, outfile='$outdir/map.png', beachball_size_c=False):
 				color.append((dc, 0, 1-dc))
 			else:
 				color.append('black')
-			highlight.append(self.MT.centroid['id'] == gp['id'])
+			highlight.append(self.MT._centroid['id'] == gp['id'])
 		if outfile:
 			k = outfile.rfind(".")
 			filename = outfile[:k] + "_{0:0>5.0f}".format(z) + outfile[k:]
@@ -78,7 +78,7 @@ def plot_slices(self, outfile='$outdir/slice.png', point=None, beachball_size_c=
 	if point:
 		x0, y0 = point
 	else:
-		x0 = self.MT.centroid['x']; y0 = self.MT.centroid['y']
+		x0 = self.MT._centroid['x']; y0 = self.MT._centroid['y']
 	depth_min = self.grid.depth_min / 1000; depth_max = self.grid.depth_max / 1000
 	depth = depth_max - depth_min
 	r = self.grid.radius * 1e-3 * 1.1 # to km, *1.1
@@ -106,7 +106,7 @@ def plot_slices(self, outfile='$outdir/slice.png', point=None, beachball_size_c=
 				color.append((dc, 0, 1-dc))
 			else:
 				color.append('black')
-			highlight.append(self.MT.centroid['id'] == gp['id'])
+			highlight.append(self.MT._centroid['id'] == gp['id'])
 		if outfile:
 			k = outfile.rfind(".")
 			filename = outfile[:k] + '_' + slice + outfile[k:]
@@ -165,7 +165,7 @@ def plot_maps_sum(self, outfile='$outdir/map_sum.png'):
 				#g[x][y]['s'] = gp['shift']
 				if self.MT.decompose:
 					g[x][y]['dc'] = gp['dc_perc']
-			if self.MT.centroid['id'] == gp['id']:
+			if self.MT._centroid['id'] == gp['id']:
 				g[x][y]['highlight'] = True
 		for x in g:
 			for y in g[x]:
@@ -294,7 +294,7 @@ def plot_map_backend(self, x, y, s, CN, MT, color, width, highlight, xmin, xmax,
 		text_half = 'half-of-maximum PDF'
 		text_area = 'Beachball area ~ PDF'
 	else: # beachball's radius = VR
-		VRmax = self.MT.centroid['VR']
+		VRmax = self.MT._centroid['VR']
 		r_max = self.grid.step_x/1e3/2 * VRmax
 		r_half = r_max/2
 		text_max = 'VR {0:2.0f} % (maximal)'.format(VRmax*100)

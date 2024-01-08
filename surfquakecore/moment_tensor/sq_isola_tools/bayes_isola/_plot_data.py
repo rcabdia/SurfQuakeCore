@@ -55,15 +55,15 @@ def plot_seismo(self, outfile='$outdir/seismo.png', comp_order='ZNE', cholesky=F
 	"""
 	if cholesky and not len(self.cova.LT) and not len(self.cova.LT3):
 		raise ValueError('Covariance matrix not set. Run "covariance_matrix()" first.')
-	data = self.data.data_shifts[self.MT.centroid['shift_idx']]
+	data = self.data.data_shifts[self.MT._centroid['shift_idx']]
 	npts = self.data.npts_slice
 	samprate = self.data.samprate
 
 	if self.from_axistra:
-		point = self.working_directory + "/elemse" + self.MT.centroid['id'] + '.dat'
+		point = self.working_directory + "/elemse" + self.MT._centroid['id'] + '.dat'
 		elemse = read_elemse(self.inp.nr, self.data.npts_elemse, point, self.inp.stations, self.data.invert_displacement)
 	else:
-		elemse = read_elemse_from_files(self.inp.nr, self.data.npts_elemse, self.MT.centroid['path'], self.inp.stations, self.inp.event['t'],
+		elemse = read_elemse_from_files(self.inp.nr, self.data.npts_elemse, self.MT._centroid['path'], self.inp.stations, self.inp.event['t'],
 										self.data.samprate, self.data.npts_elemse, self.data.invert_displacement)
 
 	#if not no_filter:
@@ -91,7 +91,7 @@ def plot_seismo(self, outfile='$outdir/seismo.png', comp_order='ZNE', cholesky=F
 		for comp in range(3):
 			SYNT[comp] = np.zeros(npts)
 			for e in range(6):
-				SYNT[comp] += elemse[sta][e][comp].data[0:npts] * self.MT.centroid['a'][e,0]
+				SYNT[comp] += elemse[sta][e][comp].data[0:npts] * self.MT._centroid['a'][e,0]
 		comps_used = 0
 		for comp in comps:
 			synt = SYNT[comp]
@@ -170,7 +170,7 @@ def plot_covariance_function(self, outfile='$outdir/covariance.png', comp_order=
 	"""
 	if not len(self.cova.Cf):
 		raise ValueError('Covariance functions not calculated or not saved. Run "covariance_matrix(save_covariance_function=True)" first.')
-	data = self.data.data_shifts[self.MT.centroid['shift_idx']]
+	data = self.data.data_shifts[self.MT._centroid['shift_idx']]
 	
 	plot_stations, comps, f, ax, ea = self.plot_seismo_backend_1(plot_stations, plot_components, comp_order, crosscomp=crosscovariance, yticks=False, ylabel=None)
 	
@@ -225,7 +225,7 @@ def plot_noise(self, outfile='$outdir/noise.png', comp_order='ZNE', obs_style='k
 	for sta in plot_stations:
 		r = plot_stations.index(sta)
 		for comp in comps:
-			d = self.data.data_shifts[self.MT.centroid['shift_idx']][sta][comp][0:len(t)]
+			d = self.data.data_shifts[self.MT._centroid['shift_idx']][sta][comp][0:len(t)]
 			c = comps.index(comp)
 			if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
 				color = obs_style
@@ -267,7 +267,7 @@ def plot_spectra(self, outfile='$outdir/spectra.png', comp_order='ZNE', plot_sta
 	"""
 	if not len(self.cova.LT) and not len(self.cova.LT3):
 		raise ValueError('Covariance matrix not set. Run "covariance_matrix()" first.')
-	data = self.data.data_shifts[self.MT.centroid['shift_idx']]
+	data = self.data.data_shifts[self.MT._centroid['shift_idx']]
 	npts = self.data.npts_slice
 	samprate = self.data.samprate
 
@@ -350,7 +350,7 @@ def plot_seismo_backend_1(self, plot_stations, plot_components, comp_order, cros
 	"""
 	The first part of back-end for functions :func:`plot_seismo`, :func:`plot_covariance_function`, :func:`plot_noise`, :func:`plot_spectra`. There is no need for calling it directly.
 	"""
-	data = self.data.data_shifts[self.MT.centroid['shift_idx']]
+	data = self.data.data_shifts[self.MT._centroid['shift_idx']]
 	
 	plt.rcParams.update({'font.size': 22})
 	

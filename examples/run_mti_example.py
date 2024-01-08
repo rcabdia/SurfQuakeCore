@@ -28,10 +28,10 @@ if __name__ == "__main__":
 
     # build the class
     bic = BayesianIsolaCore(project=project, inventory_file=inventory_path, output_directory=output_directory,
-                            save_plots=False)
+                            save_plots=True)
     bic.run_inversion(mti_config=path_to_configfiles)
-
+    print("Finished Inversion")
     # example of reading output file
-    for r in bic.results:
-        read_isola_log(r)
+    # for r in bic.results:
+    #     read_isola_log(r)
     #print(results.keys())

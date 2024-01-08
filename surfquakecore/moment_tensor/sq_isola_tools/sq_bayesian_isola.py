@@ -256,8 +256,11 @@ class BayesianIsolaCore:
 
             #if self.parameters['plot_save']:
             if self.save_plots:
-                plot_mti = bayes_isola.plot(solution, green_func_dir, from_axistra=True)
-                # plot_mti.html_log(h1='surfQuake MTI')
+                try:
+                    plot_mti = bayes_isola.plot(solution, green_func_dir, from_axistra=True)
+                    plot_mti.html_log(h1='surfQuake MTI')
+                except:
+                    print("Coudn't complete plotting")
 
             del inputs
             del grid

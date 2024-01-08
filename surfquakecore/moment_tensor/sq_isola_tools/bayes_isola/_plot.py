@@ -27,7 +27,7 @@ def plot_stations(self, outfile='$outdir/stations.png', network=True, location=F
 	plt.xlabel('west - east [km]')
 	plt.ylabel('south - north [km]')
 	plt.title('Stations used in the inversion')
-	plt.plot(self.MT.centroid['y']/1e3, self.MT.centroid['x']/1e3, marker='*', markersize=75, color='yellow', label='epicenter', linestyle='None')
+	plt.plot(self.MT._centroid['y']/1e3, self.MT._centroid['x']/1e3, marker='*', markersize=75, color='yellow', label='epicenter', linestyle='None')
 	
 	L1 = L2 = L3 = True
 	for sta in self.inp.stations:

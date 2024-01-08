@@ -25,13 +25,13 @@ def plot_MT(self, outfile='$outdir/centroid.png', facecolor='red'):
 	plt.xlim(-100-lw/2, 100+lw/2)
 	plt.ylim(-100-lw/2, 100+lw/2)
 
-	a = self.MT.centroid['a']
+	a = self.MT._centroid['a']
 	mt2 = a2mt(a, system='USE')
 	#beachball(mt2, outfile=outfile)
 	full = beach(mt2, linewidth=lw, facecolor=facecolor, edgecolor='black', zorder=1)
 	ax.add_collection(full)
 	if self.MT.decompose:
-		dc = beach((self.MT.centroid['s1'], self.MT.centroid['d1'], self.MT.centroid['r1']), nofill=True, linewidth=lw/2, zorder=2)
+		dc = beach((self.MT._centroid['s1'], self.MT._centroid['d1'], self.MT._centroid['r1']), nofill=True, linewidth=lw/2, zorder=2)
 		ax.add_collection(dc)
 	if outfile:
 		plt.savefig(outfile, bbox_inches='tight', pad_inches=0)
@@ -62,13 +62,13 @@ def plot_uncertainty(self, outfile='$outdir/uncertainty.png', n=200, reference=N
 	shift = []; depth = []; NS = []; EW = []
 	n_sum = 0
 	A = []
-	c = self.MT.centroid
+	c = self.MT._centroid
 	for gp in self.grid.grid:
 		if gp['err']:
 			continue
 		for i in gp['shifts']:
 			GP = gp['shifts'][i]
-			n_GP = int(round(GP['c'] / self.MT.sum_c * n))
+			n_GP = int(round(GP['c'] / self.MT._sum_c * n))
 			if n_GP == 0:
 				continue
 			n_sum += n_GP
@@ -225,10 +225,10 @@ def plot_MT_uncertainty_centroid(self, outfile='$outdir/MT_uncertainty_centroid.
 	"""
 	Similar as :func:`plot_uncertainty`, but only the best point of the space-time grid is taken into account, so the uncertainties should be Gaussian.
 	"""
-	a = self.MT.centroid['a']
+	a = self.MT._centroid['a']
 	if self.MT.deviatoric:
 		a = a[:5]
-	cov = self.MT.centroid['GtGinv']
+	cov = self.MT._centroid['GtGinv']
 	A = np.random.multivariate_normal(a.T[0], cov, n)
 
 	fig = plt.figure(figsize=(5,5))
