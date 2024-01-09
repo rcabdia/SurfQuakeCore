@@ -19,7 +19,10 @@ class SurfProject:
         files plus the file metadata information (i.e. sampling_rate, starttime...)
 
         Attributes:
-        - root_path (str): The root path to the folder where the user have the data files.
+        - root_path (str): The root path to the folder where the user have the data files or a list filled
+        with paths to files.
+        - project (dict)
+        - data_files (list)
 
         Methods:
         - __init__(root_path): Initialize a new instance of MyClass.
@@ -127,9 +130,13 @@ class SurfProject:
         filter = {"start": start, "end": end, "nets": nets, "stations": stations, "channels": channels}
         data_files = []
 
-        for top_dir, sub_dir, files in os.walk(self.root_path):
-            for file in files:
-                data_files.append(os.path.join(top_dir, file))
+        if isinstance(self.root_path, list) and len(self.root_path) > 0:
+            for file in self.root_path:
+                data_files.append(file)
+        else:
+            for top_dir, sub_dir, files in os.walk(self.root_path):
+                for file in files:
+                    data_files.append(os.path.join(top_dir, file))
 
         cpus = min(len(data_files), os.cpu_count())
         with Pool(processes=cpus) as pool:
