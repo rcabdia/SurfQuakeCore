@@ -97,13 +97,11 @@ def _project():
     parsed_args = arg_parse.parse_args()
 
     print(f"Project from {parsed_args.data_dir} saving to {parsed_args.save_dir} as {parsed_args.project_name}")
-    # project = MseedUtil().search_files(parsed_args.d, verbose=True)
     sp = SurfProject(parsed_args.data_dir)
     project_file_path = os.path.join(parsed_args.save_dir, parsed_args.project_name)
     sp.search_files(verbose=parsed_args.verbose)
     print(sp)
     print("End of project creation, number of files ", len(sp.project))
-    # MseedUtil().save_project(project, project_file_path)
     sp.save_project(path_file_to_storage=project_file_path)
 
 
@@ -191,7 +189,7 @@ def _associate():
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless", type=str,
                            required=True)
 
-    arg_parse.add_argument("-p", "--data-dir", help="Path to data picking file (output Picking File)", type=str,
+    arg_parse.add_argument("-p", "--data-dir", help="Path to folder data picking file (output Picking File)", type=str,
                            required=True)
 
     arg_parse.add_argument("-c", "--config_file_path", help="Path to real_config_file.ini", type=str, required=True)
@@ -243,32 +241,38 @@ def _locate():
     arg_parse.add_argument("-o", "--out_dir_path", help="Path to output_directory ", type=str,
                            required=True)
 
-    arg_parse.add_argument("-g", "--generate_grid", help=" In case first runninng also generate Travel-Times",
+    arg_parse.add_argument("-g", "--generate_grid", help="In case first runninng also generate Travel-Times",
                            action="store_true")
 
-    arg_parse.add_argument("-s", "--stations_corrections", help=" If you want to iterate to include "
-                                                                "stations corrections", nargs="?", const=5,
-                           default=None, type=int,
-                           dest="stations_corrections_value")
+    arg_parse.add_argument("-s", "--stations_corrections", help="If you want to iterate to include "
+                                                                "stations corrections", action="store_true")
+
+    # arg_parse.add_argument("-s", "--stations_corrections", help=" If you want to iterate to include "
+    #                                                             "stations corrections", nargs="?", const=5,
+    #                        default=None, type=int,
+    #                        dest="stations_corrections_value")
 
     parsed_args = arg_parse.parse_args()
     nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
 
     if parsed_args.generate_grid:
+        print("Generating Velocity Grid")
         nll_manager.vel_to_grid()
+        print("Generating Travel-Time Grid")
         nll_manager.grid_to_time()
 
-    if parsed_args.stations_corrections is not None:
+    print("Starting Locations")
+    if parsed_args.stations_corrections:
         # including stations_corrections
-        for i in range(parsed_args.stations_corrections):
+        for i in range(25):
             print("Running Location iteration", i)
             nll_manager.run_nlloc()
     else:
         nll_manager.run_nlloc()
-
-    nll_catalog = Nllcatalog(parsed_args.work_dir_path)
-    nll_catalog.run_catalog(os.path.join(parsed_args.work_dir_path, "loc"))
-
+    print("Finished Locations see output at, ", os.path.join(parsed_args.out_dir_path, "loc"))
+    nll_catalog = Nllcatalog(parsed_args.out_dir_path)
+    nll_catalog.run_catalog(parsed_args.out_dir_path)
+    print("Catalog done, finished process see catalog at ", parsed_args.out_dir_path)
 
 def _source():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} source parameters estimation",

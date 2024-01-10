@@ -45,16 +45,16 @@ class RealCore:
     def _start_folder_tree(self):
         if not os.path.exists(self.working_directory):
             os.makedirs(self.working_directory)
-        else:
-            files = glob.glob(self.working_directory + "/*")
-            for f in files:
-                os.remove(f)
-        if not os.path.exists(self.output_directory):
-            os.makedirs(self.output_directory)
-        else:
-            files = glob.glob(self.output_directory + "/*")
-            for f in files:
-                os.remove(f)
+        # else:
+        #     files = glob.glob(self.working_directory + "/*")
+        #     for f in files:
+        #         os.remove(f)
+        # if not os.path.exists(self.output_directory):
+        #     os.makedirs(self.output_directory)
+        # else:
+        #     files = glob.glob(self.output_directory + "/*")
+        #     for f in files:
+        #         os.remove(f)
 
     def _return_inventory(self):
         inv = {}
