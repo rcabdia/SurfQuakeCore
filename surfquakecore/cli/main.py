@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
+from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
@@ -284,7 +285,7 @@ def _source():
       surfQuake uses the spectra P- and S-waves to estimate source parameters (Stress Drop, attenuation, source radius 
        radiated energy) and magnitudes ML and Mw.
 
-    Usage: surfquake locate -i [inventory_file_path] -c [path to 
+    Usage: surfquake locate -i [inventory_file_path] - p [path to project file] -c [path to 
       source_config_file] -l [path_to_nll_hyp_files] -o [path_to output_path]
 
     Reference: Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave 
@@ -298,19 +299,45 @@ def _source():
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
                            type=str, required=True)
 
+    arg_parse.add_argument("-p", "--project_file_path", help="Project file path",
+                           type=str, required=True)
+
     arg_parse.add_argument("-c", "--config_file_path", help="Path to source_config_file", type=str,
                            required=True)
 
     arg_parse.add_argument("-l", "--loc_files_path", help="Path to nll_hyp_files", type=str,
                            required=True)
 
+    arg_parse.add_argument("-t", "--large_scale", help="If you want a long cut of signals for teleseism events (optional)",
+                           action="store_true")
+
     arg_parse.add_argument("-o", "--output_dir_path", help="Path to output_directory ", type=str,
                            required=True)
 
     parsed_args = arg_parse.parse_args()
+
+    # load_project #
+    sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.project_file_path)
+    print(sp_loaded)
+    # Running stage
+
+    if parsed_args.large_scale:
+        scale = "teleseism"
+    else:
+        scale = "regional"
+
+    mg = Automag(sp_loaded, parsed_args.loc_files_path, parsed_args.inventory_file_path, parsed_args.config_file_path,
+                 parsed_args.output_dir_path, scale=scale)
+
+    mg.estimate_source_parameters()
+
     rs = ReadSource(parsed_args.output_dir_path)
     summary = rs.generate_source_summary()
-    rs.write_summary(summary, parsed_args.output_dir_pat)
+    rs.write_summary(summary, parsed_args.output_dir_path)
+
+    summary_path_file = os.path.join(parsed_args.output_dir_path, "source_summary.txt")
+    summary = rs.generate_source_summary()
+    rs.write_summary(summary, summary_path_file)
 
 
 def _mti():

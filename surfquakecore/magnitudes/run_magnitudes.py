@@ -31,7 +31,7 @@ class Automag:
         self.locations_directory = locations_directory
         self.inventory_path = inventory_path
         self.output_directory = output_directory
-        self.sacale = scale
+        self.scale = scale
         self.gui_mod = gui_mod
         self.dates = None
         self._check_folders()
@@ -114,12 +114,12 @@ class Automag:
 
         return stations
 
-    def __cut_signal_wise(self, st,  origin_time, regional=True):
+    def __cut_signal_wise(self, st,  origin_time):
 
         all_traces = []
         st.merge()
 
-        if regional:
+        if self.scale == "regional":
             dt_noise = 10
             dt_signal = 10 * 60
         else:
@@ -144,7 +144,7 @@ class Automag:
                 if key == gui_key:
                     config[key] = self.gui_mod[key]
         return config
-    def __run_core_source(self,  event,  id_name, focal_parameters):
+    def __run_core_source(self, event, id_name, focal_parameters):
         options = self._get_config(event, id_name)
         # Setup stage
         config = configure(options, progname='source_spec')
