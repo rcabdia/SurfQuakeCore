@@ -378,15 +378,17 @@ def _mti():
 
     parsed_args = arg_parse.parse_args()
 
-    project = SurfProject.load_project(path_to_project_file=parsed_args.path_to_project_file)
+    sp = SurfProject.load_project(path_to_project_file=parsed_args.path_to_project_file)
+    print(sp)
     bic = BayesianIsolaCore(
-        project=project,
+        project=sp,
         inventory_file=parsed_args.inventory_file_path,
         output_directory=parsed_args.output_dir_path,
         save_plots=parsed_args.save_plots,
     )
+    print("Starting Inversion")
     bic.run_inversion(mti_config=parsed_args.config_files_path)
-
+    print("End of process, please review output directory")
 
 if __name__ == "__main__":
     freeze_support()

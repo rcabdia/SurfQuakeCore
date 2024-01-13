@@ -13,6 +13,7 @@ from surfquakecore.moment_tensor.sq_isola_tools import bayes_isola
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola import ResolveMt, InversionDataManager
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, MomentTensorResult
+from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.utils.obspy_utils import MseedUtil
 from surfquakecore.utils.system_utils import get_python_major_version
 
@@ -32,7 +33,7 @@ def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
 
 
 class BayesianIsolaCore:
-    def __init__(self, project: dict, inventory_file: str,
+    def __init__(self, project: SurfProject, inventory_file: str,
                  output_directory: str, save_plots=False):
         """
 
@@ -111,12 +112,9 @@ class BayesianIsolaCore:
 
         for station in mti_config.stations:
             files_list.extend(
-                MseedUtil().get_now_files(
-                    project=self.project,
-                    date=mti_config.origin_date,
-                    stations_list=station.name,
-                    channel_list='|'.join(map(str, station.channels))
-                )
+                self.project.get_now_files(date=mti_config.origin_date, stations_list=station.name,
+                                           channel_list='|'.join(map(str, station.channels)),
+                                           only_datafiles_list=True)
             )
 
         return files_list
@@ -138,9 +136,9 @@ class BayesianIsolaCore:
         if isinstance(mti_config, str) and os.path.isdir(mti_config):
             _mti_configurations = load_mti_configurations(mti_config)
         elif isinstance(mti_config, str) and os.path.isfile(mti_config):
-            _mti_configurations = (load_mti_configuration(mti_config), )
+            _mti_configurations = (load_mti_configuration(mti_config),)
         elif isinstance(mti_config, MomentTensorInversionConfig):
-            _mti_configurations = (mti_config, )
+            _mti_configurations = (mti_config,)
         else:
             raise ValueError(f"mti_config {mti_config} is not valid. It must be either a directory "
                              f"with valid .ini files or a MomentTensorInversionConfig instance.")
@@ -201,7 +199,6 @@ class BayesianIsolaCore:
             stations = inputs.stations
             stations_index = inputs.stations_index
 
-
             # NEW FILTER STATIONS PARTICIPATION BY RMS THRESHOLD
             mt.get_participation()
 
@@ -254,7 +251,7 @@ class BayesianIsolaCore:
 
             inputs.save_inversion_results()
 
-            #if self.parameters['plot_save']:
+            # if self.parameters['plot_save']:
             if self.save_plots:
                 try:
                     plot_mti = bayes_isola.plot(solution, green_func_dir, from_axistra=True)
@@ -278,11 +275,3 @@ class BayesianIsolaCore:
                 print("coudn't release plotting memory usage")
 
             gc.collect()
-
-
-
-
-
-
-
-

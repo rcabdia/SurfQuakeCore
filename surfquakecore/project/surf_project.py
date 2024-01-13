@@ -223,6 +223,7 @@ class SurfProject:
         """
 
         self.data_files = []
+        project_filtered = {}
 
         # filter dict by python wilcards remind
 
@@ -232,6 +233,8 @@ class SurfProject:
         net = kwargs.pop('net', '.+')
         station = kwargs.pop('station', '.+')
         channel = kwargs.pop('channel', '.+')
+        only_datafiles_list = kwargs.pop('only_datafiles_list', False)
+
         if net == '':
             net = '.+'
         if station == '':
@@ -242,10 +245,18 @@ class SurfProject:
         # filter for regular expresions
         filter_list = [net, station, channel]
         project_filtered = self._search(self.project, filter_list)
-        self.project = project_filtered
-        for key, value in self.project.items():
-            for j in value:
-                self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
+
+        if not only_datafiles_list:
+            self.project = project_filtered
+            for key, value in self.project.items():
+                for j in value:
+                    self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
+        else:
+            for key, value in project_filtered.items():
+                for j in value:
+                    self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
+
+
 
     def _search(self, project: dict, event: list):
         res = {}
@@ -324,13 +335,13 @@ class SurfProject:
 
         return result
 
-    def get_now_files(self, date, stations_list, channel_list):
+    def get_now_files(self, date, stations_list, channel_list, only_datafiles_list=False):
         date = UTCDateTime(date)
 
         selection = [".", stations_list, channel_list]
 
         self.filter_project_keys(net=selection[0], station=selection[1],
-                                 channel=selection[2])
+                                 channel=selection[2], only_datafiles_list=only_datafiles_list)
         start = date - 1300  # half and hour before
         end = date + 3 * 3600  # end 2 hours after
         files_path = self.filter_time(list_files=self.data_files, starttime=start, endtime=end)

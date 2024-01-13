@@ -7,6 +7,7 @@ from datetime import datetime
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore, generate_mti_id_output
 from surfquakecore.moment_tensor.structures import MomentTensorResult, MomentTensorCentroid, MomentTensorScalar
+from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.utils.obspy_utils import MseedUtil
 from tests.test_resources.mti.mti_run_inversion_resources import test_inversion_resource_path
 
@@ -53,19 +54,24 @@ class TestBayesianIsolaCore(unittest.TestCase):
 
     def test_create_project(self):
         # TODO implement a test for project here
-        project = MseedUtil().search_files(self.data_dir_path)
-        print(project)
-
-        project = MseedUtil()._create_project(self.data_dir_path)
-        print(project)
+        # project = MseedUtil().search_files(self.data_dir_path)
+        # print(project)
+        #
+        # project = MseedUtil()._create_project(self.data_dir_path)
+        # print(project)
+        sp = SurfProject(self.data_dir_path)
+        sp.search_files(verbose=True)
+        print(sp)
 
     def test_run_mti_inversion(self):
 
         self.assertTrue(os.path.isdir(self.data_dir_path))
 
-        project = MseedUtil().search_files(self.data_dir_path)
-        self.assertIsInstance(project, dict)
-
+        #project = MseedUtil().search_files(self.data_dir_path)
+        #self.assertIsInstance(project, dict)
+        sp = SurfProject(self.data_dir_path)
+        sp.search_files(verbose=True)
+        print(sp)
         mti_config = load_mti_configuration(os.path.join(self.path_to_configfiles, "mti_config_test.ini"))
 
         self.assertTrue(os.path.isfile(os.path.join(self.path_to_configfiles, "mti_config_test.ini")))
@@ -73,7 +79,7 @@ class TestBayesianIsolaCore(unittest.TestCase):
         mti_config.inversion_parameters.earth_model_file = os.path.join(self.root_resource, "Iberia_test.dat")
 
         bic = BayesianIsolaCore(
-             project=project,
+             project=sp,
              inventory_file=self.inventory_path,
              output_directory=self.output_directory,
              save_plots=False,
