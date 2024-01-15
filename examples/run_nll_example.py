@@ -1,5 +1,4 @@
 import os
-
 from surfquakecore.earthquake_location.run_nll import Nllcatalog, NllManager
 
 if __name__ == "__main__":

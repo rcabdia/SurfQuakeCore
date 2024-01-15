@@ -20,8 +20,10 @@ class RealCore:
         ----------
         Parameters
         ----------
-        metadata str: Path to the inventory information of stations coordinates and instrument description
-        parameters_file: .init file with the full configuration to run real
+        metadata_file str: Path to the inventory information of stations coordinates and instrument description
+        real_config: Either the path to a real_config.ini or a RealConfig object.
+        picking_directory str: Root path to the folder wher picks P and S wave arrival time picks are storage
+        working_directory str: Root path to the folder that the associator uses to save intermediate files sucha as travel-times.
         """
 
         if isinstance(real_config, str) and os.path.isfile(real_config):

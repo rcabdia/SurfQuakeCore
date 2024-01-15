@@ -1,8 +1,12 @@
-"""
-Created on Tue Dec 17 20:26:28 2019
-
-@author: robertocabieces
-"""
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: run_nll.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Manage Event Locator
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
 
 import re
 import os
@@ -32,11 +36,10 @@ class NllManager:
 
     def __init__(self, nll_config: Union[str, NLLConfig], metadata_path, working_directory):
         """
-        Manage nll files for run nll program.
-
-        Important: The  obs_file_path is provided by the class :class:`PickerManager`.
-
-        :param obs_file_path: The file path of pick observations.
+        Manage NonLinLoc program to locate seismic events.
+        :param nll_config: Path to nll_config.ini file or to NLLConfig object.
+        :param metadata_path: Path to metadata file.
+        :param working_dirctory: Root path to folder to establish the working and output structure.
         """
         self.__get_nll_config(nll_config)
         self.__location_output = working_directory
@@ -342,6 +345,11 @@ class NllManager:
         exc_cmd(command, stdout=open(file_path_to_append, 'a'), close_fds=True)
 
     def vel_to_grid(self):
+        """
+        # Method to generate the velocity grid #
+        :return: Extracts the velocity grid as layer*.buf and layer*.hdr inside working_dir/model
+        template file temp.txt in working_dir/temp.txt
+        """
         waves = []
         latitude = self.nll_config.grid_configuration.latitude
         longitude = self.nll_config.grid_configuration.longitude
@@ -383,7 +391,13 @@ class NllManager:
 
 
     def grid_to_time(self):
-
+        """
+        # Method to generate the travel-time tables file #
+        :return: Extracts the travel-times per wave type as
+        [layer.P.STA.angle.buf, layer.P.STA.time.buf, layer.P.STA.time.hdr]
+        inside ./working_dir/time
+        template file at ./work_dir/temp/G2T_temp.txt
+        """
         waves = []
         latitude = self.nll_config.grid_configuration.latitude
         longitude = self.nll_config.grid_configuration.longitude
@@ -415,7 +429,11 @@ class NllManager:
 
 
     def run_nlloc(self):
-
+        """
+        # Method to run the event locations from the picking file and config_file.ini #
+        :return: locations files *hyp inside ./working_dir/loc
+        template file at ./work_dir/temp/run_temp.txt
+        """
         latitude = self.nll_config.grid_configuration.latitude
         longitude = self.nll_config.grid_configuration.longitude
         transform = self.nll_config.grid_configuration.geo_transformation
