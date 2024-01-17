@@ -47,6 +47,11 @@ class ReadSource:
 
     def generate_source_summary(self):
 
+        """
+        # Generate source parameters summary as dataframe
+        :return List: List of dictionaries containing source parameters
+        """
+
         summary = []
         self.find_files()
         if len(self.obsfiles)>0:
@@ -59,7 +64,12 @@ class ReadSource:
         df_magnitudes = pd.DataFrame.from_dict(magnitudes_dict)
         df_magnitudes.to_csv(output, sep=";", index=False)
 
-    def write_summary(self, summary: dict, summary_path: str):
+    def write_summary(self, summary: list, summary_path: str):
+        """
+        Transform the summary into txt file using Pandas Dataframe
+        :param summary: List of dictionaries containing source parameters
+        :param summary_path: path to file output including the name of the file.
+        """
         dates = []
         lats = []
         longs = []

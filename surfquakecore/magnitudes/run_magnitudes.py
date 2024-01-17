@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: run_nll.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Manage Event Locator
+# Author: Roberto Cabieces, Thiago C. Junqueira & Claudio Satriano
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
 import gc
 import os
 from obspy import read, read_events, UTCDateTime, Stream
@@ -26,6 +36,16 @@ class Automag:
 
     def __init__(self, project: SurfProject, locations_directory: str, inventory_path, source_config: str,
                  output_directory: str, scale: str, gui_mod=None):
+
+        """
+        Manage SourceSpec program to estimate source parameters.
+        :param project: SurfProject object.
+        :param inventory_path: Path to metadata file.
+        :param source_config: Path to source config file.
+        :param output_directory: Path to output folder.
+        :param scale: if regional waveforms will cut with small adapted time windows, else will be cut with a
+        long time window
+        """
 
         self.project = project
         self.locations_directory = locations_directory
@@ -200,7 +220,7 @@ class Automag:
         gc.collect()
 
     def estimate_source_parameters(self):
-
+        # Loop over loc folder files and run source parameters estimation
         self.scan_folder()
         for date in self.dates.keys():
 
