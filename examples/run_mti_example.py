@@ -1,8 +1,7 @@
 import os
-
 from surfquakecore.moment_tensor.mti_parse import read_isola_log, read_isola_result
 from surfquakecore.moment_tensor.sq_isola_tools.sq_bayesian_isola import BayesianIsolaCore
-from surfquakecore.utils.obspy_utils import MseedUtil
+from surfquakecore.project.surf_project import SurfProject
 
 def list_files_with_iversion_json(root_folder):
     iversion_json_files = []
@@ -24,21 +23,19 @@ if __name__ == "__main__":
     working_directory = os.path.join(resource_root, "working_directory")
     output_directory = os.path.join(resource_root, "output_directory")
 
-    project_tobe_saved = os.path.join(path_to_project, "surfquake_project_test.pkl")
-    print("project:", project_tobe_saved)
-    ms = MseedUtil()
-    project = ms.search_files(data_dir_path)
-    print("End of project creation, number of files ", len(project))
+    # Load the Project
+    project_name = "mti_project.pkl"
+    path_to_project = os.path.join(path_to_project, project_name)
+    sp = SurfProject(path_to_project)
+    sp.search_files(verbose=True)
+    print(sp)
 
-    # it is possible to save the project for later use
-    #project = ms.save_project(project, project_tobe_saved)
 
-    # alternatively one can load the project
-    # project = MseedUtil.load_project(file=project_tobe_saved)
-
-    # build the class
-    bic = BayesianIsolaCore(project=project, inventory_file=inventory_path, output_directory=output_directory,
+    # Build the class
+    bic = BayesianIsolaCore(project=sp, inventory_file=inventory_path, output_directory=output_directory,
                             save_plots=True)
+
+    # Run Inversion
     bic.run_inversion(mti_config=path_to_configfiles)
     print("Finished Inversion")
     iversion_json_files = list_files_with_iversion_json(output_directory)

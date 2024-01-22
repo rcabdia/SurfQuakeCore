@@ -37,10 +37,10 @@ class BayesianIsolaCore:
                  output_directory: str, save_plots=False):
         """
 
-        :param project:
-        :param inventory_file:
-        :param output_directory:
-        :param save_plots:
+        :param project: SurfProject object
+        :param inventory_file: File to the metadata file
+        :param output_directory: Root path to the output directory where inversion results will be saved
+        :param save_plots: if figures summarizing the results for each inversion are desired
         """
 
         self.working_directory: Optional[str] = None

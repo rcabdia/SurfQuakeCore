@@ -350,7 +350,7 @@ def _mti():
           surfQuake provides a easy way to estimat the Moment Tensor from pre-located earthquakes using a 
           bayesian inversion.
 
-        Usage: surfquake locate -i [inventory_file_path] -p [path_to_project] -c [path to mti_config_file.ini] 
+        Usage: surfquake mti -i [inventory_file_path] -p [path_to_project] -c [path to mti_config_file.ini] 
         -o [output_path]  -s [if save plots]
 
         Reference: Vackář, J., Burjánek, J., Gallovič, F., Zahradník, J., & Clinton, J. (2017). Bayesian ISOLA: 
