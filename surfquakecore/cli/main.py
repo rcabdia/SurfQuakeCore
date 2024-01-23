@@ -114,16 +114,15 @@ def _pick():
     arg_parse.epilog = """
             Overview:
               The Picking algorythm uses the Deep Neural Network of Phasenet to estimate 
-              the arrival times of P- and S-wave
+              the arrival times of P- and S-wave in regional and local seismic events.
 
             Usage:
               surfquake pick -f [path to your project file] -d [path to your pick saving directory] -p 
               [P-wave threshoold] -s [S-wave threshold] --verbose"
 
-            Reference:
-              Liu, Min, et al. "Rapid characterization of the July 2019 Ridgecrest, California, 
-              earthquake sequence from raw seismic data using machine‐learning phase picker." 
-              Geophysical Research Letters
+            Reference:              
+              Zhu and Beroza, 2019. PhaseNet: a deep-neural-network-based seismic arrival-time picking method, 
+              Geophysical Journal International.
 
             Documentation:
               https://projectisp.github.io/surfquaketutorial.github.io/
@@ -347,7 +346,7 @@ def _mti():
     arg_parse.epilog = """
 
         Overview:
-          surfQuake provides a easy way to estimat the Moment Tensor from pre-located earthquakes using a 
+          surfQuake provides an easy way to estimate the Moment Tensor from pre-located earthquakes using a 
           bayesian inversion.
 
         Usage: surfquake mti -i [inventory_file_path] -p [path_to_project] -c [path to mti_config_file.ini] 
