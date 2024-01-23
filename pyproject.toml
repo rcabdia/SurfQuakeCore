@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 dynamic = ["readme", "dependencies"]
-name = "surfquakecore"
+name = "surfquake"
 version = "0.0.1"
 authors = [
   { name="Roberto Cabieces & Thiago Junqueira", email="rcabdia@roa.es"},
@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://projectisp.github.io/ISP_tutorial.github.io/"
+"Homepage" = "https://projectisp.github.io/surfquaketutorial.github.io/"
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.md"]}
