@@ -1,5 +1,0 @@
-source venv/bin/activate
-pip install build
-python3 -m build
-
-pip install example_package_rob-0.0.1-py3-none-any.whl
