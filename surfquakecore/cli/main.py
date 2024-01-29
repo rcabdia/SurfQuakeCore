@@ -10,6 +10,7 @@ from surfquakecore.magnitudes.source_tools import ReadSource
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
+from surfquakecore.utils.create_station_xml import Convert
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -41,8 +42,10 @@ def _create_actions():
             name="source", run=_source, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "mti": _CliActions(
-            name="mi", run=_mti, description=f"Type {__entry_point_name} -h for help.\n")
+            name="mi", run=_mti, description=f"Type {__entry_point_name} -h for help.\n"),
 
+        "csv2xml": _CliActions(
+            name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -357,7 +360,6 @@ def _mti():
 
         Documentation:
           https://projectisp.github.io/surfquaketutorial.github.io/
-          https://sourcespec.readthedocs.io/en/stable/index.html
         """
 
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
@@ -388,6 +390,45 @@ def _mti():
     print("Starting Inversion")
     bic.run_inversion(mti_config=parsed_args.config_files_path)
     print("End of process, please review output directory")
+
+
+def _csv2xml():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Convert csv file to stations.xml",
+                               description="Convert csv file to stations.xml")
+
+    arg_parse.epilog = """
+
+            Overview:
+              Convert csv file to stations.xml: 
+              Net Station Lat Lon elevation start_date starttime end_date endtime
+              date format = '%Y-%m-%d %H:%M:%S'
+              
+            Usage: surfquake csv2xml -c [csv_file_path] -r [resp_files_path] -o [output_path] -n [stations_xml_name]
+
+            Documentation:
+              https://projectisp.github.io/surfquaketutorial.github.io/
+            """
+
+    arg_parse.add_argument("-c", "--csv_file_path", help="Net Station Lat Lon elevation "
+                                                "start_date starttime end_date endtime", type=str, required=True)
+
+    arg_parse.add_argument("-r", "--resp_files_path", help="Path to the folder containing the response file",
+                           type=str, required=False)
+
+    arg_parse.add_argument("-o", "--output_path", help="Path to output xml file)", type=str, required=True)
+
+    arg_parse.add_argument("-n", "--stations_xml_name", help="Name of the xml file to be saved", type=str,
+                           required=True)
+    parsed_args = arg_parse.parse_args()
+
+    if parsed_args:
+        sc = Convert(parsed_args.csv_file_path, resp_files=parsed_args.resp_files_path)
+    else:
+        sc = Convert(parsed_args.csv_file_path)
+    data_map = sc.create_stations_xml()
+    inventory = sc.get_data_inventory(data_map)
+    sc.write_xml(parsed_args.output_path, parsed_args.stations_xml_name, inventory)
+
 
 if __name__ == "__main__":
     freeze_support()
