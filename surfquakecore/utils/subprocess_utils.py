@@ -27,9 +27,18 @@ def exc_cmd(cmd, **kwargs):
         except sb.TimeoutExpired:
             p.kill()
             std_out, std_err = p.communicate()  # try again if timeout fails.
+
+        # Print the stdout and stderr to the terminal
+        print(std_out)
+
         if p.returncode != 0:  # Bad error.
             raise sb.CalledProcessError(p.returncode, std_err)
         elif len(std_err) != 0:
-            pass# Some possible errors trowed by the running subprocess, but not critical.
+            # Some possible errors trowed by the running subprocess, but not critical.
+            print("stderr:", std_err)
             #raise sb.SubprocessError(std_err)
         return std_out
+
+# Example usage:
+cmd = ["echo", "Hello, World!"]
+exc_cmd(cmd)

@@ -27,7 +27,6 @@ from surfquakecore.data_processing.metadata_manager import MetadataManager
 from surfquakecore.binaries import BINARY_NLL_DIR
 from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
 from surfquakecore.earthquake_location.structures import NLLConfig
-from surfquakecore.utils import read_nll_performance
 from surfquakecore.utils.geodetic_conversion import calculate_destination_coordinates
 from surfquakecore.utils.subprocess_utils import exc_cmd
 from surfquakecore.utils.obspy_utils import ObspyUtil
