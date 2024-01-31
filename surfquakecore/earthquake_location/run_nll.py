@@ -28,6 +28,7 @@ from surfquakecore.binaries import BINARY_NLL_DIR
 from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
 from surfquakecore.earthquake_location.structures import NLLConfig
 from surfquakecore.utils import read_nll_performance
+from surfquakecore.utils.geodetic_conversion import calculate_destination_coordinates
 from surfquakecore.utils.subprocess_utils import exc_cmd
 from surfquakecore.utils.obspy_utils import ObspyUtil
 _os = platform.system()
@@ -244,13 +245,20 @@ class NllManager:
         travetimepath = os.path.join(self.get_time_dir, "layer")
         locationpath = os.path.join(self.get_loc_dir, "location")
 
-        # Grid search inside for location robustness
-        yNum = yNum - round(0.01*yNum + 1)
-        xNum = yNum
-        zNum = zNum - round(0.01*zNum + 1)
-        xOrig = round(0.01*xNum + 1)
-        yOrig = round(0.01*yNum + 1)
-        zOrig = zOrig + round(0.01*zNum + 1)
+        # Grid search inside for location robustness 1% inside the grid
+        yNum = yNum*dy - round(0.02 * (yNum*dy) + 1)
+        xNum = yNum*dy
+        zNum = zNum*dz - round(0.02 * (zNum*dz) + 1)
+
+        if self.nll_config.grid_configuration.model == "1D":
+            xOrig = round(0.01*(xNum*dx) + 1)
+            yOrig = round(0.01*(yNum*dy) + 1)
+            zOrig = zOrig + round(0.01*zNum + 1)
+        else:
+            xOrig = round(0.01 * xOrig + 1)
+            yOrig = round(0.01 * yOrig + 1)
+            zOrig = zOrig + round(0.01 * zOrig + 1)
+
 
         df = pd.DataFrame(data)
         df.iloc[1, 0] = 'TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}'.format(lat=latitude, lon=longitude, depth=0.0)
@@ -366,7 +374,7 @@ class NllManager:
         model = self.nll_config.grid_configuration.model
 
         if model == "1D":
-            x_node = 2 #mandatory for 1D models
+            x_node = 2 # mandatory for 1D models
             if p_wave_type:
                 waves.append("P")
             if s_wave_type:
@@ -654,13 +662,18 @@ class NllManager:
         elif wave_type == "S":
             file_name = os.path.join(self.get_local_models_dir3D, "layer.S.mod.hdr")
 
+        x_width = float((x_node - 1) * dx)
+        y_width = float((x_node - 1) * dx)
+        shift_x = -0.5 * x_width
+        shift_y = -0.5 * y_width
+        lat_geo, lon_geo = calculate_destination_coordinates(latitude, longitude, abs(shift_x), abs(shift_y))
 
-        shift_x = -0.5*float((x_node-1)*dx)
-        shift_y = -0.5*float((y_node-1)*dy)
+        # shift_x = -0.5*float((x_node-1)*dx)
+        # shift_y = -0.5*float((y_node-1)*dy)
 
         coords = '{xnd} {ynd} {znd} {shift_x} {shift_y}  {depth} {dx:.2f} {dy:.2f} {dz:.2f} SLOW_LEN FLOAT\n'.format(xnd=x_node,
-                    ynd=y_node,znd=z_node,shift_x=shift_x, shift_y=shift_y, depth=depth, dx=dx, dy=dy, dz=dz)
-        transf = 'TRANSFORM SIMPLE LatOrig {xorig:.2f} LongOrig {yorig:.2f} RotCW 0.000000'.format(xorig=latitude, yorig=longitude)
+                    ynd=y_node, znd=z_node, shift_x=shift_x, shift_y=shift_y, depth=depth, dx=dx, dy=dy, dz=dz)
+        transf = 'TRANSFORM SIMPLE LatOrig {xorig:.2f} LongOrig {yorig:.2f} RotCW 0.000000'.format(xorig=lat_geo, yorig=lon_geo)
         new_file = open(file_name, mode="w+", encoding="utf-8")
         new_file.write(coords)
         new_file.close()
