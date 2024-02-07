@@ -56,8 +56,12 @@ class SurfProject:
                 print(f' {"Code"}      {"File"}     {"Sampling Rate"}     {"StartTime"}     {"EndTime"}')
                 item = self.project[key]
                 for value in item:
-                    print(key, os.path.basename(value[0]), value[1].sampling_rate, value[1].starttime,
-                          value[1].endtime)
+                    try:
+                        print(key, os.path.basename(value[0]), value[1].sampling_rate, value[1].starttime,
+                              value[1].endtime)
+                    except:
+                        pass
+                        #print("exception arises at", key)
         return ""
 
     def __copy__(self):
