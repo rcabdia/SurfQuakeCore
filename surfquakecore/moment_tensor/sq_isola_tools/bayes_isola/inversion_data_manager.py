@@ -36,9 +36,11 @@ class InversionDataManager:
         self.logfile.close()
         del self.data_raw
 
-    def save_inversion_results(self):
+    def save_inversion_results(self, config):
+
         with open(os.path.join(self.outdir, "inversion.json"), 'w') as f:
-            json.dump(self.inversion_result.to_dict(), f, cls=DateTimeEncoder)
+            merged_dict = {**config, **self.inversion_result.to_dict()}
+            json.dump(merged_dict, f, cls=DateTimeEncoder)
 
     def log(self, s, newline=True, printcopy=False):
         """

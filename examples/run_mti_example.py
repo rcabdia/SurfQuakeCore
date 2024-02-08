@@ -8,7 +8,7 @@ def list_files_with_iversion_json(root_folder):
 
     for foldername, subfolders, filenames in os.walk(root_folder):
         for filename in filenames:
-            if filename == "iversion.json":
+            if filename == "inversion.json":
                 iversion_json_files.append(os.path.join(foldername, filename))
 
     return iversion_json_files

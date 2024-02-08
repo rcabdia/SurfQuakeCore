@@ -96,6 +96,7 @@ class BayesianIsolaCore:
                 kw = {"ignore_cleanup_errors": True} if get_python_major_version() > 9 else {}
                 temp_dir = TemporaryDirectory(**kw)
                 self.working_directory = temp_dir.name
+                print("Working Directory at temporal Folder ", self.working_directory )
             if not os.path.isdir(self.working_directory):
                 os.mkdir(self.working_directory)
             yield self.working_directory
@@ -191,6 +192,8 @@ class BayesianIsolaCore:
 
             inputs.set_source_time_function(mti_config.inversion_parameters.source_type.lower(), green_func_dir,
                                             t0=mti_config.inversion_parameters.source_duration, t1=0.5)
+
+
             #
             # Create data structure self.stations
             # edit self.stations_index
@@ -249,7 +252,7 @@ class BayesianIsolaCore:
                 from_axistra=True
             )
 
-            inputs.save_inversion_results()
+            inputs.save_inversion_results(mti_config.to_dict())
 
             # if self.parameters['plot_save']:
             if self.save_plots:
