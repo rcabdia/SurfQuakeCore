@@ -218,6 +218,7 @@ class BayesianIsolaCore:
             inputs.create_station_index()
             inputs.data_deltas = deltas
             #
+            print("Creating Green Functions")
             grid = bayes_isola.grid(inputs, green_func_dir,
                                     location_unc=mti_config.inversion_parameters.location_unc,
                                     depth_unc=mti_config.inversion_parameters.depth_unc,
@@ -227,6 +228,8 @@ class BayesianIsolaCore:
             #
 
             # TODO refactor this
+
+            print("Processing Seismic Waveforms")
             data = bayes_isola.process_data(
                 data=inputs,
                 working_directory=green_func_dir,
@@ -244,6 +247,7 @@ class BayesianIsolaCore:
                 save_non_inverted=True
             )
             # deviatoric=True: force isotropic component to be zero
+            print("Processing Inversion")
             solution = ResolveMt(
                 data=data,
                 cova=cova,
@@ -256,6 +260,7 @@ class BayesianIsolaCore:
 
             # if self.parameters['plot_save']:
             if self.save_plots:
+                print("Plotting Solutions")
                 try:
                     plot_mti = bayes_isola.plot(solution, green_func_dir, from_axistra=True)
                     plot_mti.html_log(h1='surfQuake MTI')

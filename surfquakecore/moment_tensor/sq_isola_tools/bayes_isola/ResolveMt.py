@@ -113,7 +113,8 @@ class ResolveMt:
 		"""
 		Runs function :func:`invert` in parallel.
 
-		Module :class:`multiprocessing` does not allow running function of the same class in parallel, so the function :func:`invert` cannot be method of class :class:`ISOLA` and this wrapper is needed.
+		Module :class:`multiprocessing` does not allow running function of the same class in parallel,
+		so the function :func:`invert` cannot be method of class :class:`ISOLA` and this wrapper is needed.
 		"""
 		grid = self.grid
 		d_shifts = self.d.d_shifts
@@ -122,6 +123,7 @@ class ResolveMt:
 
 		todo = []
 		for i in range(len(grid)):
+
 			point_id = str(i).zfill(4)
 			grid[i]['id'] = point_id
 			if not grid[i]['err']:
@@ -157,7 +159,8 @@ class ResolveMt:
 							self.d.components, self.inp.stations, self.d.npts_elemse,
 							self.d.npts_slice, self.d.elemse_start_origin,
 							self.inp.event['t'], self.d.samprate, self.deviatoric, self.decompose,
-							self.d.invert_displacement, self.working_directory, self.from_axistra)) for i in todo]
+							self.d.invert_displacement, self.working_directory, [i, len(todo), self.threads] ,
+							self.from_axistra)) for i in todo]
 
 				output = [p.get() for p in results]
 		else:
@@ -167,7 +170,7 @@ class ResolveMt:
 					grid[i]['id'], d_shifts, norm_d, cd_inv, cd_inv_shifts, self.inp.nr, self.d.components,
 					self.inp.stations, self.d.npts_elemse, self.d.npts_slice, self.d.elemse_start_origin,
 					self.inp.event['t'], self.d.samprate, self.deviatoric, self.decompose, self.d.invert_displacement,
-					self.working_directory, from_axistra=self.from_axistra
+					self.working_directory, [i, len(todo), self.threads], from_axistra=self.from_axistra
 				)
 				output.append(res)
 
@@ -222,6 +225,7 @@ class ResolveMt:
 		self.inp.inversion_result.centroid.origin_shift = C['shift']
 		self.inp.inversion_result.centroid.vr = C['VR'] * 100
 		self.inp.inversion_result.centroid.cn = C['CN']
+		self.inp.inversion_result.centroid.rupture_length = self.inp.rupture_length*1e-3
 
 		if C['edge']:
 			self.log('  Warning: the solution lies on the edge of the grid!')
@@ -276,7 +280,7 @@ class ResolveMt:
 		msg += f"slip-rake = {self.mt_decomp['r1']: .0f}\n"
 		msg += f"  Fault plane 2: strike = {self.mt_decomp['s2']: .0f}, dip = {self.mt_decomp['d2']: .0f} , "
 		msg += f"slip-rake = {self.mt_decomp['r2']: .0f}"
-
+		print(msg)
 		self.log(msg)
 		self.inp.inversion_result.scalar.mo = self.mt_decomp['mom']
 		self.inp.inversion_result.scalar.mw = self.mt_decomp['Mw']

@@ -77,6 +77,7 @@ class MomentTensorCentroid(BaseDataClass):
     mrt: float = 0.
     mrp: float = 0.
     mtp: float = 0.
+    rupture_length: float = 0.
 
 
 @dataclass

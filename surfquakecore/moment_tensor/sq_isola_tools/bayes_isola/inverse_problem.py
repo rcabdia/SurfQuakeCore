@@ -11,8 +11,10 @@ from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.fileformats import r
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.helpers import my_filter
 from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola.MT_comps import decompose, a2mt
 
-def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, stations, npts_elemse, npts_slice, elemse_start_origin,
-		   origin_time, samprate, deviatoric=False, decomp=True, invert_displacement=False, elemse_path=None, from_axistra=True):
+def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, stations, npts_elemse, npts_slice,
+		   elemse_start_origin, origin_time, samprate,  deviatoric=False, decomp=True,
+		   invert_displacement=False, elemse_path=None, progress = [], from_axistra=True):
+
 
 	"""
 	Solves inverse problem in a single grid point for multiple time shifts.
@@ -61,7 +63,8 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 	
 	Remark: because of parallelisation, this wrapper cannot be part of class :class:`ISOLA`.
 	"""
-
+	if len(progress) > 0:
+		print("Progress ", int((progress[0]/progress[1])*100), "%", " Threads ", progress[2])
 	# params: grid[i]['id'], self.d_shifts, self.Cd_inv, self.nr, self.components, self.stations, self.npts_elemse, self.npts_slice, self.elemse_start_origin, self.deviatoric, self.decompose
 	if deviatoric: ne=5
 	else: ne=6
@@ -71,12 +74,12 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 	elif elemse_path and from_axistra == False:
 		elemse = read_elemse_from_files(nr, elemse_path, stations, origin_time, samprate, npts_elemse,
 										invert_displacement)
-	
+
 	# filtrovat elemse
 	for r in range(nr):
 		for i in range(ne):
 			my_filter(elemse[r][i], stations[r]['fmin'], stations[r]['fmax'])
-	
+
 	if npts_slice != npts_elemse:
 		dt = elemse[0][0][0].stats.delta
 		for st6 in elemse:
@@ -112,7 +115,7 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 
 		if Cd_inv_shifts:  # ACF
 			Cd_inv = Cd_inv_shifts[shift]
-			
+
 		if 'Gt' in vars() and not Cd_inv_shifts: # Gt is the same as at the previous shift
 			pass
 		elif Cd_inv:
@@ -127,7 +130,7 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 			Gt = np.concatenate(GtCd, axis=1)
 		else:
 			Gt = G.transpose()
-		
+
 		if not 'det_Ca' in vars() or Cd_inv_shifts: # first cycle or Cd_inv is dependent on shift - must be recalculated
 			GtG = np.dot(Gt,G)
 			CN = np.sqrt(np.linalg.cond(GtG)) # condition number
@@ -140,7 +143,7 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 		# result : coeficients of elementary seismograms
 		a = np.dot(GtGinv,Gtd)
 		if deviatoric: a = np.append(a, [[0.]], axis=0)
-		
+
 		if Cd_inv:
 			dGm = d_shift - np.dot(G, a[:ne]) # dGm = d_obs - G m
 			idx = 0
