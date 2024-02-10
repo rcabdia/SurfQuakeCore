@@ -87,7 +87,7 @@ def load_mti_configurations(dir_path: str):
     )
 
 
-def read_isola_result(file: str) -> MomentTensorResult:
+def read_isola_result(file: str) -> dict:
     """
     Reads the ISOLA-ObsPy output inversion.json file.
 
@@ -95,7 +95,8 @@ def read_isola_result(file: str) -> MomentTensorResult:
     :return:
     """
     with open(file, 'r') as f:
-        return MomentTensorResult.from_dict(json.load(f))
+        return json.load(f)
+        #return MomentTensorResult.from_dict(json.load(f))
 
 
 @deprecated("Use read_isola_result instead.")
