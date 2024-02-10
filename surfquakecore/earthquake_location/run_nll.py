@@ -266,8 +266,8 @@ class NllManager:
 
         xNum = int(yNum)
         yNum = int(yNum)
-        df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=xNum,
-                        y=yNum, z=zNum, xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
+        df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=int(xNum),
+                        y=int(yNum), z=int(zNum), xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
 
         if self.nll_config.location_parameters.method == 'GAU_ANALYTIC':
             df.iloc[8, 0] = ('LOCMETH GAU_ANALYTIC {maxDistStaGrid} {minNumberPhases} {maxNumberPhases} '
