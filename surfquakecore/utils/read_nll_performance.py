@@ -22,7 +22,7 @@ from obspy.core.event import (Arrival, Comment, CreationInfo, Event, Origin,
                               OriginQuality, OriginUncertainty, Pick,
                               WaveformStreamID)
 from obspy.geodetics import kilometer2degrees, degrees2kilometers
-
+warnings.filterwarnings("ignore")
 
 ONSETS = {"i": "impulsive", "e": "emergent"}
 ONSETS_REVERSE = {"impulsive": "i", "emergent": "e"}

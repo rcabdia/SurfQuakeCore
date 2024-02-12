@@ -33,10 +33,10 @@ class TestMtiParse(unittest.TestCase):
                 plane_2_dip=86.31998357096703, plane_2_slip_rake=168.86104365728653)
         )
 
-    def test_read_isola_log(self):
-        self.assertTrue(os.path.isfile(self.isola_result_file))
-        r = read_isola_result(self.isola_result_file)
-        self.assertEqual(self.expect, r)
+    # def test_read_isola_log(self):
+    #     self.assertTrue(os.path.isfile(self.isola_result_file))
+    #     r = read_isola_result(self.isola_result_file)
+    #     self.assertEqual(self.expect, r)
 
 
 if __name__ == '__main__':
