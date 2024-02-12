@@ -170,7 +170,7 @@ def read_isola_log(file: str):
 
     return log_dict
 
-class TestMti:
+class WriteMTI:
     def __init__(self, root_folder):
         self.root_folder = root_folder
 
@@ -184,7 +184,7 @@ class TestMti:
 
         return iversion_json_files
 
-    def run_mti_summary(self, output):
+    def mti_summary(self, output):
         dates = []
         lats = []
         longs = []
