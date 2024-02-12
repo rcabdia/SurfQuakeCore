@@ -1,9 +1,8 @@
 import json
 import os
 import re
-
+import pandas as pd
 import numpy as np
-
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, MomentTensorResult
 from surfquakecore.utils.configuration_utils import parse_configuration_file
 from surfquakecore.utils.string_utils import is_float
@@ -170,3 +169,92 @@ def read_isola_log(file: str):
     log_dict["fp2_rake"] = fp2_rake
 
     return log_dict
+
+class TestMti:
+    def __init__(self, root_folder):
+        self.root_folder = root_folder
+
+    def list_files_with_iversion_json(self):
+        iversion_json_files = []
+
+        for foldername, subfolders, filenames in os.walk(self.root_folder):
+            for filename in filenames:
+                if filename == "inversion.json":
+                    iversion_json_files.append(os.path.join(foldername, filename))
+
+        return iversion_json_files
+
+    def run_mti_summary(self, output):
+        dates = []
+        lats = []
+        longs = []
+        depths = []
+        c_dates = []
+        c_longs = []
+        c_lats = []
+        c_depths = []
+        vr = []
+        cn = []
+        mrr = []
+        mtt = []
+        mpp = []
+        mrt = []
+        mrp = []
+        mtp = []
+        rupture_length = []
+        mo = []
+        mw = []
+        dc = []
+        clvd = []
+        isotropic_component = []
+        plane_2_strike = []
+        plane_2_dip = []
+        plane_2_slip_rake = []
+        plane_1_strike = []
+        plane_1_dip = []
+        plane_1_slip_rake = []
+        mti_dict = {'date_id': dates, 'lat': lats, 'long': longs, 'depth': depths,
+                    'c_date': c_dates, 'c_lat': c_lats, 'c_longs': c_longs, 'c_depths': c_depths, "mw": mw, "mo": mo,
+                    "rupture_legth": rupture_length, "dc": dc, "clvd": clvd, "vr": vr, "cn": cn,
+                    "isotropic_component": isotropic_component,
+                    "mrr": mrr, "mtt": mtt, "mpp": mpp,
+                    "mrt": mrt, "mrp": mrp, "mtp": mtp, "plane_1_strike": plane_1_strike, "plane_1_dip": plane_1_dip,
+                    "plane_1_slip_rake": plane_1_slip_rake, "plane_2_strike": plane_2_strike, "plane_2_dip": plane_2_dip,
+                    "plane_2_slip_rake": plane_2_slip_rake }
+
+        mti_files = self.list_files_with_iversion_json()
+        for file in mti_files:
+            mti_result = read_isola_result(file)
+            dates.append(mti_result["origin_date"])
+            lats.append(mti_result["latitude"])
+            longs.append(mti_result["longitude"])
+            depths.append(mti_result["depth_km"])
+            c_lats.append(mti_result["centroid"]["latitude"])
+            c_longs.append(mti_result["centroid"]["longitude"])
+            c_depths.append(mti_result["centroid"]["depth"])
+            c_dates.append(mti_result["centroid"]["time"])
+            vr.append(mti_result["centroid"]["vr"])
+            cn.append(mti_result["centroid"]["cn"])
+            mrr.append(mti_result["centroid"]["mrr"])
+            mtt.append(mti_result["centroid"]["mtt"])
+            mpp.append(mti_result["centroid"]["mpp"])
+            mrt.append(mti_result["centroid"]["mrt"])
+            mrp.append(mti_result["centroid"]["mrp"])
+            mtp.append(mti_result["centroid"]["mtp"])
+            rupture_length.append(mti_result["centroid"]["rupture_length"])
+            mo.append(mti_result["scalar"]["mo"])
+            mw.append(mti_result["scalar"]["mw"])
+            dc.append(mti_result["scalar"]["dc"])
+            clvd.append(mti_result["scalar"]["clvd"])
+            isotropic_component.append(mti_result["scalar"]["isotropic_component"])
+            plane_1_strike.append(mti_result["scalar"]["plane_1_strike"])
+            plane_1_dip.append(mti_result["scalar"]["plane_1_dip"])
+            plane_1_slip_rake.append(mti_result["scalar"]["plane_1_slip_rake"])
+            plane_2_strike.append(mti_result["scalar"]["plane_2_strike"])
+            plane_2_dip.append(mti_result["scalar"]["plane_2_dip"])
+            plane_2_slip_rake.append(mti_result["scalar"]["plane_2_slip_rake"])
+
+        df_mti = pd.DataFrame.from_dict(mti_dict)
+        print(df_mti)
+        df_mti.to_csv(output, sep=";", index=False)
+        print("Saved MTI summary at ", output)
