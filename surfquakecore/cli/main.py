@@ -7,6 +7,7 @@ from typing import Optional
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
+from surfquakecore.moment_tensor.mti_parse import WriteMTI
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
@@ -394,6 +395,8 @@ def _mti():
     print("Starting Inversion")
     bic.run_inversion(mti_config=parsed_args.config_files_path)
     print("End of process, please review output directory")
+    wm = WriteMTI(parsed_args.output_dir_path)
+    wm.mti_summary()
 
 
 def _csv2xml():
@@ -442,7 +445,7 @@ def _buildcatalog():
             Overview:
               buildcatalog class helps to join information from all surfquake outputs and create a catalog
     
-            Usage: surfquake buildcatalog -e [path_events_file] -s [path_source_summary_file] -m 
+            Usage: surfquake buildcatalog -e [path_event_files_folder] -s [path_source_summary_file] -m 
             [path_mti_summary_file] -t [type_of_catalog] -o [path_to_ouput_folder]
     
             Documentation:
@@ -451,7 +454,7 @@ def _buildcatalog():
               write.html#obspy.core.event.Catalog.write
             """
 
-    arg_parse.add_argument("-e", "--path_events_file", help="Net Station Lat Lon elevation "
+    arg_parse.add_argument("-e", "--path_event_files_folder", help="Net Station Lat Lon elevation "
                                                 "start_date starttime end_date endtime", type=str, required=True)
 
     arg_parse.add_argument("-s", "--path_source_summary_file", help='Path to the file containing '
@@ -470,7 +473,7 @@ def _buildcatalog():
                                                                 "will be saved", type=str, required=True)
 
     parsed_args = arg_parse.parse_args()
-    bc = BuildCatalog(loc_folder=parsed_args.path_events_file, source_summary_file=parsed_args.path_source_summary_file,
+    bc = BuildCatalog(loc_folder=parsed_args.path_event_files_folder, source_summary_file=parsed_args.path_source_summary_file,
                       output_path=parsed_args.path_source_summary_file,
                       format=parsed_args.catalog_format)
     bc.build_catalog_loc()
