@@ -11,6 +11,7 @@ from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
 from surfquakecore.utils.create_station_xml import Convert
+from surfquakecore.utils.manage_catalog import BuildCatalog
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -46,6 +47,9 @@ def _create_actions():
 
         "csv2xml": _CliActions(
             name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n")
+
+        "buildcatalog": _CliActions(
+            name="buildcatalog", run=_buildcatalog, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -429,6 +433,47 @@ def _csv2xml():
     inventory = sc.get_data_inventory(data_map)
     sc.write_xml(parsed_args.output_path, parsed_args.stations_xml_name, inventory)
 
+def _buildcatalog():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Convert csv file to stations.xml",
+                               description="Convert csv file to stations.xml")
+
+    arg_parse.epilog = """
+
+            Overview:
+              buildcatalog class helps to join information from all surfquake outputs and create a catalog
+    
+            Usage: surfquake buildcatalog -e [path_events_file] -s [path_source_summary_file] -m 
+            [path_mti_summary_file] -t [type_of_catalog] -o [path_to_ouput_folder]
+    
+            Documentation:
+              https://projectisp.github.io/surfquaketutorial.github.io/
+              catalog formats info: https://docs.obspy.org/packages/autogen/obspy.core.event.Catalog.
+              write.html#obspy.core.event.Catalog.write
+            """
+
+    arg_parse.add_argument("-e", "--path_events_file", help="Net Station Lat Lon elevation "
+                                                "start_date starttime end_date endtime", type=str, required=True)
+
+    arg_parse.add_argument("-s", "--path_source_summary_file", help='Path to the file containing '
+                                                                    'the source spectrum results',
+                           type=str, required=False, default=None)
+
+    arg_parse.add_argument("-m", "--path_mti_summary_file", help="Path to the file containing the "
+                                                                    "moment tensor results", type=str, required=False,
+                           default=None)
+
+    arg_parse.add_argument("f", "--catalog_format", help="Path to the file containing the "
+                                                                    "moment tensor results", type=str, required=False,
+                           default="QUAKEML")
+
+    arg_parse.add_argument("-o", "--path_to_ouput_folder", help="Path to the ouput folder, where catalog "
+                                                                "will be saved", type=str, required=True)
+
+    parsed_args = arg_parse.parse_args()
+    bc = BuildCatalog(loc_folder=parsed_args.path_events_file, source_summary_file=parsed_args.path_source_summary_file,
+                      output_path=parsed_args.path_source_summary_file,
+                      format=parsed_args.catalog_format)
+    bc.build_catalog_loc()
 
 if __name__ == "__main__":
     freeze_support()
