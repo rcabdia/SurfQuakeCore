@@ -425,7 +425,7 @@ def _csv2xml():
                            required=True)
     parsed_args = arg_parse.parse_args()
 
-    if parsed_args:
+    if parsed_args.resp_files_path:
         sc = Convert(parsed_args.csv_file_path, resp_files=parsed_args.resp_files_path)
     else:
         sc = Convert(parsed_args.csv_file_path)
