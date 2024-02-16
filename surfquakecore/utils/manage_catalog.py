@@ -115,7 +115,7 @@ class BuildCatalog:
         pd.to_pickle(catalog, filepath_or_buffer=catalog_file_name_pkl)
         print("Catalog saved at ", catalog_file_name,  " format ", self.format)
 
-class  WriteCatalog:
+class WriteCatalog:
     def __init__(self, path_catalog):
         self.path_catalog = path_catalog
         self.catalog = []
@@ -132,8 +132,7 @@ class  WriteCatalog:
     def filter_time_catalog(self, **kwargs):
         # Date input format "%d/%m/%Y, %H:%M:%S.%f"
         date_format = "%d/%m/%Y, %H:%M:%S.%f"
-
-        catalog = self.catalog.copy()
+        catalog_filtered = Catalog()
         starttime = kwargs.pop('starttime', [])
         endtime = kwargs.pop('endtime', [])
 
@@ -147,22 +146,24 @@ class  WriteCatalog:
                 origin_time = origin.time.datetime
 
                 if starttime <= origin_time <= endtime:
-                    catalog[i] = ev
-        if len(catalog) == 0:
+                    catalog_filtered += ev
+        if len(catalog_filtered) == 0:
             print("Check if there is events in catalog time span or the format is valid , ", date_format)
 
 
-        return catalog
+        return catalog_filtered
 
     def filter_geographic_catalog(self, catalog: Union[Catalog, None], **kwargs):
         if catalog is None:
             # This option proceed to filter the attribute catalog
             catalog = self.catalog.copy()
 
+        catalog_filtered = Catalog()
+
         lat_min = kwargs.pop('lat_min', None)
         lat_max = kwargs.pop('lat_max', None)
         lon_min = kwargs.pop('lon_min', None)
-        lon_max = kwargs.pop('lon_min', None)
+        lon_max = kwargs.pop('lon_max', None)
         depth_min = kwargs.pop('depth_min', None)
         depth_max = kwargs.pop('depth_max', None)
         mag_min = kwargs.pop('mag_min', None)
@@ -170,14 +171,13 @@ class  WriteCatalog:
         if None in kwargs.values():
             raise ValueError("Fill all searching fields, lat_min, lat_max, lon_min, lon_max, depth_min, "
                              "depth_max, mag_min, mag_max")
-        check = True
         # checks
         if lat_min < lat_max and lon_min < lon_max:
-            for i, ev in enumerate(self.catalog):
+            for i, ev in enumerate(catalog):
                 for origin in ev.origins:
                     lat_origin = origin.latitude
                     lon_origin = origin.longitude
-                    depth_origin = origin.depth
+                    depth_origin = origin.depth*1E-3
                     if len(ev.magnitudes)>0:
                         magnitude = ev.magnitudes[0].mag
                     else:
@@ -185,9 +185,9 @@ class  WriteCatalog:
                     if lat_min <= lat_origin <= lat_max and lon_min <= lon_origin <= lon_max:
                         if depth_min <= depth_origin <= depth_max:
                             if isinstance(magnitude, float) and mag_min <= magnitude <= mag_max:
-                                catalog[i] = ev
+                                catalog_filtered += ev
 
-        return catalog
+        return catalog_filtered
 
     def write_catalog_surf(self, output_path):
         with open(output_path, 'w') as file:
