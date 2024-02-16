@@ -118,14 +118,14 @@ class BuildCatalog:
 class  WriteCatalog:
     def __init__(self, path_catalog):
         self.path_catalog = path_catalog
-        self.ctalog = []
+        self.catalog = []
         self.__test_catalog()
 
     def __test_catalog(self):
         catalog = []
         try:
             self.catalog = pd.read_pickle(self.path_catalog)
-            print(catalog.__str__(print_all=True))
+            print(self.catalog.__str__(print_all=True))
         except:
             raise ValueError("file is not a valid catalog")
 
@@ -190,36 +190,65 @@ class  WriteCatalog:
         return catalog
 
     def write_catalog_surf(self, output_path):
-        for i, ev in enumerate(self.catalog):
-            for origin in ev.origins:
-                lat_origin = origin.latitude
-                lon_origin = origin.longitude
-                depth_origin = origin.depth
-                
+        with open(output_path, 'w') as file:
+            for i, ev in enumerate(self.catalog):
+                for origin in ev.origins:
 
+                    lat_origin = "{:.4f}".format(origin.latitude)
+                    lon_origin = "{:.4f}".format(origin.longitude)
+                    depth_origin = "{:.4f}".format(origin.depth * 1E-3)
+                    min_hor_unc = "{:.4f}".format(origin.origin_uncertainty.min_horizontal_uncertainty * 1E-3)
+                    max_hor_unc = "{:.4f}".format(origin.origin_uncertainty.max_horizontal_uncertainty * 1E-3)
+                    gap = "{:.4f}".format(origin.origin_uncertainty.azimuth_max_horizontal_uncertainty * 1E-3)
+                    confidence_level = "{:.4f}".format(origin.origin_uncertainty.confidence_level)
+                    file.write(f"Event {i+1}: Lat {lat_origin} Lon {lon_origin} Depth {depth_origin} km "
+                               f"min_hor_unc {min_hor_unc} km max_hor_unc {max_hor_unc} gap {gap} "
+                               f"conf_lev {confidence_level}\n")
 
-    # def write_catalog_to_file(catalog, filename):
-    #     with open(filename, 'w') as file:
-    #         for i, event in enumerate(catalog.events, start=1):
-    #             file.write(f"Event {i}: Lat {event.latitude} Lon {event.longitude} Depth {event.depth} km\n")
-    #             file.write(f"Focal Mechanism: Strike {event.strike} Dip {event.dip} Rake {event.rake}\n\n")
+                    # magnitudes
+                    if len(ev.magnitudes) > 0:
+                        for magnitude in ev.magnitudes:
+                            mag_type = magnitude.magnitude_type
+                            mag = magnitude.mag
+                            mag_error = magnitude.mag_errors["uncertainty"]
+                            if isinstance(mag, float):
+                                file.write(f"Magnitudes: {mag_type} {mag} +- {mag_error}\n")
+                    else:
+                        file.write(f"Magnitudes: None\n")
 
+                    file.write(f"station phase polarity date time time_residual time_weight distance_degrees "
+                                   f"distance_km  azimuth takeoff_angle\n")
 
+                    #file.write(f"\n")
 
+                    for arrival in origin.arrivals:
+                        azimuth = "{:.1f}".format(arrival.azimuth)
+                        date = arrival.date.strftime("%m/%d/%Y %H:%M:%S.%f")
+                        distance_degrees = "{:.1f}".format(arrival.distance_degrees)
+                        distance_km = "{:.1f}".format(arrival.distance_km)
+                        phase = arrival.phase
+                        polarity = arrival.polarity
+                        station = arrival.station
+                        time_residual = "{:.2f}".format(arrival.time_residual)
+                        time_weight = "{:.2f}".format(arrival.time_weight)
+                        # instrument = arrival.instrument
+                        takeoff_angle = "{:.1f}".format(arrival.takeoff_angle)
+                        file.write(f"{station} {phase} {polarity} {date} {time_residual} {time_weight} {distance_degrees}"
+                                   f"{distance_km}  {azimuth} {takeoff_angle}\n")
 
-
-
-
-
-
-
+                    file.write(f"\n\n")
 
 
 
 if __name__ == "__main__":
-    path_events_file = "/Volumes/LaCie/surfquake_test/test_nll_final"
-    path_source_file = "/Volumes/LaCie/surfquake_test/catalog_output/sources.txt"
-    output_path = "/Volumes/LaCie/surfquake_test/catalog_output"
-    bc = BuildCatalog(loc_folder=path_events_file, source_summary_file=path_source_file, output_path=output_path,
-                      format="QUAKEML")
-    bc.build_catalog_loc()
+    # path_events_file = "/Volumes/LaCie/surfquake_test/test_nll_final"
+    # path_source_file = "/Volumes/LaCie/surfquake_test/catalog_output/sources.txt"
+    # output_path = "/Volumes/LaCie/surfquake_test/catalog_output"
+    #bc = BuildCatalog(loc_folder=path_events_file, source_summary_file=path_source_file, output_path=output_path,
+    #                  format="QUAKEML")
+    #bc.build_catalog_loc()
+    catalog_path = "/Volumes/LaCie/all_andorra/catalog/catalog_obj.pkl"
+    output_path = "/Volumes/LaCie/all_andorra/catalog/catalog_surf.txt"
+    wc = WriteCatalog(catalog_path)
+    wc.write_catalog_surf(output_path)
+
