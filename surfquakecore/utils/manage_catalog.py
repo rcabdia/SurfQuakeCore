@@ -4,7 +4,8 @@ import pandas as pd
 import os
 from obspy.core.event import Magnitude, FocalMechanism, MomentTensor, Tensor, Catalog
 from surfquakecore.utils import read_nll_performance
-
+from datetime import datetime
+from typing import Union
 
 class BuildCatalog:
     def __init__(self, loc_folder, output_path, format="QUAKEML", source_summary_file=None, mti_summary_file=None):
@@ -113,6 +114,107 @@ class BuildCatalog:
             pickle.dump(catalog, file)
         pd.to_pickle(catalog, filepath_or_buffer=catalog_file_name_pkl)
         print("Catalog saved at ", catalog_file_name,  " format ", self.format)
+
+class  WriteCatalog:
+    def __init__(self, path_catalog):
+        self.path_catalog = path_catalog
+        self.ctalog = []
+        self.__test_catalog()
+
+    def __test_catalog(self):
+        catalog = []
+        try:
+            self.catalog = pd.read_pickle(self.path_catalog)
+            print(catalog.__str__(print_all=True))
+        except:
+            raise ValueError("file is not a valid catalog")
+
+    def filter_time_catalog(self, **kwargs):
+        # Date input format "%d/%m/%Y, %H:%M:%S.%f"
+        date_format = "%d/%m/%Y, %H:%M:%S.%f"
+
+        catalog = self.catalog.copy()
+        starttime = kwargs.pop('starttime', [])
+        endtime = kwargs.pop('endtime', [])
+
+        starttime = datetime.strptime(starttime, date_format)
+        endtime = datetime.strptime(endtime, date_format)
+
+        for i, ev in enumerate(self.catalog):
+
+            for origin in ev.origins:
+
+                origin_time = origin.time.datetime
+
+                if starttime <= origin_time <= endtime:
+                    catalog[i] = ev
+        if len(catalog) == 0:
+            print("Check if there is events in catalog time span or the format is valid , ", date_format)
+
+
+        return catalog
+
+    def filter_geographic_catalog(self, catalog: Union[Catalog, None], **kwargs):
+        if catalog is None:
+            # This option proceed to filter the attribute catalog
+            catalog = self.catalog.copy()
+
+        lat_min = kwargs.pop('lat_min', None)
+        lat_max = kwargs.pop('lat_max', None)
+        lon_min = kwargs.pop('lon_min', None)
+        lon_max = kwargs.pop('lon_min', None)
+        depth_min = kwargs.pop('depth_min', None)
+        depth_max = kwargs.pop('depth_max', None)
+        mag_min = kwargs.pop('mag_min', None)
+        mag_max = kwargs.pop('mag_max', None)
+        if None in kwargs.values():
+            raise ValueError("Fill all searching fields, lat_min, lat_max, lon_min, lon_max, depth_min, "
+                             "depth_max, mag_min, mag_max")
+        check = True
+        # checks
+        if lat_min < lat_max and lon_min < lon_max:
+            for i, ev in enumerate(self.catalog):
+                for origin in ev.origins:
+                    lat_origin = origin.latitude
+                    lon_origin = origin.longitude
+                    depth_origin = origin.depth
+                    if len(ev.magnitudes)>0:
+                        magnitude = ev.magnitudes[0].mag
+                    else:
+                        magnitude = None
+                    if lat_min <= lat_origin <= lat_max and lon_min <= lon_origin <= lon_max:
+                        if depth_min <= depth_origin <= depth_max:
+                            if isinstance(magnitude, float) and mag_min <= magnitude <= mag_max:
+                                catalog[i] = ev
+
+        return catalog
+
+    def write_catalog_surf(self, output_path):
+        for i, ev in enumerate(self.catalog):
+            for origin in ev.origins:
+                lat_origin = origin.latitude
+                lon_origin = origin.longitude
+                depth_origin = origin.depth
+                
+
+
+    # def write_catalog_to_file(catalog, filename):
+    #     with open(filename, 'w') as file:
+    #         for i, event in enumerate(catalog.events, start=1):
+    #             file.write(f"Event {i}: Lat {event.latitude} Lon {event.longitude} Depth {event.depth} km\n")
+    #             file.write(f"Focal Mechanism: Strike {event.strike} Dip {event.dip} Rake {event.rake}\n\n")
+
+
+
+
+
+
+
+
+
+
+
+
 
 if __name__ == "__main__":
     path_events_file = "/Volumes/LaCie/surfquake_test/test_nll_final"
