@@ -46,7 +46,7 @@ def _create_actions():
             name="mi", run=_mti, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "csv2xml": _CliActions(
-            name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n")
+            name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "buildcatalog": _CliActions(
             name="buildcatalog", run=_buildcatalog, description=f"Type {__entry_point_name} -h for help.\n")
