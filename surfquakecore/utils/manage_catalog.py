@@ -16,6 +16,9 @@ from surfquakecore.utils import read_nll_performance
 from datetime import datetime
 from typing import Union
 
+from surfquakecore.utils.nll_org_errors import computeOriginErrors
+
+
 class BuildCatalog:
     def __init__(self, loc_folder, output_path, format="QUAKEML", source_summary_file=None, mti_summary_file=None):
 
@@ -311,16 +314,24 @@ class WriteCatalog:
         with open(output_path, 'w') as file:
             for i, ev in enumerate(catalog):
                 for origin in ev.origins:
-
+                    confidence_ellipsoid, origin_uncertainty = computeOriginErrors(origin)
+                    origin_time = origin.time.datetime.strftime("%d/%m/%Y %H:%M:%S.%f")
                     lat_origin = "{:.4f}".format(origin.latitude)
                     lon_origin = "{:.4f}".format(origin.longitude)
-                    depth_origin = "{:.4f}".format(origin.depth * 1E-3)
-                    min_hor_unc = "{:.4f}".format(origin.origin_uncertainty.min_horizontal_uncertainty * 1E-3)
-                    max_hor_unc = "{:.4f}".format(origin.origin_uncertainty.max_horizontal_uncertainty * 1E-3)
-                    gap = "{:.4f}".format(origin.origin_uncertainty.azimuth_max_horizontal_uncertainty * 1E-3)
-                    confidence_level = "{:.1f}".format(origin.origin_uncertainty.confidence_level)
-                    file.write(f"Event {i+1}: Lat {lat_origin} Lon {lon_origin} Depth {depth_origin} km "
-                               f"min_hor_unc {min_hor_unc} km max_hor_unc {max_hor_unc} km gap {gap} "
+                    depth_origin = "{:.1f}".format(origin.depth * 1E-3)
+                    depth_error = "{:.1f}".format(origin.depth_errors["uncertainty"]*1E-3)
+                    rms = "{:.2f}".format(origin.quality.standard_error)
+                    smin = "{:.1f}".format(origin_uncertainty.min_horizontal_uncertainty)
+                    smax = "{:.1f}".format(origin_uncertainty.max_horizontal_uncertainty)
+                    elipse_azimuth = "{:.1f}".format(origin_uncertainty.azimuth_max_horizontal_uncertainty)
+                    gap = "{:.1f}".format(origin.quality.azimuthal_gap)
+                    min_dist = "{:.3f}".format(origin.quality.minimum_distance)
+                    max_dist = "{:.3f}".format(origin.quality.maximum_distance)
+                    confidence_level = "{:.1f}".format(origin_uncertainty.confidence_level)
+
+                    file.write(f"Event {i+1}: Date {origin_time} rms {rms} s Lat {lat_origin} Lon {lon_origin} "
+                               f"Depth {depth_origin} km +- {depth_error} min_dist {min_dist} max_dist {max_dist} "
+                               f"smin {smin} km smax {smax} km ell_azimuth {elipse_azimuth} gap {gap} "
                                f"conf_lev {confidence_level} %\n")
 
                     # magnitudes
@@ -335,7 +346,7 @@ class WriteCatalog:
                         file.write(f"Magnitudes: None\n")
 
                     file.write(f"station phase polarity date time time_residual time_weight distance_degrees "
-                                   f"distance_km  azimuth takeoff_angle\n")
+                                   f"distance_km azimuth takeoff_angle\n")
 
                     for arrival in origin.arrivals:
                         azimuth = "{:.1f}".format(arrival.azimuth)
@@ -346,11 +357,11 @@ class WriteCatalog:
                         polarity = arrival.polarity
                         station = arrival.station
                         time_residual = "{:.2f}".format(arrival.time_residual)
-                        time_weight = "{:.2f}".format(arrival.time_weight)
+                        #time_weight = "{:.2f}".format(arrival.time_weight)
                         # instrument = arrival.instrument
                         takeoff_angle = "{:.1f}".format(arrival.takeoff_angle)
-                        file.write(f"{station} {phase} {polarity} {date} {time_residual} {time_weight} {distance_degrees}"
-                                   f"{distance_km}  {azimuth} {takeoff_angle}\n")
+                        file.write(f"{station} {phase} {polarity} {date} {time_residual} {distance_degrees} "
+                                   f"{distance_km} {azimuth} {takeoff_angle}\n")
 
                     file.write(f"\n\n")
 
