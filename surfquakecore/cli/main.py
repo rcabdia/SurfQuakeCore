@@ -12,7 +12,7 @@ from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
 from surfquakecore.utils.create_station_xml import Convert
-from surfquakecore.utils.manage_catalog import BuildCatalog
+from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -469,14 +469,19 @@ def _buildcatalog():
                                                                     "moment tensor results", type=str, required=False,
                            default="QUAKEML")
 
-    arg_parse.add_argument("-o", "--path_to_ouput_folder", help="Path to the ouput folder, where catalog "
+    arg_parse.add_argument("-o", "--path_to_output_folder", help="Path to the ouput folder, where catalog "
                                                                 "will be saved", type=str, required=True)
 
     parsed_args = arg_parse.parse_args()
+    catalog_path_pkl = os.path.join(parsed_args.path_to_output_folder, "catalog_obj.pkl")
+    catalog_path_surf = os.path.join(parsed_args.path_to_output_folder, "catalog_surf.txt")
+
     bc = BuildCatalog(loc_folder=parsed_args.path_event_files_folder, source_summary_file=parsed_args.path_source_summary_file,
-                      output_path=parsed_args.path_source_summary_file,
+                      output_path=parsed_args.path_to_output_folder,
                       format=parsed_args.catalog_format)
     bc.build_catalog_loc()
+    wc = WriteCatalog(catalog_path_pkl)
+    wc.write_catalog_surf(catalog=None, output_path=catalog_path_surf)
 
 if __name__ == "__main__":
     freeze_support()

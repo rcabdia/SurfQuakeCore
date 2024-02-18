@@ -374,7 +374,7 @@ class WriteCatalog:
                         file.write(f"Nodal Plane: Strike {strike} Dip {dip} Rake {rake}\n")
                         file.write(f"Moment Tensor: mrr {mrr} mtt {mtt} mpp {mpp} mrp {mrp} mrt {mrt} mrp {mtp}\n")
 
-                    file.write(f"station phase polarity date time time_residual time_weight distance_degrees "
+                    file.write(f"station phase polarity date time time_residual distance_degrees "
                                f"distance_km azimuth takeoff_angle\n")
 
                     for arrival in origin.arrivals:
