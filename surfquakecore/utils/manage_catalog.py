@@ -11,7 +11,7 @@
 import pickle
 import pandas as pd
 import os
-from obspy.core.event import Magnitude, FocalMechanism, MomentTensor, Tensor, Catalog
+from obspy.core.event import Magnitude, FocalMechanism, MomentTensor, Tensor, Catalog, NodalPlanes
 from surfquakecore.utils import read_nll_performance
 from datetime import datetime
 from typing import Union
@@ -92,7 +92,13 @@ class BuildCatalog:
                         if len(mti) > 0:
                             fm = FocalMechanism()
                             mt = MomentTensor()
+                            np = NodalPlanes()
+                            np.strike = mti["plane_1_strike"]
+                            np.dip = mti["plane_1_dip"]
+                            np.rake = mti["plane_1_slip_rake"]
+                            mt["nodal_planes"] = np
                             mt["category"] = "Bayesian Inversion"
+                            mt["dc"] = mti["dc"]
                             mt["clvd"] = mti["clvd"]
                             mt["iso"] = mti["isotropic_component"]
                             mt["moment_magnitude"] = mti["mw"]
@@ -345,12 +351,35 @@ class WriteCatalog:
                     else:
                         file.write(f"Magnitudes: None\n")
 
+
+                    if len(ev.focal_mechanisms) > 0:
+                        fm = ev.focal_mechanisms[0]
+                        Mw = "{:.2f}".format(fm.moment_tensor["moment_magnitude"])
+                        Mo = "{:.2e}".format(fm.moment_tensor["scalar_moment"])
+                        dc = "{:.2f}".format(fm.moment_tensor["dc"])
+                        clvd = "{:.2f}".format(fm.moment_tensor["clvd"])
+                        iso = "{:.2f}".format(fm.moment_tensor["iso"])
+                        variance = "{:.2f}".format(fm.moment_tensor["variance_reduction"])
+                        mrr = "{:.2e}".format(fm.moment_tensor["tensor"].m_rr)
+                        mtt = "{:.2e}".format(fm.moment_tensor["tensor"].m_pp)
+                        mpp = "{:.2e}".format(fm.moment_tensor["tensor"].m_tt)
+                        mrp = "{:.2e}".format(fm.moment_tensor["tensor"].m_rp)
+                        mrt = "{:.2e}".format(fm.moment_tensor["tensor"].m_rt)
+                        mtp = "{:.2e}".format(fm.moment_tensor["tensor"].m_rt)
+                        strike = "{:.1f}".format(fm.moment_tensor["nodal_planes"].strike)
+                        dip = "{:.1f}".format(fm.moment_tensor["nodal_planes"].dip)
+                        rake = "{:.1f}".format(fm.moment_tensor["nodal_planes"].rake)
+                        file.write(f"Moment Tensor Solution:\n")
+                        file.write(f"Mw {Mw} Mo {Mo} Nm DC {dc} % CLVD {clvd} % iso {iso} % variance_red {variance}\n")
+                        file.write(f"Nodal Plane: Strike {strike} Dip {dip} Rake {rake}\n")
+                        file.write(f"Moment Tensor: mrr {mrr} mtt {mtt} mpp {mpp} mrp {mrp} mrt {mrt} mrp {mtp}\n")
+
                     file.write(f"station phase polarity date time time_residual time_weight distance_degrees "
-                                   f"distance_km azimuth takeoff_angle\n")
+                               f"distance_km azimuth takeoff_angle\n")
 
                     for arrival in origin.arrivals:
                         azimuth = "{:.1f}".format(arrival.azimuth)
-                        date = arrival.date.strftime("%m/%d/%Y %H:%M:%S.%f")
+                        date = arrival.date.strftime("%d/%m/%Y %H:%M:%S.%f")
                         distance_degrees = "{:.1f}".format(arrival.distance_degrees)
                         distance_km = "{:.1f}".format(arrival.distance_km)
                         phase = arrival.phase
@@ -367,7 +396,7 @@ class WriteCatalog:
 
 
 
-# if __name__ == "__main__":
+#if __name__ == "__main__":
     # path_events_file = "/Volumes/LaCie/surfquake_test/test_nll_final"
     # path_source_file = "/Volumes/LaCie/surfquake_test/catalog_output/sources.txt"
     # output_path = "/Volumes/LaCie/surfquake_test/catalog_output"
