@@ -254,7 +254,7 @@ class RealManager:
                 if v[0].isnumeric():
                     # event
                     event_location = EventLocation.from_real_str(line)
-                else:
+                elif isinstance(event_location, EventLocation):
                     phase = PhaseLocation.from_real_str(line)
                     # add phase to its event parent
                     event_location.phases.append(phase)

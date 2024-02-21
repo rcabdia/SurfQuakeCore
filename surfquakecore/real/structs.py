@@ -40,26 +40,34 @@ class EventLocation:
         882 2016 10 15 23:56:30.773 86190.773 0.2452 42.8201 13.2761 0.00 1.459 0.303 35 8 43 6 47.12
         :return:
         """
-        values = line.strip().split()
-        if len(values) != 17:
-            raise ValueError(f"The data {line} can't be converted to EventLocation")
+        try:
+            values = line.strip().split()
+            if len(values) != 17:
+                raise ValueError(f"The data {line} can't be converted to EventLocation")
 
-        return cls(
-            event_id=int(values[0]),
-            date=datetime.strptime(f"{values[3]}.{values[2]}.{values[1]} {values[4]}", '%d.%m.%Y %H:%M:%S.%f'),
-            origin_time=float(values[5]),
-            residual=float(values[6]),
-            lat=float(values[7]),
-            long=float(values[8]),
-            depth=float(values[9]),
-            magnitude=float(values[10]),
-            var_magnitude=float(values[11]),
-            p_picks=int(values[12]),
-            s_picks=int(values[13]),
-            total_picks=int(values[14]),
-            stations_with_p_s_picks=int(values[15]),
-            station_gap=float(values[16]),
-        )
+            return cls(
+                event_id=int(values[0]),
+                date=datetime.strptime(f"{values[3]}.{values[2]}.{values[1]} {values[4]}", '%d.%m.%Y %H:%M:%S.%f'),
+                origin_time=float(values[5]),
+                residual=float(values[6]),
+                lat=float(values[7]),
+                long=float(values[8]),
+                depth=float(values[9]),
+                magnitude=float(values[10]),
+                var_magnitude=float(values[11]),
+                p_picks=int(values[12]),
+                s_picks=int(values[13]),
+                total_picks=int(values[14]),
+                stations_with_p_s_picks=int(values[15]),
+                station_gap=float(values[16]),
+            )
+        except (ValueError, IndexError) as e:
+            print(f"Error: {e}. Input line: {line}")
+            return None  # Returning None or another sentinel value to indicate an error
+
+        except Exception as e:
+            print(f"Unexpected error: {e}. Input line: {line}")
+            return None  # Returning None or another sentinel value to indicate an error
 
     def __str__(self):
         values = []
