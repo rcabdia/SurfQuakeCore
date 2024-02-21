@@ -7,10 +7,12 @@ from typing import Optional
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
+from surfquakecore.moment_tensor.mti_parse import WriteMTI
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
 from surfquakecore.utils.create_station_xml import Convert
+from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -45,7 +47,10 @@ def _create_actions():
             name="mi", run=_mti, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "csv2xml": _CliActions(
-            name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n")
+            name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "buildcatalog": _CliActions(
+            name="buildcatalog", run=_buildcatalog, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -390,6 +395,8 @@ def _mti():
     print("Starting Inversion")
     bic.run_inversion(mti_config=parsed_args.config_files_path)
     print("End of process, please review output directory")
+    wm = WriteMTI(parsed_args.output_dir_path)
+    wm.mti_summary()
 
 
 def _csv2xml():
@@ -421,7 +428,7 @@ def _csv2xml():
                            required=True)
     parsed_args = arg_parse.parse_args()
 
-    if parsed_args:
+    if parsed_args.resp_files_path:
         sc = Convert(parsed_args.csv_file_path, resp_files=parsed_args.resp_files_path)
     else:
         sc = Convert(parsed_args.csv_file_path)
@@ -429,6 +436,52 @@ def _csv2xml():
     inventory = sc.get_data_inventory(data_map)
     sc.write_xml(parsed_args.output_path, parsed_args.stations_xml_name, inventory)
 
+def _buildcatalog():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Convert csv file to stations.xml",
+                               description="Convert csv file to stations.xml")
+
+    arg_parse.epilog = """
+
+            Overview:
+              buildcatalog class helps to join information from all surfquake outputs and create a catalog
+    
+            Usage: surfquake buildcatalog -e [path_event_files_folder] -s [path_source_summary_file] -m 
+            [path_mti_summary_file] -t [type_of_catalog] -o [path_to_ouput_folder]
+    
+            Documentation:
+              https://projectisp.github.io/surfquaketutorial.github.io/
+              catalog formats info: https://docs.obspy.org/packages/autogen/obspy.core.event.Catalog.
+              write.html#obspy.core.event.Catalog.write
+            """
+
+    arg_parse.add_argument("-e", "--path_event_files_folder", help="Net Station Lat Lon elevation "
+                                                "start_date starttime end_date endtime", type=str, required=True)
+
+    arg_parse.add_argument("-s", "--path_source_summary_file", help='Path to the file containing '
+                                                                    'the source spectrum results',
+                           type=str, required=False, default=None)
+
+    arg_parse.add_argument("-m", "--path_mti_summary_file", help="Path to the file containing the "
+                                                                    "moment tensor results", type=str, required=False,
+                           default=None)
+
+    arg_parse.add_argument("f", "--catalog_format", help="Path to the file containing the "
+                                                                    "moment tensor results", type=str, required=False,
+                           default="QUAKEML")
+
+    arg_parse.add_argument("-o", "--path_to_output_folder", help="Path to the ouput folder, where catalog "
+                                                                "will be saved", type=str, required=True)
+
+    parsed_args = arg_parse.parse_args()
+    catalog_path_pkl = os.path.join(parsed_args.path_to_output_folder, "catalog_obj.pkl")
+    catalog_path_surf = os.path.join(parsed_args.path_to_output_folder, "catalog_surf.txt")
+
+    bc = BuildCatalog(loc_folder=parsed_args.path_event_files_folder, source_summary_file=parsed_args.path_source_summary_file,
+                      output_path=parsed_args.path_to_output_folder,
+                      format=parsed_args.catalog_format)
+    bc.build_catalog_loc()
+    wc = WriteCatalog(catalog_path_pkl)
+    wc.write_catalog_surf(catalog=None, output_path=catalog_path_surf)
 
 if __name__ == "__main__":
     freeze_support()

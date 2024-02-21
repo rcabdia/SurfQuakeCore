@@ -25,7 +25,7 @@ class SurfProject:
         - data_files (list)
 
         Methods:
-        - __init__(root_path): Initialize a new instance of MyClass.
+        - __init__(root_path): Initialize a new instance of SurfProject.
         - load_project(path_to_project_file: str): Load a project from a file storage in hard-drive
         - save_project(path_file_to_storage: str): Saves a project as a pickle file in hard-drive
         - search_files(verbose=True, **kwargs): Create a project. It can be used filters by nets,

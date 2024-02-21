@@ -167,6 +167,6 @@ def computeOriginErrors(org):
 
     d['origin_uncertainty'] = ou
 
-    return d
+    return ce, ou
 
 
