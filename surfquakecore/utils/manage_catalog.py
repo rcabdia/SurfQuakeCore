@@ -320,7 +320,7 @@ class WriteCatalog:
         with open(output_path, 'w') as file:
             for i, ev in enumerate(catalog):
                 for origin in ev.origins:
-                    confidence_ellipsoid, origin_uncertainty = computeOriginErrors(origin)
+                    modified_origin_90, confidence_ellipsoid, origin_uncertainty = computeOriginErrors(origin)
                     origin_time = origin.time.datetime.strftime("%d/%m/%Y %H:%M:%S.%f")
                     lat_origin = "{:.4f}".format(origin.latitude)
                     lon_origin = "{:.4f}".format(origin.longitude)

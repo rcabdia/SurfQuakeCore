@@ -263,7 +263,7 @@ class ObspyUtil:
             cat = read_nll_performance.read_nlloc_hyp_ISP(hyp_file_path)
             event = cat[0]
             origin = event.origins[0]
-            modified_origin_90 = computeOriginErrors(origin)
+            modified_origin_90, _, _ = computeOriginErrors(origin)
             origin.depth_errors["uncertainty"] = modified_origin_90['depth_errors'].uncertainty
             origin.origin_uncertainty.max_horizontal_uncertainty = modified_origin_90[
                 'origin_uncertainty'].max_horizontal_uncertainty
