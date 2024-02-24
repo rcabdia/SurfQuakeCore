@@ -71,15 +71,17 @@ class BuildCatalog:
                      try:
                          source = self.df.loc[origin_time_formatted_string]
                          mg_ml = Magnitude()
-                         mg_mw = Magnitude()
                          mg_ml.magnitude_type = 'ML'
                          mg_ml.mag = source['ML']
                          mg_ml.mag_errors.uncertainty = source['ML_error']
                          ev.magnitudes.append(mg_ml)
-                         mg_ml.magnitude_type = 'Mw'
-                         mg_ml.mag = source['Mw']
-                         mg_ml.mag_errors.uncertainty = source['Mw_error']
+
+                         mg_mw = Magnitude()
+                         mg_mw.magnitude_type = 'Mw'
+                         mg_mw.mag = source['Mw']
+                         mg_mw.mag_errors.uncertainty = source['Mw_error']
                          ev.magnitudes.append(mg_mw)
+
                      except:
                          pass
 
@@ -309,7 +311,6 @@ class WriteCatalog:
 
         """
         Writes in human language the catalog instantiated with the class
-        verbose: bool:
         catalog obj (optional), if not found it uses catalog from the catalog attribute
         """
 
@@ -347,9 +348,9 @@ class WriteCatalog:
                             mag = magnitude.mag
                             mag_error = magnitude.mag_errors["uncertainty"]
                             if isinstance(mag, float):
-                                file.write(f"Magnitudes: {mag_type} {mag} +- {mag_error}\n")
+                                file.write(f"Magnitude: {mag_type} {mag} +- {mag_error}\n")
                     else:
-                        file.write(f"Magnitudes: None\n")
+                        file.write(f"Magnitude: None\n")
 
 
                     if len(ev.focal_mechanisms) > 0:
