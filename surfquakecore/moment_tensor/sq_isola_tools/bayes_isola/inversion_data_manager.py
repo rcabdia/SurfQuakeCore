@@ -39,6 +39,7 @@ class InversionDataManager:
     def save_inversion_results(self, config):
 
         with open(os.path.join(self.outdir, "inversion.json"), 'w') as f:
+            config["origin_date"] = config["origin_date"].strftime('%Y-%m-%d %H:%M:%S.%f')
             merged_dict = {**config, **self.inversion_result.to_dict()}
             json.dump(merged_dict, f, cls=DateTimeEncoder)
 
