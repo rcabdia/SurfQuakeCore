@@ -54,6 +54,7 @@ class Automag:
         self.scale = scale
         self.gui_mod = gui_mod
         self.dates = None
+        self.rename_list = []
         self._check_folders()
 
         if isinstance(source_config, str) and os.path.isfile(source_config):
@@ -164,8 +165,11 @@ class Automag:
                 if key == gui_key:
                     config[key] = self.gui_mod[key]
         return config
+
+
     def __run_core_source(self, event, id_name, focal_parameters):
         options = self._get_config(event, id_name)
+
         # Setup stage
         config = configure(options, progname='source_spec')
 
@@ -173,6 +177,9 @@ class Automag:
             config = self.modify_config(config)
 
         setup_logging(config)
+        name_event = id_name.split(".")
+        name_event_id = name_event[1]+"_"+name_event[2]
+        self.rename_list.append([options.outdir, name_event_id])
         st = read_traces(config)
         st_trim = self.__cut_signal_wise(st, origin_time=focal_parameters[0])
 
@@ -194,7 +201,11 @@ class Automag:
             local_magnitude(config, st, proc_st, sspec_output)
 
         # Compute summary statistics from station spectral parameters
-        compute_summary_statistics(config, sspec_output)
+        try:
+            compute_summary_statistics(config, sspec_output)
+        except:
+            print("No able to compute statistics")
+
 
         # Save output
         write_output(config, sspec_output)
@@ -213,6 +224,7 @@ class Automag:
         if config.html_report:
             html_report(config, sspec_output)
 
+
         del options
         del config
         del st
@@ -222,6 +234,7 @@ class Automag:
     def estimate_source_parameters(self):
         # Loop over loc folder files and run source parameters estimation
         self.scan_folder()
+        events_names = []
         for date in self.dates.keys():
 
             events = self.dates[date]
@@ -234,9 +247,23 @@ class Automag:
                 focal_parameters = [cat[0].origins[0]["time"], cat[0].origins[0]["latitude"],
                                     cat[0].origins[0]["longitude"],
                                     cat[0].origins[0]["depth"] * 1E-3]
+                name_event = (str(cat[0].origins[0]["time"]))
+
+                events_names.append(name_event)
+
                 try:
                     run_id_name = os.path.basename(event)
                     self.__run_core_source(event, run_id_name, focal_parameters)
                 except:
                     print(f"Error occurred trying to estimate source parameters at event, please review log file: "
                           f"{run_id_name}")
+        try:
+            self.rename_folders()
+        except:
+            print("Coudn't rename folders")
+
+    def rename_folders(self):
+        for item in self.rename_list:
+            old_name = item[0]
+            new_name = os.path.join(self.output_directory,  item[1])
+            os.rename(old_name, new_name)

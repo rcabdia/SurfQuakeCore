@@ -172,4 +172,5 @@ examples/source_estimations/output
 examples/source_estimations/locations
 examples/source_estimations/source_summary
 runs/
+run_mini/
 
