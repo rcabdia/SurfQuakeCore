@@ -190,15 +190,20 @@ class process_data:
 		print("Noise Window", noise_starttime, noise_endtime)
 		for st in self.d.data_raw:
 			stats = st[0].stats
+			field = '_'.join([stats.network, stats.station, "", stats.channel[0:2]])
+			if field in self.d.stations_index.keys():
+			#field = '_'.join([stats.network, stats.station, stats.location, stats.channel[0:2])
 			# fmax = self.d.stations_index['_'.join([stats.network, stats.station, stats.location, stats.channel[0:2]])]['fmax']
-			fmax = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]['fmax']
-			self.data.append(st.copy())
+				fmax = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]['fmax']
+				self.data.append(st.copy())
 		for st in self.data:
 			stats = st[0].stats
+			field = '_'.join([stats.network, stats.station, "", stats.channel[0:2]])
+			if field in self.d.stations_index.keys():
 			# fmin = self.d.stations_index['_'.join([stats.network, stats.station, stats.location, stats.channel[0:2]])]['fmin']
 			# fmax = self.d.stations_index['_'.join([stats.network, stats.station, stats.location, stats.channel[0:2]])]['fmax']
-			fmin = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]['fmin']
-			fmax = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]['fmax']
+				fmin = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]['fmin']
+				fmax = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]['fmax']
 			decimate = int(round(st[0].stats.sampling_rate / self.max_samprate))
 			if noise_slice:
 				self.noise.append(st.slice(noise_starttime, noise_endtime))

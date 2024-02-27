@@ -44,7 +44,4 @@ if __name__ == "__main__":
         result = read_isola_result(result_file)
         print(result)
         
-    # example of reading log_output file
-    # for r in bic.results:
-    #     read_isola_log(r)
-    #print(results.keys())
+
