@@ -38,7 +38,3 @@ def exc_cmd(cmd, **kwargs):
             print("stderr:", std_err)
             #raise sb.SubprocessError(std_err)
         return std_out
-
-# Example usage:
-cmd = ["echo", "Hello, World!"]
-exc_cmd(cmd)
