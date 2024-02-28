@@ -147,15 +147,15 @@ class BayesianIsolaCore:
         save_stream_plot = kwargs.pop('save_plot', self.save_plots)
 
         for mti_config in _mti_configurations:
-            # try:
-            files_list = self._get_files_from_config(mti_config)
-            self._run_inversion(
-                mti_config=mti_config,
-                files_list=files_list,
-                save_stream_plot=save_stream_plot
-            )
-        # except Exception as e:
-        #    print(f"An exception occurred for {files_list}: {e}")
+            try:
+                files_list = self._get_files_from_config(mti_config)
+                self._run_inversion(
+                    mti_config=mti_config,
+                    files_list=files_list,
+                    save_stream_plot=save_stream_plot
+                )
+            except Exception as e:
+                print(f"An exception occurred for {files_list}: {e}")
 
     def _run_inversion(self, mti_config: MomentTensorInversionConfig, files_list, save_stream_plot=False):
 
