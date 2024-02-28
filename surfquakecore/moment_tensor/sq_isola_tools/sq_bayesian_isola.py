@@ -96,7 +96,7 @@ class BayesianIsolaCore:
                 kw = {"ignore_cleanup_errors": True} if get_python_major_version() > 9 else {}
                 temp_dir = TemporaryDirectory(**kw)
                 self.working_directory = temp_dir.name
-                print("Working Directory at temporal Folder ", self.working_directory )
+                print("Working Directory at temporal Folder ", self.working_directory)
             if not os.path.isdir(self.working_directory):
                 os.mkdir(self.working_directory)
             yield self.working_directory
@@ -147,16 +147,15 @@ class BayesianIsolaCore:
         save_stream_plot = kwargs.pop('save_plot', self.save_plots)
 
         for mti_config in _mti_configurations:
-            try:
-                files_list = self._get_files_from_config(mti_config)
-                self._run_inversion(
-                    mti_config=mti_config,
-                    files_list=files_list,
-                    save_stream_plot=save_stream_plot
-                )
-            except Exception as e:
-                print(f"An exception occurred for {files_list}: {e}")
-           
+            # try:
+            files_list = self._get_files_from_config(mti_config)
+            self._run_inversion(
+                mti_config=mti_config,
+                files_list=files_list,
+                save_stream_plot=save_stream_plot
+            )
+        # except Exception as e:
+        #    print(f"An exception occurred for {files_list}: {e}")
 
     def _run_inversion(self, mti_config: MomentTensorInversionConfig, files_list, save_stream_plot=False):
 
@@ -168,6 +167,7 @@ class BayesianIsolaCore:
         if not os.path.exists(local_folder):
             os.makedirs(local_folder)
 
+        print("Processing Seismic Waveforms")
         st = MTIManager.default_processing(
             files_path=files_list,
             origin_time=mti_config.origin_date,
@@ -197,11 +197,13 @@ class BayesianIsolaCore:
             inputs.set_source_time_function(mti_config.inversion_parameters.source_type.lower(), green_func_dir,
                                             t0=mti_config.inversion_parameters.source_duration, t1=0.5)
 
-
             #
             # Create data structure self.stations
             # edit self.stations_index
-            inputs.read_network_coordinates(filename=os.path.join(green_func_dir, "stations.txt"))
+            inputs.read_network_coordinates(filename=os.path.join(green_func_dir, "stations.txt"),
+                                            min_distance=mti_config.inversion_parameters.min_dist * 1E3,
+                                            max_distance=mti_config.inversion_parameters.max_dist * 1E3,
+                                            max_n_of_stations=None)
             #
             stations = inputs.stations
             stations_index = inputs.stations_index
@@ -218,11 +220,12 @@ class BayesianIsolaCore:
             # writes station.dat in working folder from self.stations
             inputs.write_stations(green_func_dir)
             #
-            inputs.data_raw = st
+            inputs.data_raw = mt.filter_stations_stream(st, inputs.stations)
+
             inputs.create_station_index()
             inputs.data_deltas = deltas
             #
-            print("Creating Green Functions")
+
             grid = bayes_isola.grid(inputs, green_func_dir,
                                     location_unc=mti_config.inversion_parameters.location_unc,
                                     depth_unc=mti_config.inversion_parameters.depth_unc,
@@ -233,7 +236,6 @@ class BayesianIsolaCore:
 
             # TODO refactor this
 
-            print("Processing Seismic Waveforms")
             data = bayes_isola.process_data(
                 data=inputs,
                 working_directory=green_func_dir,

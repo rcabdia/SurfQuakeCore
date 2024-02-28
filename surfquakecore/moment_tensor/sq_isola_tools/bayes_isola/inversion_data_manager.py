@@ -191,6 +191,9 @@ class InversionDataManager:
             stn['weightN'] = stn['weightE'] = stn['weightZ'] = 1.
             if min_distance < dist < max_distance:
                 stats.append(stn)
+            else:
+                print("Station", sta, " not included for being out of min & max distances ", min_distance*1E-3," km",
+                      max_distance*1E-3, " km")
         stats = sorted(stats, key=lambda stn: stn['dist'])  # sort by distance
         if max_n_of_stations and len(stats) > max_n_of_stations:
             stats = stats[0:max_n_of_stations]

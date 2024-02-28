@@ -114,6 +114,7 @@ class process_data:
 		if not skip_short_records is False:
 			self.skip_short_records(noise=True)
 		if calculate_or_verify_Green:
+			print("Creating Green Functions")
 			self.calculate_or_verify_Green()
 		if trim_filter_data:
 			self.trim_filter_data()

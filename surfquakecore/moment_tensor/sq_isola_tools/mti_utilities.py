@@ -131,6 +131,21 @@ class MTIManager:
 
         return stations, stations_list
 
+    def filter_stations_stream(self, st: Stream, stations_input: list):
+        stations_check = []
+        list_to_remove = []
+        for item in stations_input:
+            if item["code"] not in stations_check:
+                stations_check.append(item["code"])
+
+        for i, stream in enumerate(st):
+            for tr in stream:
+                if tr.stats.station not in stations_check:
+                    list_to_remove.append(i)
+                    stations_check.append(tr.stats.station)
+        st_new = [value for index, value in enumerate(st) if index not in list_to_remove]
+        return st_new
+
     def __find_in_stations_list(self, stations_list, key_check):
         # stations_list is a dictionary with dictionaries inside
         key_search = 'use' + key_check[-1]
