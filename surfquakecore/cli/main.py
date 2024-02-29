@@ -182,8 +182,8 @@ def _associate():
           You can correlate picks with the corresponding unique seismic events by using this command. 
           The association was performed using REAL algorithm. 
 
-        Usage: surfquake associate -i [inventory_file_path] -p [path to data picking file] -c [path to 
-        real_config_file.ini] -s [path to directory where project will be saved] --verbose
+        Usage: surfquake associate -i [inventory_file_path] -p [path to data picking folder] -c [path to 
+        real_config_file.ini] -w [work directory] -s [path to directory where project will be saved] --verbose
           
         Reference: Zhang et al. 2019, Rapid Earthquake Association and Location, Seismol. Res. Lett. 
         https://doi.org/10.1785/0220190052
@@ -197,7 +197,7 @@ def _associate():
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless", type=str,
                            required=True)
 
-    arg_parse.add_argument("-p", "--data-dir", help="Path to folder data picking file (output Picking File)", type=str,
+    arg_parse.add_argument("-p", "--data-dir", help="path to data picking folder", type=str,
                            required=True)
 
     arg_parse.add_argument("-c", "--config_file_path", help="Path to real_config_file.ini", type=str, required=True)
@@ -228,8 +228,8 @@ def _locate():
           pre-locate subprogram.
           Further details can be found in formats section http://alomax.free.fr/nlloc/:
             
-        Usage: surfquake locate -i [inventory_file_path] -c [path to 
-          nll_config_file.ini] -o [path_to output_path] -g [travel_time_generation] -s [stations corrections]
+        Usage: surfquake locate -i [inventory_file_path] -c [config_file_path] -o [path_to output_path] 
+        -g [if travel_time_generation needed] -s [if stations_corrections need]
 
         Reference: Lomax, A., A. Michelini, A. Curtis, 2009. Earthquake Location, Direct, Global-Search Methods, in 
         Complexity In Encyclopedia of Complexity and System Science, Part 5, Springer, New York, pp. 2449-2473, 
@@ -254,11 +254,6 @@ def _locate():
 
     arg_parse.add_argument("-s", "--stations_corrections", help="If you want to iterate to include "
                                                                 "stations corrections", action="store_true")
-
-    # arg_parse.add_argument("-s", "--stations_corrections", help=" If you want to iterate to include "
-    #                                                             "stations corrections", nargs="?", const=5,
-    #                        default=None, type=int,
-    #                        dest="stations_corrections_value")
 
     parsed_args = arg_parse.parse_args()
     nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
@@ -292,8 +287,8 @@ def _source():
       surfQuake uses the spectra P- and S-waves to estimate source parameters (Stress Drop, attenuation, source radius 
        radiated energy) and magnitudes ML and Mw.
 
-    Usage: surfquake locate -i [inventory_file_path] - p [path to project file] -c [path to 
-      source_config_file] -l [path_to_nll_hyp_files] -o [path_to output_path]
+    Usage: surfquake source -i [inventory file path] - p [path to project file] -c [path to 
+      source_config_file] -l [path to nll hyp files] -o [path to output folder]
 
     Reference: Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave 
     displacement spectra (X.Y). doi: 10.5281/ZENODO.3688587.
@@ -326,7 +321,9 @@ def _source():
     # load_project #
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.project_file_path)
     print(sp_loaded)
+
     # Running stage
+    summary_path_file = os.path.join(parsed_args.output_dir_path, "source_summary.txt")
 
     if parsed_args.large_scale:
         scale = "teleseism"
@@ -339,10 +336,6 @@ def _source():
     mg.estimate_source_parameters()
 
     rs = ReadSource(parsed_args.output_dir_path)
-    summary = rs.generate_source_summary()
-    rs.write_summary(summary, parsed_args.output_dir_path)
-
-    summary_path_file = os.path.join(parsed_args.output_dir_path, "source_summary.txt")
     summary = rs.generate_source_summary()
     rs.write_summary(summary, summary_path_file)
 
@@ -396,7 +389,8 @@ def _mti():
     bic.run_inversion(mti_config=parsed_args.config_files_path)
     print("End of process, please review output directory")
     wm = WriteMTI(parsed_args.output_dir_path)
-    wm.mti_summary()
+    file_summary = os.path.join(parsed_args.output_dir_path, "summary_mti.txt")
+    wm.mti_summary(output=file_summary)
 
 
 def _csv2xml():
@@ -446,7 +440,7 @@ def _buildcatalog():
               buildcatalog class helps to join information from all surfquake outputs and create a catalog
     
             Usage: surfquake buildcatalog -e [path_event_files_folder] -s [path_source_summary_file] -m 
-            [path_mti_summary_file] -t [type_of_catalog] -o [path_to_ouput_folder]
+            [path_mti_summary_file] -f [catalog_format] -o [path_to_output_folder]
     
             Documentation:
               https://projectisp.github.io/surfquaketutorial.github.io/
@@ -465,8 +459,7 @@ def _buildcatalog():
                                                                     "moment tensor results", type=str, required=False,
                            default=None)
 
-    arg_parse.add_argument("f", "--catalog_format", help="Path to the file containing the "
-                                                                    "moment tensor results", type=str, required=False,
+    arg_parse.add_argument("f", "--catalog_format", help="catalog format, default QUAKEML", type=str, required=False,
                            default="QUAKEML")
 
     arg_parse.add_argument("-o", "--path_to_output_folder", help="Path to the ouput folder, where catalog "
