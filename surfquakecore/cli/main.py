@@ -459,7 +459,7 @@ def _buildcatalog():
                                                                     "moment tensor results", type=str, required=False,
                            default=None)
 
-    arg_parse.add_argument("f", "--catalog_format", help="catalog format, default QUAKEML", type=str, required=False,
+    arg_parse.add_argument("-f", "--catalog_format", help="catalog format, default QUAKEML", type=str, required=False,
                            default="QUAKEML")
 
     arg_parse.add_argument("-o", "--path_to_output_folder", help="Path to the ouput folder, where catalog "
@@ -469,9 +469,11 @@ def _buildcatalog():
     catalog_path_pkl = os.path.join(parsed_args.path_to_output_folder, "catalog_obj.pkl")
     catalog_path_surf = os.path.join(parsed_args.path_to_output_folder, "catalog_surf.txt")
 
-    bc = BuildCatalog(loc_folder=parsed_args.path_event_files_folder, source_summary_file=parsed_args.path_source_summary_file,
-                      output_path=parsed_args.path_to_output_folder,
+    bc = BuildCatalog(loc_folder=parsed_args.path_event_files_folder,
+                      source_summary_file=parsed_args.path_source_summary_file,
+                      output_path=parsed_args.path_to_output_folder, mti_summary_file=parsed_args.path_mti_summary_file,
                       format=parsed_args.catalog_format)
+
     bc.build_catalog_loc()
     wc = WriteCatalog(catalog_path_pkl)
     wc.write_catalog_surf(catalog=None, output_path=catalog_path_surf)
