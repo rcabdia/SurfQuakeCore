@@ -152,7 +152,7 @@ class BuildCatalog:
         print("Catalog saved at ", catalog_file_name,  " format ", self.format)
 
 class WriteCatalog:
-    def __init__(self, path_catalog):
+    def __init__(self, path_catalog, verbose=False):
 
         """
         WriteCatalog class helps to filter the catalog obj write in the most Readable
@@ -170,6 +170,7 @@ class WriteCatalog:
 
         self.path_catalog = path_catalog
         self.catalog = []
+        self.verbose = verbose
         self.__test_catalog()
 
     def show_help(self):
@@ -193,7 +194,9 @@ class WriteCatalog:
 
         try:
             self.catalog = pd.read_pickle(self.path_catalog)
-            print(self.catalog.__str__(print_all=True))
+            if self.verbose:
+                print(self.catalog.__str__(print_all=True))
+                print("Loaded Catalog")
         except:
             raise ValueError("file is not a valid catalog")
 
@@ -233,6 +236,7 @@ class WriteCatalog:
 
         if verbose:
             print(catalog_filtered.__str__(print_all=True))
+            print("Filtered Catalog in time")
 
         return catalog_filtered
 
@@ -287,11 +291,16 @@ class WriteCatalog:
                         magnitude = None
                     if lat_min <= lat_origin <= lat_max and lon_min <= lon_origin <= lon_max:
                         if depth_min <= depth_origin <= depth_max:
-                            if isinstance(magnitude, float) and mag_min <= magnitude <= mag_max:
+                            if isinstance(mag_min, float) and isinstance(mag_max, float):
+                                if isinstance(magnitude, float) and mag_min <= magnitude <= mag_max:
+                                    catalog_filtered += ev
+                            elif mag_min is None and mag_max is None:
                                 catalog_filtered += ev
+
 
         if verbose:
             print(catalog_filtered.__str__(print_all=True))
+            print("Filtered Catalog in space and magnitude")
 
         return catalog_filtered
 
