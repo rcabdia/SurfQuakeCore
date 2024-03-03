@@ -524,13 +524,35 @@ class NllManager:
         location_file = os.path.join(self.get_loc_dir, "last.hyp")
         return ObspyUtil.reads_hyp_to_origin(location_file)
 
-    def get_NLL_scatter(self):
+    @staticmethod
+    def get_NLL_scatter(location_file):
+        # method to be implemented by GUI
+        # Usage: scat2latlon < decim_factor > < output_dir > < hyp_file_list >
+        # firs modify file with no hyp extension
 
-        location_file = os.path.join(self.get_loc_dir, "last")
-        command = "{} {} {} {}".format(self.get_bin_file("scat2latlon"), 1, self.get_loc_dir, location_file)
+        location_file_cut = location_file[0:-4]
+        output_folder = os.path.dirname(location_file)
+
+        bin_file = os.path.join(BINARY_NLL_DIR, "scat2latlon")
+        st = os.stat(bin_file)
+        os.chmod(bin_file, st.st_mode | stat.S_IEXEC)
+        if not os.path.isfile(bin_file):
+            raise FileNotFoundError("The file {} doesn't exist. Check typos in file_name or make sure to run: "
+                                    "python setup.py build_ext --inplace. These should create a binaries folder fo nll with "
+                                    "the binary files."
+                                    .format(bin_file))
+
+        command = [bin_file, "1", output_folder, location_file_cut]
         exc_cmd(command)
+        #name = "location.20211001.021028.grid0.loc.hdr"
+        location_file_name = os.path.basename(location_file)
+        location_file_name_list = location_file_name.split(".")
+        scat_file_name = (location_file_name_list[0]+"."+location_file_name_list[1] + "." +
+                          location_file_name_list[2]+"."+location_file_name_list[3] + "." +
+                          location_file_name_list[4]+"."+location_file_name_list[5]+"." +
+                          "scat"+"."+"xyz")
 
-        location_file_check = os.path.join(self.get_loc_dir, "last.hyp.scat.xyz")
+        location_file_check = os.path.join(output_folder, scat_file_name)
         if os.path.isfile(location_file_check):
             my_array = np.genfromtxt(location_file_check, skip_header=3)
             y = my_array[:, 0]

@@ -1,6 +1,7 @@
 import subprocess as sb
 
 
+
 def exc_cmd(cmd, **kwargs):
     """
     Execute a subprocess Popen and catch except.
@@ -38,3 +39,17 @@ def exc_cmd(cmd, **kwargs):
             print("stderr:", std_err)
             #raise sb.SubprocessError(std_err)
         return std_out
+#
+# if __name__ == "__main__":
+#
+#     command = ['/Users/robertocabiecesdiaz/Documents/SurfQuake/venv/lib/python3.9/site-packages/surfquakecore/binaries/mac_bin/NLL/scat2latlon', "1",
+#                './', '/Users/robertocabiecesdiaz/Desktop/all_andorra/nll_all/loc/location.20211001.021028.grid0.loc']
+#
+#     additional_kwargs = {
+#         "stdout": sb.PIPE,
+#         "stderr": sb.PIPE,
+#         "encoding": "utf-8",
+#         "timeout": 10
+#     }
+#
+#     result = exc_cmd(command, **additional_kwargs)
