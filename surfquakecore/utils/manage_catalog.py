@@ -200,7 +200,7 @@ class WriteCatalog:
         except:
             raise ValueError("file is not a valid catalog")
 
-    def filter_time_catalog(self, verbose=True, **kwargs):
+    def filter_time_catalog(self, verbose=False, **kwargs):
 
         """
         Filter the catalog readed in the class instantiation
@@ -240,7 +240,7 @@ class WriteCatalog:
 
         return catalog_filtered
 
-    def filter_geographic_catalog(self, catalog: Union[Catalog, None], verbose= True, **kwargs):
+    def filter_geographic_catalog(self, catalog: Union[Catalog, None], verbose=False, **kwargs):
 
         """
         Filter the catalog readed in the class instantiation or the catalog provided in bu the user when the method

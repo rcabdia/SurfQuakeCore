@@ -3,11 +3,15 @@ import os
 import re
 import pandas as pd
 import numpy as np
+import gc
+import configparser
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, MomentTensorResult
 from surfquakecore.utils.configuration_utils import parse_configuration_file
 from surfquakecore.utils.string_utils import is_float
 from surfquakecore.utils.system_utils import deprecated
-
+from typing import Union
+from surfquakecore.utils.manage_catalog import WriteCatalog
+from obspy.core.event import Catalog
 
 def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
     """
@@ -259,3 +263,164 @@ class WriteMTI:
         print(df_mti)
         df_mti.to_csv(output, sep=";", index=False)
         print("Saved MTI summary at ", output)
+
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+
+class BuildMTIConfigs:
+    def __init__(self, catalog_file_path, mti_config: Union[str, MomentTensorInversionConfig], output_path):
+
+        self.catalog_file_path = catalog_file_path
+        self.config_mti_template = mti_config
+        self.output_path = output_path
+        self.catalog = None
+
+        if isinstance(mti_config, str) and os.path.isfile(mti_config):
+            self.mti_template_configuration = (load_mti_configuration(mti_config),)
+
+        else:
+            raise ValueError(f"mti_config {mti_config} is not valid. It must be a valid .ini file for "
+                             f"MomentTensorInversionConfig")
+
+    def __load_catalog(self, **kwargs):
+
+        """
+        starttime :str: starttime to filter the catalog in format %d/%m/%Y, %H:%M:%S.%f
+        endtime :str: endtime to filter the catalog in format %d/%m/%Y, %H:%M:%S.%f
+        lat_min:float
+        lat_max:float
+        lon_min:float
+        lon_max:float
+        depth_min:float: km
+        depth_max:float: km
+        mag_min:float
+        mag_max:float
+        """
+
+        starttime = kwargs.pop('starttime', None)
+        endtime = kwargs.pop('endtime', None)
+        lat_min = kwargs.pop('lat_min', None)
+        lon_min = kwargs.pop('lon_min', None)
+        lat_max = kwargs.pop('lat_max', None)
+        lon_max = kwargs.pop('lon_max', None)
+        depth_min = kwargs.pop('depth_min', None)
+        depth_max = kwargs.pop('depth_max', None)
+        mag_min = kwargs.pop('mag_min', None)
+        mag_max = kwargs.pop('mag_max', None)
+        catalog = None
+        wc = WriteCatalog(self.catalog_file_path)
+
+        if isinstance(wc, WriteCatalog):
+            if starttime is None and endtime is None:
+                catalog = wc.filter_geographic_catalog(catalog=None, verbose=True, lat_min=lat_min,
+                                                       lat_max=lat_max, lon_min=lon_min, lon_max=lon_max,
+                                                       depth_min=depth_min, depth_max=depth_max,
+                                                       mag_min=mag_min, mag_max=mag_max)
+            else:
+                catalog_filtered = wc.filter_time_catalog(starttime=starttime, endtime=endtime, verbose=True)
+                if isinstance(catalog_filtered, Catalog):
+                    catalog = wc.filter_geographic_catalog(catalog_filtered, verbose=True, lat_min=lat_min,
+                                                           lat_max=lat_max, lon_min=lon_min, lon_max=lon_max,
+                                                           depth_min=depth_min, depth_max=depth_max,
+                                                           mag_min=mag_min, mag_max=mag_max)
+        self.catalog = catalog
+
+    def write_mti_ini_file(self, **kwargs):
+
+        """
+        starttime :str: starttime to filter the catalog in format %d/%m/%Y, %H:%M:%S.%f
+        endtime :str: endtime to filter the catalog in format %d/%m/%Y, %H:%M:%S.%f
+        lat_min:float
+        lat_max:float
+        lon_min:float
+        lon_max:float
+        depth_min:float: km
+        depth_max:float: km
+        mag_min:float
+        mag_max:float
+        """
+
+
+        self.__load_catalog(**kwargs)
+        if self.catalog is not None:
+            for i, ev in enumerate(self.catalog):
+                # fm = FocalMechanism()
+                for origin in ev.origins:
+                    config = configparser.ConfigParser()
+                    lat = origin.latitude
+                    lon = origin.longitude
+                    depth = origin.depth*1E-3
+                    origin_time = origin.time.datetime
+                    origin_time_formatted_string = origin_time.strftime("%m/%d/%Y %H:%M:%S.%f")
+
+                    # Add sections and options
+                    config.add_section('ORIGIN')
+                    config.set('ORIGIN', 'ORIGIN_DATE', origin_time_formatted_string)
+                    config.set('ORIGIN', 'LATITUDE', str(lat))
+                    config.set('ORIGIN', 'LONGITUDE', str(lon))
+                    config.set('ORIGIN', 'DEPTH_KM', str(depth))
+                    if len(ev.magnitudes) > 0:
+                        for magnitude in ev.magnitudes:
+                            mag_type = magnitude.magnitude_type
+                            if mag_type == "Mw":
+                                mag = magnitude.mag
+                            else:
+                                mag = 3.0
+                    else:
+                        mag = 3.0
+                    config.set('ORIGIN', 'MAGNITUDE', str(mag))
+
+                    config.add_section('STATIONS_AND_CHANNELS')
+                    for station in self.mti_template_configuration[0].stations:
+                        channels = ", ".join([item.upper() for item in station.channels])
+                        config.set('STATIONS_AND_CHANNELS', station.name, channels)
+
+                    config.add_section('MTI_PARAMETERS')
+                    config.set('MTI_PARAMETERS', 'EARTH_MODEL_FILE',
+                               self.mti_template_configuration[0].inversion_parameters.earth_model_file)
+                    config.set('MTI_PARAMETERS', 'LOCATION_UNC',
+                               str(self.mti_template_configuration[0].inversion_parameters.location_unc))
+                    config.set('MTI_PARAMETERS', 'TIME_UNC',
+                               str(self.mti_template_configuration[0].inversion_parameters.time_unc))
+                    config.set('MTI_PARAMETERS', 'DEVIATORIC',
+                               str(self.mti_template_configuration[0].inversion_parameters.deviatoric))
+                    config.set('MTI_PARAMETERS', 'DEPTH_UNC',
+                               str(self.mti_template_configuration[0].inversion_parameters.deviatoric))
+                    config.set('MTI_PARAMETERS', 'COVARIANCE',
+                               str(self.mti_template_configuration[0].inversion_parameters.covariance))
+                    config.set('MTI_PARAMETERS', 'RUPTURE_VELOCITY',
+                               str(self.mti_template_configuration[0].inversion_parameters.rupture_velocity))
+                    config.set('MTI_PARAMETERS', 'SOURCE_TYPE',
+                               self.mti_template_configuration[0].inversion_parameters.source_type)
+                    config.set('MTI_PARAMETERS', 'MIN_DIST',
+                               str(self.mti_template_configuration[0].inversion_parameters.min_dist))
+                    config.set('MTI_PARAMETERS', 'MAX_DIST',
+                               str(self.mti_template_configuration[0].inversion_parameters.max_dist))
+                    config.set('MTI_PARAMETERS', 'SOURCE_DURATION',
+                               str(self.mti_template_configuration[0].inversion_parameters.source_duration))
+                    config.set('MTI_PARAMETERS', 'MAX_NUMBER_STATIONS',
+                               str(self.mti_template_configuration[0].inversion_parameters.max_number_stations))
+
+                    config.add_section('SIGNAL_PROCESSING')
+                    config.set('SIGNAL_PROCESSING', 'REMOVE_RESPONSE',
+                               str(self.mti_template_configuration[0].signal_processing_parameters.remove_response))
+                    config.set('SIGNAL_PROCESSING', 'MAX_FREQ',
+                               str(self.mti_template_configuration[0].signal_processing_parameters.max_freq))
+                    config.set('SIGNAL_PROCESSING', 'MIN_FREQ',
+                               str(self.mti_template_configuration[0].signal_processing_parameters.min_freq))
+                    config.set('SIGNAL_PROCESSING', 'RMS_THRESH',
+                               str(self.mti_template_configuration[0].signal_processing_parameters.rms_thresh))
+
+                    single_name = origin_time.strftime("%m_%d_%Y_%H%M%S")
+                    config_file_name = os.path.join(self.output_path, single_name)
+                    print(config_file_name)
+                    # Write to the file
+                    with open(config_file_name, 'w') as config_file:
+                        config.write(config_file)
+
+                    try:
+                        del config
+                        gc.collect()
+                    except:
+                        print("Couldn't release memory")

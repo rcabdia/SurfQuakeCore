@@ -29,8 +29,8 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
         }
 
     def test_config(self):
-        date_str = "28/02/2022 02:07:59.433"
-        origin_date = datetime.strptime(date_str, '%d/%m/%Y %H:%M:%S.%f')
+        date_str = "02/28/2022 02:07:59.433"
+        origin_date = datetime.strptime(date_str, '%m/%d/%Y %H:%M:%S.%f')
         # still implementing test
         mti_config = MomentTensorInversionConfig(
             origin_date=origin_date,
