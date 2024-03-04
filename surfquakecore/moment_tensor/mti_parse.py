@@ -341,7 +341,6 @@ class BuildMTIConfigs:
         mag_max:float
         """
 
-
         self.__load_catalog(**kwargs)
         if self.catalog is not None:
             for i, ev in enumerate(self.catalog):

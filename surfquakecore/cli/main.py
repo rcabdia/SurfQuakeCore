@@ -7,7 +7,7 @@ from typing import Optional
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
-from surfquakecore.moment_tensor.mti_parse import WriteMTI
+from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
@@ -50,7 +50,10 @@ def _create_actions():
             name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "buildcatalog": _CliActions(
-            name="buildcatalog", run=_buildcatalog, description=f"Type {__entry_point_name} -h for help.\n")
+            name="buildcatalog", run=_buildcatalog, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "buildmticonfig": _CliActions(
+            name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -277,6 +280,7 @@ def _locate():
     nll_catalog.run_catalog(parsed_args.out_dir_path)
     print("Catalog done, finished process see catalog at ", parsed_args.out_dir_path)
 
+
 def _source():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} source parameters estimation",
                                description="source parameters estimation")
@@ -310,7 +314,8 @@ def _source():
     arg_parse.add_argument("-l", "--loc_files_path", help="Path to nll_hyp_files", type=str,
                            required=True)
 
-    arg_parse.add_argument("-t", "--large_scale", help="If you want a long cut of signals for teleseism events (optional)",
+    arg_parse.add_argument("-t", "--large_scale",
+                           help="If you want a long cut of signals for teleseism events (optional)",
                            action="store_true")
 
     arg_parse.add_argument("-o", "--output_dir_path", help="Path to output_directory ", type=str,
@@ -411,7 +416,8 @@ def _csv2xml():
             """
 
     arg_parse.add_argument("-c", "--csv_file_path", help="Net Station Lat Lon elevation "
-                                                "start_date starttime end_date endtime", type=str, required=True)
+                                                         "start_date starttime end_date endtime", type=str,
+                           required=True)
 
     arg_parse.add_argument("-r", "--resp_files_path", help="Path to the folder containing the response file",
                            type=str, required=False)
@@ -430,6 +436,7 @@ def _csv2xml():
     inventory = sc.get_data_inventory(data_map)
     sc.write_xml(parsed_args.output_path, parsed_args.stations_xml_name, inventory)
 
+
 def _buildcatalog():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} Convert csv file to stations.xml",
                                description="Convert csv file to stations.xml")
@@ -443,27 +450,28 @@ def _buildcatalog():
             [path_mti_summary_file] -f [catalog_format] -o [path_to_output_folder]
     
             Documentation:
-              https://projectisp.github.io/surfquaketutorial.github.io/
+              https://projectisp.github.io/surfquaketutorial.github.io/utils/
               catalog formats info: https://docs.obspy.org/packages/autogen/obspy.core.event.Catalog.
               write.html#obspy.core.event.Catalog.write
             """
 
     arg_parse.add_argument("-e", "--path_event_files_folder", help="Net Station Lat Lon elevation "
-                                                "start_date starttime end_date endtime", type=str, required=True)
+                                                                   "start_date starttime end_date endtime", type=str,
+                           required=True)
 
     arg_parse.add_argument("-s", "--path_source_summary_file", help='Path to the file containing '
                                                                     'the source spectrum results',
                            type=str, required=False, default=None)
 
     arg_parse.add_argument("-m", "--path_mti_summary_file", help="Path to the file containing the "
-                                                                    "moment tensor results", type=str, required=False,
+                                                                 "moment tensor results", type=str, required=False,
                            default=None)
 
     arg_parse.add_argument("-f", "--catalog_format", help="catalog format, default QUAKEML", type=str, required=False,
                            default="QUAKEML")
 
     arg_parse.add_argument("-o", "--path_to_output_folder", help="Path to the ouput folder, where catalog "
-                                                                "will be saved", type=str, required=True)
+                                                                 "will be saved", type=str, required=True)
 
     parsed_args = arg_parse.parse_args()
     catalog_path_pkl = os.path.join(parsed_args.path_to_output_folder, "catalog_obj.pkl")
@@ -477,6 +485,83 @@ def _buildcatalog():
     bc.build_catalog_loc()
     wc = WriteCatalog(catalog_path_pkl)
     wc.write_catalog_surf(catalog=None, output_path=catalog_path_surf)
+
+
+def _buildmticonfig():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Creates mti_config.ini files from a catalog query and "
+                                    f"a mti_config template",
+                               description="mti_config files building command")
+
+    arg_parse.epilog = """
+
+        Overview:
+          buildmticonfig can automatically create an mti_config.ini from a catalog query and a mti_config template.
+        Usage: surfquake buildmticonfig -c [catalog_file_path] -t [mti_config_template] -o [output_folder] -s [if starttime] 
+        -e [if endtime] -l [if lat_min] -a [ if lat_max] -d [if lon_min] -k [if lon_max] -w [if depth_min] 
+        -f [depth_max] -g [if mag_min] -p [if mag_max]
+        Warning, starttime and endtime format is format %d/%m/%Y, %H:%M:%S.%f
+        Documentation:
+          https://projectisp.github.io/surfquaketutorial.github.io/utils/
+        """
+
+    arg_parse.add_argument("-c", "--catalog_file_path", help="file to catalog.pkl file", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-t", "--mti_config_template", help="mti_config template file", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-o", "--output_folder", help="output folder path to save the mti config .ini "
+                                                         "files", type=str, required=True)
+
+    arg_parse.add_argument("-s", "--starttime", help="starttime to filter the catalog",
+                           type=str, required=False)
+
+    arg_parse.add_argument("-e", "--endtime", help="endtime to filter the catalog",
+                           type=str, required=False)
+
+    arg_parse.add_argument("-l", "--lat_min", help="minimum latitude filter to apply a geographic "
+                                                   "filter to the catalog",
+                           type=float, required=False)
+
+    arg_parse.add_argument("-a", "--lat_max", help="maximum latitude filter to apply a geographic filter "
+                                                   "to the catalog",
+                           type=float, required=False)
+
+    arg_parse.add_argument("-d", "--lon_min", help="maximum longitude filter to apply a geographic filter "
+                                                   "to the catalog",
+                           type=float, required=False)
+
+    arg_parse.add_argument("-k", "--lon_max", help="maximum longitude filter to apply a geographic filter "
+                                                   "to the catalog",
+                           type=float, required=False)
+
+    arg_parse.add_argument("-w", "--depth_min", help="minimum depth [km] filter to apply a geographic filter "
+                                                     "to the catalog", type=float, required=False)
+
+    arg_parse.add_argument("-f", "--depth_max", help="maximum depth [km] filter to apply a geographic filter "
+                                                     "to the catalog", type=float, required=False)
+
+    arg_parse.add_argument("-g", "--mag_min", help="minimum magnitude filter to apply a geographic filter "
+                                                   "to the catalog", type=float, required=False)
+
+    arg_parse.add_argument("-p", "--mag_max", help="maximum magnitude filter to apply a geographic filter "
+                                                   "to the catalog", type=float, required=False)
+
+    parsed_args = arg_parse.parse_args()
+    print("Querying Catalog --> ", parsed_args.lat_min, parsed_args.lat_max, parsed_args.lon_min, parsed_args.lon_max,
+          parsed_args.depth_min, parsed_args.depth_max, parsed_args.mag_min, parsed_args.mag_max)
+
+    bmc = BuildMTIConfigs(catalog_file_path=parsed_args.catalog_file_path, mti_config=parsed_args.mti_config_template,
+                          output_path=parsed_args.output_folder)
+
+    bmc.write_mti_ini_file(starttime=parsed_args.starttime, endtime=parsed_args.endtime,
+                           lat_min=float(parsed_args.lat_min),
+                           lat_max=float(parsed_args.lat_max), lon_min=float(parsed_args.lon_min),
+                           lon_max=float(parsed_args.lon_max),
+                           depth_min=float(parsed_args.depth_min), depth_max=float(parsed_args.depth_max),
+                           mag_min=float(parsed_args.mag_min),
+                           mag_max=float(parsed_args.mag_max))
+
 
 if __name__ == "__main__":
     freeze_support()
