@@ -26,6 +26,7 @@ class InversionParameters(BaseDataClass):
     rupture_velocity: float
     min_dist: float
     max_dist: float
+    max_number_stations: int
     source_duration: float
     covariance: bool = True
     deviatoric: bool = False

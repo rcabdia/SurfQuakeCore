@@ -39,6 +39,7 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
             SOURCE_DURATION = 2.0
             MIN_DIST = 10
             MAX_DIST = 300
+            MAX_NUMBER_STATIONS = 20
             #
             [SIGNAL_PROCESSING]
             REMOVE_RESPONSE = True

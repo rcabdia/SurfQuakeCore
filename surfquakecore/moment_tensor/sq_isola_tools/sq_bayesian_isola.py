@@ -203,7 +203,7 @@ class BayesianIsolaCore:
             inputs.read_network_coordinates(filename=os.path.join(green_func_dir, "stations.txt"),
                                             min_distance=mti_config.inversion_parameters.min_dist * 1E3,
                                             max_distance=mti_config.inversion_parameters.max_dist * 1E3,
-                                            max_n_of_stations=None)
+                                            max_n_of_stations=mti_config.inversion_parameters.max_number_stations)
             #
             stations = inputs.stations
             stations_index = inputs.stations_index

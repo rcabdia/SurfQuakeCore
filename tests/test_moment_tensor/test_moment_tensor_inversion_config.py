@@ -21,7 +21,8 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
                                      'max_dist': 300., 'covariance': True,
                                      'source_duration': 2.,
                                      'deviatoric': False,
-                                     'source_type': 'PointSource'
+                                     'source_type': 'PointSource',
+                                     'max_number_stations': 20
                                      },
             'signal_processing_parameters': {'remove_response': True, 'max_freq': 0.15, 'min_freq': 0.02,
                                              'rms_thresh': 5.0}
@@ -47,7 +48,8 @@ class TestMomentTensorInversionConfig(unittest.TestCase):
                 rupture_velocity=2500.,
                 min_dist=10.,
                 max_dist=300.,
-                source_type='PointSource'
+                source_type='PointSource',
+                max_number_stations=20
             ),
         )
         self.assertEqual(mti_config.to_dict(), self.expect_mti_dto)
