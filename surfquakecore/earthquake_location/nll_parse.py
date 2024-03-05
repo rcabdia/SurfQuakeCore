@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: nll_parse.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Load Event Location Config file
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 from surfquakecore.earthquake_location.structures import NLLConfig, GridConfiguration, TravelTimesConfiguration, \
     LocationParameters
 from surfquakecore.utils import Cast

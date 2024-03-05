@@ -1,6 +1,16 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: Structures/structures.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Trace Structures
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 from dataclasses import dataclass
 from datetime import datetime
-
 from surfquakecore.Structures.obspy_stats_keys import ObspyStatsKeys
 from surfquakecore.utils import BaseDataClass
 

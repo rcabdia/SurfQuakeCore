@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: real_manager.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Manage Associator
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 import itertools
 import math
 import os.path

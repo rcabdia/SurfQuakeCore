@@ -1,10 +1,20 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: run_nll.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Manage Event Locator
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 import math
 import os
 import shutil
 import stat
 from trace import Trace
 from typing import Union, List, Optional
-
 import numpy as np
 import obspy
 import pandas as pd

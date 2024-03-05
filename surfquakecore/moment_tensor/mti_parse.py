@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: mti_parse.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Load MTI Config file
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
 import json
 import os
 import re
@@ -263,9 +273,6 @@ class WriteMTI:
         print(df_mti)
         df_mti.to_csv(output, sep=";", index=False)
         print("Saved MTI summary at ", output)
-
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 
 class BuildMTIConfigs:

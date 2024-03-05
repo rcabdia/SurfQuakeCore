@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: surf_project.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Project Manager
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 import pickle
 from datetime import datetime
 from multiprocessing import Pool

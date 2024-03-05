@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: metadata_manager.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Command Line Interface Core
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 import os
 import sys
 from argparse import ArgumentParser

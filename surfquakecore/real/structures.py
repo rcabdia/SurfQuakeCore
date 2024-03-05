@@ -1,7 +1,16 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: metadata_manager.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Dataclass Structure for Associator
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 from dataclasses import dataclass
-
 from surfquakecore.utils import BaseDataClass
-
 
 @dataclass
 class GeographicFrame(BaseDataClass):

@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: real_parse.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Load Associator
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 from surfquakecore.real.structures import RealConfig, GeographicFrame, GridSearch, TravelTimeGridSearch, ThresholdPicks
 from surfquakecore.utils import Cast
 from surfquakecore.utils.configuration_utils import parse_configuration_file

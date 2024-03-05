@@ -1,6 +1,16 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: moment_tensor/structures.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Dataclass structures for MTI configuration.
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 from dataclasses import dataclass, field
 from datetime import datetime
-
 from surfquakecore.utils import BaseDataClass
 
 

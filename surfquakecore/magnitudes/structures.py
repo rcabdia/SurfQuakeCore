@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: magnitudes/structures.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Dataclass structures for Source Spectrum configuration.
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 from dataclasses import dataclass
 
 @dataclass

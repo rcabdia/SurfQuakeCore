@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: source_tools.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Source Spectra Results Manager
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 import os
 import pandas as pd
 import yaml

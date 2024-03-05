@@ -1,7 +1,15 @@
-import glob
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: real_core.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Associator Core
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
 import os
 from typing import Union
-
 from obspy import read_inventory
 from obspy.geodetics import gps2dist_azimuth, kilometers2degrees
 from surfquakecore.real.real_manager import RealManager

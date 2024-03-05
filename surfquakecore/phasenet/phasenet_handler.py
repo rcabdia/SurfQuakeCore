@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: phasenet_handler.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Phase Picking toolbox manager
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 import os
 import pandas as pd
 import numpy as np
@@ -10,9 +21,7 @@ from collections import namedtuple
 from scipy.interpolate import interp1d
 from datetime import datetime, timedelta
 import json
-
 from surfquakecore import model_dir
-
 import warnings
 
 # Adjust the warning behavior globally

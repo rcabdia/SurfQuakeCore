@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: metadata_manager.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Class to handle metadata.
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
 from surfquakecore.Structures.structures import StationCoordinates
 from surfquakecore.utils.obspy_utils import MseedUtil, ObspyUtil
 

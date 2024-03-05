@@ -1,3 +1,15 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: metadata_manager.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Dataclass Structure for Associator
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
+
 from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from datetime import datetime, date

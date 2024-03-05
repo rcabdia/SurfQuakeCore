@@ -1,5 +1,15 @@
-from dataclasses import dataclass
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: earthquake_location/structures.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Dataclass structures for Event Location configuration.
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
 
+
+from dataclasses import dataclass
 from surfquakecore.utils import BaseDataClass
 
 

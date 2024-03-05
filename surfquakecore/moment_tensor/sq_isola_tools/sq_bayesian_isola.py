@@ -1,12 +1,21 @@
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------
+# Filename: run_nll.py
+# Program: surfQuake & ISP
+# Date: January 2024
+# Purpose: Manage Event Locator
+# Author: Roberto Cabieces & Thiago C. Junqueira
+#  Email: rcabdia@roa.es
+# --------------------------------------------------------------------
+
+
 import gc
 import os
 import shutil
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 from typing import Optional, Union, Tuple
-
 from obspy import UTCDateTime, read_inventory, Inventory
-
 from surfquakecore.binaries import BINARY_GREEN_DIR
 from surfquakecore.moment_tensor.mti_parse import load_mti_configurations, load_mti_configuration, read_isola_result
 from surfquakecore.moment_tensor.sq_isola_tools import bayes_isola
@@ -14,7 +23,6 @@ from surfquakecore.moment_tensor.sq_isola_tools.bayes_isola import ResolveMt, In
 from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, MomentTensorResult
 from surfquakecore.project.surf_project import SurfProject
-from surfquakecore.utils.obspy_utils import MseedUtil
 from surfquakecore.utils.system_utils import get_python_major_version
 
 
