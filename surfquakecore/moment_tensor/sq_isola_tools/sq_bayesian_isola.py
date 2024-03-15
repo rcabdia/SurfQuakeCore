@@ -228,7 +228,7 @@ class BayesianIsolaCore:
             # writes station.dat in working folder from self.stations
             inputs.write_stations(green_func_dir)
             #
-            inputs.data_raw = mt.filter_stations_stream(st, inputs.stations)
+            inputs.data_raw, deltas = mt.filter_stations_stream(st, inputs.stations)
 
             inputs.create_station_index()
             inputs.data_deltas = deltas
@@ -240,9 +240,6 @@ class BayesianIsolaCore:
                                     time_unc=mti_config.inversion_parameters.time_unc,
                                     step_x=200, step_z=200, max_points=500, circle_shape=False,
                                     rupture_velocity=mti_config.inversion_parameters.rupture_velocity)
-            #
-
-            # TODO refactor this
 
             data = bayes_isola.process_data(
                 data=inputs,
@@ -272,7 +269,6 @@ class BayesianIsolaCore:
 
             inputs.save_inversion_results(mti_config.to_dict())
 
-            # if self.parameters['plot_save']:
             if self.save_plots:
                 print("Plotting Solutions")
                 try:

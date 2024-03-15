@@ -154,7 +154,11 @@ class MTIManager:
                     list_to_remove.append(i)
                     stations_check.append(tr.stats.station)
         st_new = [value for index, value in enumerate(st) if index not in list_to_remove]
-        return st_new
+
+        # renew deltas just in case
+        deltas = [st[0].stats.delta for st in st_new]
+
+        return st_new, deltas
 
     def __find_in_stations_list(self, stations_list, key_check):
         # stations_list is a dictionary with dictionaries inside
