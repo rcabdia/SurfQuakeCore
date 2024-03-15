@@ -87,6 +87,7 @@ class MTIManager:
                     file_list.append(item)
                     dist1.append(dist)
 
+        # sort list of streams according to distance
         self.streams = self.sort_stream(dist1)
 
         file_list.sort(key=dict(zip(file_list, dist1)).get)
@@ -132,12 +133,12 @@ class MTIManager:
     def filter_mti_inputTraces(self, stations, stations_list):
         # guess that starts everything inside stations and stations_list to False
         # stations is a list
-        # statiosn_list is a dictionary of dictionaries
+        # stations_list is a dictionary of dictionaries
         for key in self.check_rms.keys():
 
             if self.check_rms[key]:
                 stations_list = self.__find_in_stations_list(stations_list, key)
-                # stations = self.__find_in_stations(stations, key) #not necessary, it is doone automatically
+                # stations = self.__find_in_stations(stations, key) #not necessary, it is done automatically
 
         return stations, stations_list
 

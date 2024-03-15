@@ -188,6 +188,16 @@ class BayesianIsolaCore:
 
         with self._load_work_directory() as green_func_dir:
 
+            inputs = InversionDataManager(outdir=local_folder)
+            inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth_km,
+                                  mag=mti_config.magnitude, t=UTCDateTime(mti_config.origin_date))
+
+            if mti_config.inversion_parameters.min_dist == 0.0 and mti_config.inversion_parameters.max_dist == 0.0:
+                # Automatic criteria
+                mti_config.inversion_parameters.min_dist = (2 * inputs.rupture_length) * 1E-3  # km
+                mti_config.inversion_parameters.max_dist = 2 ** (mti_config.magnitude * 2.)  # km
+
+
             mt = MTIManager(
                 stream=st,
                 inventory=self.inventory,
@@ -196,18 +206,15 @@ class BayesianIsolaCore:
             )
 
             mt.copy_to_working_directory(BINARY_GREEN_DIR)
-            st, deltas = mt.get_stations_index()
 
-            inputs = InversionDataManager(outdir=local_folder)
-            inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth_km,
-                                  mag=mti_config.magnitude, t=UTCDateTime(mti_config.origin_date))
+            st, deltas = mt.get_stations_index()
 
             inputs.set_source_time_function(mti_config.inversion_parameters.source_type.lower(), green_func_dir,
                                             t0=mti_config.inversion_parameters.source_duration, t1=0.5)
 
-            #
             # Create data structure self.stations
             # edit self.stations_index
+
             inputs.read_network_coordinates(filename=os.path.join(green_func_dir, "stations.txt"),
                                             min_distance=mti_config.inversion_parameters.min_dist * 1E3,
                                             max_distance=mti_config.inversion_parameters.max_dist * 1E3,
