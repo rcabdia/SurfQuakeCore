@@ -93,52 +93,55 @@ def plot_seismo(self, outfile='$outdir/seismo.png', comp_order='ZNE', cholesky=F
 			for e in range(6):
 				SYNT[comp] += elemse[sta][e][comp].data[0:npts] * self.MT._centroid['a'][e,0]
 		comps_used = 0
-		for comp in comps:
-			synt = SYNT[comp]
-			#if no_filter:
-				#D = np.empty(NPTS)
-				#for i in range(NPTS):
-					#if i+SHIFT >= 0:	
-						#D[i] = self.data_unfiltered[sta][comp].data[i+SHIFT]
-			#else:
-			d = data[sta][comp][0:len(t)]
-			if cholesky and self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
-				if self.cova.LT3:
-					#print(r, comp) # DEBUG
-					d    = np.zeros(npts)
-					synt = np.zeros(npts)
-					x1 = -npts
-					for COMP in range(3):
-						if not self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[COMP]]:
-							continue
-						x1 += npts; x2 = x1+npts
-						y1 = comps_used*npts; y2 = y1+npts
-						#print(self.cova.LT3[sta][y1:y2, x1:x2].shape, data[sta][COMP].data[0:npts].shape) # DEBUG
-						d    += np.dot(self.cova.LT3[sta][y1:y2, x1:x2], data[sta][COMP].data[0:npts])
-						synt += np.dot(self.cova.LT3[sta][y1:y2, x1:x2], SYNT[COMP])
+		try:
+			for comp in comps:
+				synt = SYNT[comp]
+				#if no_filter:
+					#D = np.empty(NPTS)
+					#for i in range(NPTS):
+						#if i+SHIFT >= 0:
+							#D[i] = self.data_unfiltered[sta][comp].data[i+SHIFT]
+				#else:
+				d = data[sta][comp][0:len(t)]
+				if cholesky and self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
+					if self.cova.LT3:
+						#print(r, comp) # DEBUG
+						d    = np.zeros(npts)
+						synt = np.zeros(npts)
+						x1 = -npts
+						for COMP in range(3):
+							if not self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[COMP]]:
+								continue
+							x1 += npts; x2 = x1+npts
+							y1 = comps_used*npts; y2 = y1+npts
+							#print(self.cova.LT3[sta][y1:y2, x1:x2].shape, data[sta][COMP].data[0:npts].shape) # DEBUG
+							d    += np.dot(self.cova.LT3[sta][y1:y2, x1:x2], data[sta][COMP].data[0:npts])
+							synt += np.dot(self.cova.LT3[sta][y1:y2, x1:x2], SYNT[COMP])
+					else:
+						d    = np.dot(self.cova.LT[sta][comp], d)
+						synt = np.dot(self.cova.LT[sta][comp], synt)
+					comps_used += 1
+				c = comps.index(comp)
+				#if no_filter:
+					#ax[r,c].plot(T,D, color='k', linewidth=obs_width)
+				if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]] or not cholesky: # do not plot seismogram if the component is not used and Cholesky decomposition is plotted
+					l_d, = ax[r,c].plot(t,d, obs_style, linewidth=obs_width)
+					if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
+						d_max = max(max(d), -min(d), d_max)
 				else:
-					d    = np.dot(self.cova.LT[sta][comp], d)
-					synt = np.dot(self.cova.LT[sta][comp], synt)
-				comps_used += 1
-			c = comps.index(comp)
-			#if no_filter:
-				#ax[r,c].plot(T,D, color='k', linewidth=obs_width)
-			if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]] or not cholesky: # do not plot seismogram if the component is not used and Cholesky decomposition is plotted
-				l_d, = ax[r,c].plot(t,d, obs_style, linewidth=obs_width)
+					ax[r,c].plot([0],[0], 'w', linewidth=0)
 				if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
-					d_max = max(max(d), -min(d), d_max)
-			else:
-				ax[r,c].plot([0],[0], 'w', linewidth=0)
-			if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
-				l_s, = ax[r,c].plot(t,synt, synt_style, linewidth=synt_width)
-				d_max = max(max(synt), -min(synt), d_max)
-			else:
-				if not cholesky:
-					ax[r,c].plot(t,synt, color='gray', linewidth=2)
-			if add_file:
-				ax[r,c].plot(t, add[:, 3*sta+comp], add_file_style, linewidth=add_file_width)
-			if add_file2:
-				ax[r,c].plot(t, add2[:, 3*sta+comp], add_file2_style, linewidth=add_file2_width)
+					l_s, = ax[r,c].plot(t,synt, synt_style, linewidth=synt_width)
+					d_max = max(max(synt), -min(synt), d_max)
+				else:
+					if not cholesky:
+						ax[r,c].plot(t,synt, color='gray', linewidth=2)
+				if add_file:
+					ax[r,c].plot(t, add[:, 3*sta+comp], add_file_style, linewidth=add_file_width)
+				if add_file2:
+					ax[r,c].plot(t, add2[:, 3*sta+comp], add_file2_style, linewidth=add_file2_width)
+		except:
+			print("Some component is not plotted in seismo/synth")
 	ax[-1,0].set_ylim([-d_max, d_max])
 	ea.append(f.legend((l_d, l_s), ('inverted data', 'modeled (synt)'), loc='lower center', bbox_to_anchor=(0.5, 1.-0.0066*len(plot_stations)), ncol=2, numpoints=1, fontsize='small', fancybox=True, handlelength=3)) # , borderaxespad=0.1
 	ea.append(f.text(0.1, 1.06-0.004*len(plot_stations), 'x', color='white', ha='center', va='center'))
@@ -224,21 +227,24 @@ def plot_noise(self, outfile='$outdir/noise.png', comp_order='ZNE', obs_style='k
 	d_max = 0
 	for sta in plot_stations:
 		r = plot_stations.index(sta)
-		for comp in comps:
-			d = self.data.data_shifts[self.MT._centroid['shift_idx']][sta][comp][0:len(t)]
-			c = comps.index(comp)
-			if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
-				color = obs_style
-				d_max = max(max(d), -min(d), d_max)
-			else:
-				color = 'gray'
-			ax[r,c].plot(t, d, color, linewidth=obs_width)
-			if len(self.data.noise[sta]) > comp:
-				NPTS = len(self.data.noise[sta][comp].data)
-				T = np.arange(-NPTS * 1. / samprate, -0.5 / samprate, 1. / samprate)
-				ax[r,c].plot(T, self.data.noise[sta][comp], color, linewidth=obs_width)
+		try:
+			for comp in comps:
+				d = self.data.data_shifts[self.MT._centroid['shift_idx']][sta][comp][0:len(t)]
+				c = comps.index(comp)
 				if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
-					d_max = max(max(self.data.noise[sta][comp]), -min(self.data.noise[sta][comp]), d_max)
+					color = obs_style
+					d_max = max(max(d), -min(d), d_max)
+				else:
+					color = 'gray'
+				ax[r,c].plot(t, d, color, linewidth=obs_width)
+				if len(self.data.noise[sta]) > comp:
+					NPTS = len(self.data.noise[sta][comp].data)
+					T = np.arange(-NPTS * 1. / samprate, -0.5 / samprate, 1. / samprate)
+					ax[r,c].plot(T, self.data.noise[sta][comp], color, linewidth=obs_width)
+					if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
+						d_max = max(max(self.data.noise[sta][comp]), -min(self.data.noise[sta][comp]), d_max)
+		except:
+			print("Some Channel is not included in the Noise plot")
 	ax[-1,0].set_ylim([-d_max, d_max])
 	ymin, ymax = ax[r,c].get_yaxis().get_view_interval()
 	for r in range(len(plot_stations)):
@@ -292,41 +298,44 @@ def plot_spectra(self, outfile='$outdir/spectra.png', comp_order='ZNE', plot_sta
 		r = plot_stations.index(sta)
 		SYNT = {}
 		comps_used = 0
-		for comp in comps:
-			d = data[sta][comp][0:npts]
-			d_filt = d.copy()
-			c = comps.index(comp)
-			if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
-				if self.cova.LT3:
-					d_filt = np.zeros(npts)
-					x1 = -npts
-					for COMP in comps:
-						if not self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[COMP]]:
-							continue
-						x1 += npts; x2 = x1+npts
-						y1 = comps_used*npts; y2 = y1+npts
-						d_filt += np.dot(self.cova.LT3[sta][y1:y2, x1:x2], data[sta][COMP].data[0:npts])
+		try:
+			for comp in comps:
+				d = data[sta][comp][0:npts]
+				d_filt = d.copy()
+				c = comps.index(comp)
+				if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
+					if self.cova.LT3:
+						d_filt = np.zeros(npts)
+						x1 = -npts
+						for COMP in comps:
+							if not self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[COMP]]:
+								continue
+							x1 += npts; x2 = x1+npts
+							y1 = comps_used*npts; y2 = y1+npts
+							d_filt += np.dot(self.cova.LT3[sta][y1:y2, x1:x2], data[sta][COMP].data[0:npts])
+					else:
+						d_filt = np.dot(self.cova.LT[sta][comp], d)
+					comps_used += 1
+					fmin[r,c] = self.inp.stations[sta]['fmin']
+					fmax[r,c] = self.inp.stations[sta]['fmax']
+				ax[r,c].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+				ax[r,c].yaxis.offsetText.set_visible(False)
+				ax3[r,c].get_yaxis().set_visible(False)
+				if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
+					noise = self.data.noise[sta][comp]
+					NPTS = len(noise)
+					NOISE  = np.sqrt(np.square(np.real(np.fft.fft(noise))*DT)*npts*dt / (NPTS*DT))
+					f2 = np.arange(0, samprate*1. * (1-0.5/NPTS), samprate*2 / NPTS)
+					D      = np.absolute(np.real(np.fft.fft(d))*dt)
+					D_filt = np.absolute(np.real(np.fft.fft(d_filt))*dt)
+					D_filt_max = max(D_filt_max, max(D_filt))
+					l_d,     = ax[r,c].plot(f, D[0:len(f)],          'k', linewidth=2, zorder=2)
+					l_filt, = ax3[r,c].plot(f, D_filt[0:len(f)],     'r', linewidth=1, zorder=3)
+					l_noise, = ax[r,c].plot(f2, NOISE[0:len(f2)], 'gray', linewidth=4, zorder=1)
 				else:
-					d_filt = np.dot(self.cova.LT[sta][comp], d)
-				comps_used += 1
-				fmin[r,c] = self.inp.stations[sta]['fmin']
-				fmax[r,c] = self.inp.stations[sta]['fmax']
-			ax[r,c].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
-			ax[r,c].yaxis.offsetText.set_visible(False) 
-			ax3[r,c].get_yaxis().set_visible(False)
-			if self.inp.stations[sta][{0:'useZ', 1:'useN', 2:'useE'}[comp]]:
-				noise = self.data.noise[sta][comp]
-				NPTS = len(noise)
-				NOISE  = np.sqrt(np.square(np.real(np.fft.fft(noise))*DT)*npts*dt / (NPTS*DT))
-				f2 = np.arange(0, samprate*1. * (1-0.5/NPTS), samprate*2 / NPTS)
-				D      = np.absolute(np.real(np.fft.fft(d))*dt)
-				D_filt = np.absolute(np.real(np.fft.fft(d_filt))*dt)
-				D_filt_max = max(D_filt_max, max(D_filt))
-				l_d,     = ax[r,c].plot(f, D[0:len(f)],          'k', linewidth=2, zorder=2)
-				l_filt, = ax3[r,c].plot(f, D_filt[0:len(f)],     'r', linewidth=1, zorder=3)
-				l_noise, = ax[r,c].plot(f2, NOISE[0:len(f2)], 'gray', linewidth=4, zorder=1)
-			else:
-				ax[r,c].plot([0],[0], 'w', linewidth=0)
+					ax[r,c].plot([0],[0], 'w', linewidth=0)
+		except:
+			print("Some Channel is not included in the spectra plot")
 	#y3min, y3max = ax3[-1,0].get_yaxis().get_view_interval()
 	ax3[-1,0].set_ylim([0, D_filt_max])
 	#print (D_filt_max, y3max, y3min)
@@ -373,32 +382,44 @@ def plot_seismo_backend_1(self, plot_stations, plot_components, comp_order, cros
 		ax = np.array([[ax]])
 
 	for c in range(len(comps)):
-		ax[0,c].set_title(title_prefix+data[0][comps[c]].stats.channel[2])
+		try:
+			ax[0,c].set_title(title_prefix+data[0][comps[c]].stats.channel[2])
+		except:
+			if c == 0:
+				ax[0, c].set_title("Z")
+			elif c == 1:
+				ax[0, c].set_title("N")
+			elif c == 2:
+				ax[0, c].set_title("E")
+
 
 	for sta in plot_stations:
 		r = plot_stations.index(sta)
 		ax[r,0].set_ylabel(data[sta][0].stats.station + u"\n{0:1.0f} km, {1:1.0f}°".format(self.inp.stations[sta]['dist']/1000, self.inp.stations[sta]['az']), fontsize=16)
 		#SYNT = {}
 		#comps_used = 0
-		for comp in comps:
-			c = comps.index(comp)
-			for C in range(COMPS): # if crosscomp==False: C = 0
-				ax[COMPS*r+C,c].set_frame_on(False)
-				ax[COMPS*r+C,c].locator_params(axis='x',nbins=7)
-				ax[COMPS*r+C,c].tick_params(labelsize=16)
-				if c==0:
-					if yticks:
-						ax[r,c].ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
-						ax[r,c].get_yaxis().tick_left()
+		try:
+			for comp in comps:
+				c = comps.index(comp)
+				for C in range(COMPS): # if crosscomp==False: C = 0
+					ax[COMPS*r+C,c].set_frame_on(False)
+					ax[COMPS*r+C,c].locator_params(axis='x',nbins=7)
+					ax[COMPS*r+C,c].tick_params(labelsize=16)
+					if c==0:
+						if yticks:
+							ax[r,c].ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
+							ax[r,c].get_yaxis().tick_left()
+						else:
+							ax[COMPS*r+C,c].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+							ax[COMPS*r+C,c].yaxis.offsetText.set_visible(False)
 					else:
-						ax[COMPS*r+C,c].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
-						ax[COMPS*r+C,c].yaxis.offsetText.set_visible(False) 
-				else:
-					ax[COMPS*r+C,c].get_yaxis().set_visible(False)
-				if r == len(plot_stations)-1 and C==COMPS-1:
-					ax[COMPS*r+C,c].get_xaxis().tick_bottom()
-				else:
-					ax[COMPS*r+C,c].get_xaxis().set_visible(False)
+						ax[COMPS*r+C,c].get_yaxis().set_visible(False)
+					if r == len(plot_stations)-1 and C==COMPS-1:
+						ax[COMPS*r+C,c].get_xaxis().tick_bottom()
+					else:
+						ax[COMPS*r+C,c].get_xaxis().set_visible(False)
+		except:
+			print("Channel bacckend is not plotted")
 	extra_artists = []
 	if xlabel:
 		extra_artists.append(f.text(0.5, 0.04+0.002*len(plot_stations), xlabel, ha='center', va='center'))

@@ -118,6 +118,7 @@ class process_data:
 			self.calculate_or_verify_Green()
 		if trim_filter_data:
 			self.trim_filter_data()
+			self.d.noise = self.noise
 		if decimate_shift:
 			self.decimate_shift()
 
@@ -210,7 +211,7 @@ class process_data:
 				self.noise.append(st.slice(noise_starttime, noise_endtime))
 				# print self.noise[-1][0].stats.endtime-self.noise[-1][0].stats.starttime, '<', length*1.1 # DEBUG
 				# if (len(self.noise[-1])!=3 or (self.noise[-1][0].stats.endtime-self.noise[-1][0].stats.starttime < length*1.1)) and self.d.stations_index['_'.join([stats.network, stats.station, stats.location, stats.channel[0:2]])]['use'+stats.channel[2]]:
-				if (len(self.noise[-1]) != 3 or (
+				if ((
 						self.noise[-1][0].stats.endtime - self.noise[-1][0].stats.starttime < length * 1.1)) and \
 						self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])][
 							'use' + stats.channel[2]]:
