@@ -120,7 +120,10 @@ class process_data:
 			self.trim_filter_data()
 			self.d.noise = self.noise
 		if decimate_shift:
-			self.decimate_shift()
+			try:
+				self.decimate_shift()
+			except:
+				print("Coudn't decimate shift")
 
 	def __exit__(self, exc_type, exc_value, traceback):
 		self.__del__()
