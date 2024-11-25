@@ -24,6 +24,8 @@ from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
 from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
+from surfquakecore.data_processing.seismogram_analysis import SeismogramData
+from surfquakecore.data_processing.analysis import Analysis
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -64,7 +66,11 @@ def _create_actions():
             name="buildcatalog", run=_buildcatalog, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "buildmticonfig": _CliActions(
-            name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n")
+            name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n"),
+
+
+        "analysis": _CliActions(
+            name="process", run=_analysis, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -572,6 +578,63 @@ def _buildmticonfig():
                            depth_min=float(parsed_args.depth_min), depth_max=float(parsed_args.depth_max),
                            mag_min=float(parsed_args.mag_min),
                            mag_max=float(parsed_args.mag_max))
+
+
+def _analysis():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} apply earthquake analysis tools. "
+                                    f" Rmean, filter, etc",
+                               description="earthquake analysis command")
+
+    arg_parse.epilog = """
+
+        Overview:
+          analysis can automatically apply obspy tools to seismograms.
+        Usage: surfquake analysis -c [config_file_path] -p [project_file_path] -o [output_folder]
+        """
+
+    arg_parse.add_argument("-c", "--config_file_path", help="path to config file", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-p", "--project_file_path", help="path to mseed files", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-o", "--output_folder", help="output folder path to save modified mseed "
+                                                         "files", type=str, required=True)
+
+    parsed_args = arg_parse.parse_args()
+    #cfg = AnalysisParameters(parsed_args.config_file_path)
+    # 1.- Check config file. Return config file parsed
+    # 2.- Get project files
+
+    #sd = SeismogramData(parsed_args.config_file_path, parsed_args.project_file_path, parsed_args.output_folder)
+    #print(sd.config_file)
+    #d.run_analysis()
+    #print('Before: ')
+    #print(sd.tracer)
+
+    #tr = sd.run_analysis()
+
+    #tr.plot()
+    sd = Analysis(parsed_args.config_file_path, parsed_args.project_file_path, parsed_args.output_folder)
+    print('After')
+    #print(tr)
+
+
+
+
+    #print("Querying Catalog --> ", parsed_args.lat_min, parsed_args.lat_max, parsed_args.lon_min, parsed_args.lon_max,
+    #      parsed_args.depth_min, parsed_args.depth_max, parsed_args.mag_min, parsed_args.mag_max)
+
+    #bmc = BuildMTIConfigs(catalog_file_path=parsed_args.catalog_file_path, mti_config=parsed_args.mti_config_template,
+    #                      output_path=parsed_args.output_folder)
+
+    #bmc.write_mti_ini_file(starttime=parsed_args.starttime, endtime=parsed_args.endtime,
+    #                       lat_min=float(parsed_args.lat_min),
+    #                       lat_max=float(parsed_args.lat_max), lon_min=float(parsed_args.lon_min),
+    #                       lon_max=float(parsed_args.lon_max),
+    #                       depth_min=float(parsed_args.depth_min), depth_max=float(parsed_args.depth_max),
+    #                       mag_min=float(parsed_args.mag_min),
+    #                       mag_max=float(parsed_args.mag_max))
 
 
 if __name__ == "__main__":
