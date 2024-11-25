@@ -271,8 +271,6 @@ class SurfProject:
                 for j in value:
                     self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
 
-
-
     def _search(self, project: dict, event: list):
         res = {}
         for key in project.keys():
