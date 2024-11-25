@@ -16,6 +16,7 @@ from surfquakecore.utils import BaseDataClass
 from surfquakecore.data_processing.source_tools import ReadSource
 from multiprocessing import freeze_support
 from surfquakecore.project.surf_project import SurfProject
+from surfquakecore.data_processing.seismogram_analysis import SeismogramData
 
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_white_noise', 'whitening', 'remove_spikes',
@@ -792,7 +793,7 @@ def parse_remove_spikes(config):
 
     return _remove_spikes_template
 
-def parse_configuration_file(config:dict):
+def parse_configuration_file(config: dict):
     _config = {}
     _config_template = []
     _config_keys = []
@@ -803,11 +804,11 @@ def parse_configuration_file(config:dict):
         _config = config['Analysis']
         _config_keys = _config.keys()
         _rmean_keys = []
-        i=0
+        i = 0
         _process = []
 
         for i in range(len(_config_keys)):
-            _name= 'process_' + str(i+1)
+            _name = 'process_' + str(i + 1)
             _process.append(_config[_name])
 
         for i in range(len(_process)):
@@ -889,258 +890,38 @@ def parse_configuration_file(config:dict):
             else:
                 raise ValueError(f"analysis_config {config} is not valid. It must be a valid .yaml file for "
                                  f"AnalysisConfig")
-                    #Check type
+                # Check type
 
         return _config_template
     else:
         raise ValueError(f"analysis_config {config} is not valid. It must be a valid .yaml file for "
                          f"AnalysisConfig. 'Analysis' header is missing")
 
-def load_analysis_configuration(config_file:str):
-    rs = ReadSource(config_file)
-    config = rs.read_file(config_file)
 
-    return parse_configuration_file(config)
+class Analysis:
 
-class AnalysisParameters(BaseDataClass):
-
-    def __init__(self, analysis_config):
-        self.config_analysis_template = analysis_config
-        self.catalog = None
-        self.analysis_template_configuration = {}
-
-        if isinstance(analysis_config, str) and os.path.isfile(analysis_config):
-            self.analysis_template_configuration = load_analysis_configuration(analysis_config)
-        else:
-            raise ValueError(f"analysis_config {analysis_config} is not valid. It must be a valid .yaml file for "
-                             f"AnalysisConfig")
-
-class SeismogramData:
-
-    def __init__(self, config_file, file_path, output_path, realtime = False, **kwargs):
-
-        stream = kwargs.pop('stream', [])
-
-        self.config_file = load_analysis_configuration(config_file)
-        self.config_keys = None
+    def __init__(self, config_file, file_path, output_path):
+        self.config_file = self.load_analysis_configuration(config_file)
         self.output = output_path
-
-        if file_path:
-            self.st = read(file_path)
-
-        if realtime:
-            self.__tracer = stream
-
-        else:
-            gaps = self.st.get_gaps()
-
-            if len(gaps) > 0:
-                self.st.print_gaps()
-                self.st.merge(fill_value="interpolate")
-
-            self.__tracer = self.st[0]
-
-        self.stats = TracerStatsAnalysis.from_dict(self.tracer.stats)
-
-    @classmethod
-    def from_tracer(cls, tracer):
-        sd = cls(None)
-        sd.set_tracer(tracer)
-        return sd
-
-    @property
-    def tracer(self):
-        return self.__tracer
-
-    def set_tracer(self, tracer):
-        self.__tracer = tracer
-        self.stats = TracerStats.from_dict(self.__tracer.stats)
-
-    def __send_filter_error_callback(self, func, msg):
-        if func:
-            func(msg)
-
-    def resample_check(self, start_time=None, end_time=None):
-
-        decimator_factor = None
-        check = False
-
-        if start_time is not None and end_time is not None:
-            start = start_time
-            end = end_time
-        else:
-            start = self.stats.StartTime
-            end = self.stats.EndTime
-
-        diff = end - start
-
-        lim1 = 3600 * 6
-        lim2 = 3600 * 3
-
-        if diff >= lim1:
-            check = True
-            decimator_factor = 1
-            return [decimator_factor, check]
-
-        if diff >= lim2 and diff < lim1:
-            check = True
-            decimator_factor = 5
-
-            return [decimator_factor, check]
-
-        else:
-            return [decimator_factor, check]
-
-    def run_analysis(self,**kwargs):
-
-        """
-        This method should be to loop over config files and run the inversion.
-        Previously it is needed to load the project and metadata.
-
-        Args:
-            analysis_config: a .yaml file
-
-        Returns:
-
-        """
-
-        start_time = kwargs.get("start_time", self.stats.StartTime)
-        end_time = kwargs.get("end_time", self.stats.EndTime)
-        trace_number = kwargs.get("trace_number", 0)
-        tr = self.tracer
-
-        tr.trim(starttime=start_time, endtime=end_time)
-
-        for i in range(len(self.config_file)):
-            _config = self.config_file[i]
-            _keys = self.config_file[i]
-
-            if _config['name'] == 'rmean':
-                if _config['method'] in ['linear, simple', 'demean']:
-                    tr.detrend(type=_config['method'])
-                elif _config['method'] == 'polynomial':
-                    tr.detrend(type=_config['method'], order=_config['order'])
-                elif _config['method'] == 'spline':
-                    tr.detrend(type=_config['method'], order=_config['order'], dspline=_config['dspline'])
-
-
-            if _config['name'] == 'taper':
-                tr.taper(max_percentage=_config['max_percentage'], type=_config['method'],
-                         max_length=_config['max_length'], side=_config['side'])
-
-            if _config['name'] == 'normalize':
-                if isinstance(_config['norm'], bool):
-                    tr.normalize()
-                else:
-                    tr.normalize(norm=_config['norm'])
-
-            if _config['name'] == 'differentiate':
-                tr.differentiate()
-
-            if _config['name'] == 'integrate':
-                tr.integrate(method=_config['method'])
-
-            if _config['name'] == 'filter':
-                options = copy.deepcopy(_config)
-                del options['method']
-                del options['name']
-                tr.filter(type=_config['method'], **options)
-
-            if _config['name'] == 'wiener_filter':
-                tr = wiener_filter(tr, time_window=_config['time_window'],
-                                   noise_power=_config['noise_power'])
-            #Borrar shift
-            #if _config['name'] == 'shift':
-            #    shifts = self.config_file['shift']
-            #    i = 0
-            #    for i in range(0,len(shifts)):
-            #        tr.stats.starttime = tr.stats.starttime + shifts[i]['time']
-
-            if _config['name'] == 'remove_response':
-                inventory = read_inventory(_config['inventory'])
-                print(inventory)
-                if _config['units'] != "Wood Anderson":
-                    # print("Deconvolving")
-                    try:
-                        tr.remove_response(inventory=inventory, pre_filt=_config['pre_filt'],
-                                           output=_config['units'], water_level=_config['water_level'])
-                    except:
-                        print("Coudn't deconvolve", tr.stats)
-                        tr.data = np.array([])
-
-                elif _config['units'] == "Wood Anderson":
-                    # print("Simulating Wood Anderson Seismograph")
-                    if inventory is not None:
-                        resp = inventory.get_response(tr.id, tr.stats.starttime)
-
-                        resp = resp.response_stages[0]
-                        paz_wa = {'sensitivity': 2800, 'zeros': [0j], 'gain': 1,
-                              'poles': [-6.2832 - 4.7124j, -6.2832 + 4.7124j]}
-
-                        paz_mine = {'sensitivity': resp.stage_gain * resp.normalization_factor, 'zeros': resp.zeros,
-                                'gain': resp.stage_gain, 'poles': resp.poles}
-
-                        try:
-                            tr.simulate(paz_remove=paz_mine, paz_simulate=paz_wa,
-                                        water_level=_config['water_level'])
-                        except:
-                            print("Coudn't deconvolve", tr.stats)
-                            tr.data = np.array([])
-
-            if _config['name'] == 'add_white_noise':
-                tr = add_white_noise(tr,_config['SNR_dB'])
-
-            if _config['name'] == 'whitening':
-                tr = whiten(tr, _config['freq_width'], taper_edge = _config['taper_edge'])
-
-            if _config['name'] == 'remove_spikes':
-                tr = hampel(tr, _config['window_size'], _config['n'])
-
-            if _config['name'] == 'time_normalization':
-                tr = normalize(tr, norm_win=_config['norm_win'], norm_method=_config['method'])
-
-            if _config['name'] == 'wavelet_denoise':
-                tr = wavelet_denoise(tr, dwt = _config['dwt'], threshold=_config['threshold'])
-
-            if _config['name'] == 'resample':
-                tr.resample(sampling_rate=_config['sampling_rate'],window='hann',no_filter=_config['pre_filter'])
-
-            if _config['name'] == 'fill_gaps':
-                st = Stream(tr)
-                st.merge(fill_value=_config['method'])
-                tr = st[0]
-
-            if _config['name'] == 'smoothing':
-                tr = smoothing(tr, type=_config['method'], k=_config['time_window'], fwhm=_config['FWHM'])
-
-        tr.id = 'test_1_' + tr.id
-        tr.write(self.output + 'test1', 'mseed')
-
-        return tr
-
-    def get_waveform_advanced(self, parameters, inventory=None, filter_error_callback=None, **kwargs):
-
-        start_time = kwargs.get("start_time", self.stats.StartTime)
-        end_time = kwargs.get("end_time", self.stats.EndTime)
-        trace_number = kwargs.get("trace_number", 0)
-        tr = self.tracer
-
-        tr.trim(starttime=start_time, endtime=end_time)
-
-        # Detrend
-        if parameters.rmean is not None:
-            if parameters.rmean in ['linear, simple', 'demean']:
-                tr.detrend(type=parameters.rmean)
-            elif parameters.rmean is 'polynomial':
-                tr.detrend(type=parameters.rmean, order=parameters.order)
-            elif parameters.rmean is 'spline':
-                tr.detrend(type=parameters.rmean, order=parameters.order, dspline=parameters.dspline)
-
-        # Taper
-
-        if parameters.taper is not None:
-            tr.taper(type=parameters.taper, max_percentage=0.5)
+        self.files = self.get_project_files(file_path)
+        print('hola')
 
 
 
-        return tr
+    def load_analysis_configuration(self, config_file: str):
+        rs = ReadSource(config_file)
+        config = rs.read_file(config_file)
+
+        return parse_configuration_file(config)
+
+    def get_project_files(self, project_path):
+        freeze_support()
+        sp = SurfProject(project_path)
+        sp.search_files()
+        return sp.project
+
+    def run_analysis(self):
+
+
+
+
