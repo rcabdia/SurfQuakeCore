@@ -1,4 +1,5 @@
 from dataclasses import dataclass, asdict
+from typing import NamedTuple
 
 from surfquakecore.utils import Cast
 
@@ -11,4 +12,4 @@ class BaseDataClass:
 
     @classmethod
     def from_dict(cls, dto: dict):
-        return Cast(dto, cls)
+        return Cast(dto, NamedTuple)#cls)
