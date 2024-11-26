@@ -7,6 +7,7 @@ Analysis:
   process_2:
     name: 'taper'
     method: 'hann'
+    max_percentage: 0.5
   process_3:
     name: 'normalize'
     norm:
@@ -19,15 +20,15 @@ Analysis:
   process_6:
     name: 'filter'
     method: 'bandpass'
-    freqmin: 4
-    freqmax: 8
+    freqmin: 4.0
+    freqmax: 8.0
   process_7:
     name: 'wiener_filter'
     time_window: 0
     noise_power: 0
   process_8:
     name: 'remove_response'
-    inventory: '/home/sysop/Escritorio/geofisica/test_surfquake/inputs/metadata/inv_all.xml'
+    inventory: 'C:\Users\cripalalo\Documents\GitHub\test_surfquake\test_surfquake-main\inputs\metadata\inv_all.xml'
     water_level: 0
     units: 'Wood Anderson'
     pre_filt: [1,2,3,4]

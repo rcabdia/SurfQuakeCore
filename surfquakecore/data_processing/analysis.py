@@ -903,7 +903,7 @@ class Analysis:
     def __init__(self, config_file, file_path, output_path):
         self.config_file = self.load_analysis_configuration(config_file)
         self.output = output_path
-        self.files = self.get_project_files(file_path)
+        self.files = file_path#self.get_project_files(file_path)
         print('hola')
 
 
@@ -921,6 +921,16 @@ class Analysis:
         return sp.project
 
     def run_analysis(self):
+        print('hola')
+
+        _keys = self.files.keys()
+
+        for _key in _keys:
+            print(_key)
+            sd = SeismogramData(self.files[_key][0])
+            tr = sd.run_analysis(self.config_file)
+            tr.write(os.path.join(self.output, _key), 'mseed')
+
 
 
 

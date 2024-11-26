@@ -917,16 +917,16 @@ class AnalysisParameters(BaseDataClass):
 
 class SeismogramData:
 
-    def __init__(self, config_file, file_path, output_path, realtime = False, **kwargs):
+    def __init__(self, file_path,  realtime = False, **kwargs):
 
         stream = kwargs.pop('stream', [])
 
-        self.config_file = load_analysis_configuration(config_file)
+        #self.config_file = config_file
         self.config_keys = None
-        self.output = output_path
+        #self.output = output_path
 
         if file_path:
-            self.st = read(file_path)
+            self.st = read(file_path[0])
 
         if realtime:
             self.__tracer = stream
@@ -991,7 +991,7 @@ class SeismogramData:
         else:
             return [decimator_factor, check]
 
-    def run_analysis(self,**kwargs):
+    def run_analysis(self, config, **kwargs):
 
         """
         This method should be to loop over config files and run the inversion.
@@ -1011,9 +1011,9 @@ class SeismogramData:
 
         tr.trim(starttime=start_time, endtime=end_time)
 
-        for i in range(len(self.config_file)):
-            _config = self.config_file[i]
-            _keys = self.config_file[i]
+        for i in range(len(config)):
+            _config = config[i]
+            _keys = config[i]
 
             if _config['name'] == 'rmean':
                 if _config['method'] in ['linear, simple', 'demean']:
@@ -1113,8 +1113,8 @@ class SeismogramData:
             if _config['name'] == 'smoothing':
                 tr = smoothing(tr, type=_config['method'], k=_config['time_window'], fwhm=_config['FWHM'])
 
-        tr.id = 'test_1_' + tr.id
-        tr.write(self.output + 'test1', 'mseed')
+        #tr.id = 'test_1_' + tr.id
+        #tr.write(self.output + 'test1', 'mseed')
 
         return tr
 

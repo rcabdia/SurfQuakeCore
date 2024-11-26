@@ -15,13 +15,15 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
+
+from examples.mangage_project import project_file_path
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
 from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
-from surfquakecore.real.real_core import RealCore
+#from surfquakecore.real.real_core import RealCore
 from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
 from surfquakecore.data_processing.seismogram_analysis import SeismogramData
@@ -232,9 +234,9 @@ def _associate():
                            action="store_true")
 
     parsed_args = arg_parse.parse_args()
-    rc = RealCore(parsed_args.inventory_file_path, parsed_args.config_file_path, parsed_args.data_dir,
-                  parsed_args.work_dir_path, parsed_args.save_dir)
-    rc.run_real()
+    #rc = RealCore(parsed_args.inventory_file_path, parsed_args.config_file_path, parsed_args.data_dir,
+    #              parsed_args.work_dir_path, parsed_args.save_dir)
+    #rc.run_real()
     print("End of Events AssociationProcess, please see for results: ", parsed_args.save_dir)
 
 
@@ -601,6 +603,8 @@ def _analysis():
     arg_parse.add_argument("-o", "--output_folder", help="output folder path to save modified mseed "
                                                          "files", type=str, required=True)
 
+    arg_parse.add_argument("-n", "--project_name", help="project name", type=str, required=True)
+
     parsed_args = arg_parse.parse_args()
     #cfg = AnalysisParameters(parsed_args.config_file_path)
     # 1.- Check config file. Return config file parsed
@@ -615,8 +619,17 @@ def _analysis():
     #tr = sd.run_analysis()
 
     #tr.plot()
-    sd = Analysis(parsed_args.config_file_path, parsed_args.project_file_path, parsed_args.output_folder)
+    freeze_support()
+    sp = SurfProject(parsed_args.project_file_path)
+    #sp.search_files()
+    files = sp.load_project(parsed_args.project_file_path)
+    #sd = Analysis(parsed_args.config_file_path, sp.project, parsed_args.output_folder)
+    sd = Analysis(parsed_args.config_file_path, files.project, parsed_args.output_folder)
     print('After')
+    sd.run_analysis()
+    project_file_path = os.path.join(parsed_args.output_folder, parsed_args.project_name + '.pkl')
+    sp.save_project(path_file_to_storage=project_file_path)
+
     #print(tr)
 
 
