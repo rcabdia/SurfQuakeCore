@@ -15,6 +15,7 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
+from datetime import datetime, timedelta
 
 from examples.mangage_project import project_file_path
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
@@ -70,9 +71,11 @@ def _create_actions():
         "buildmticonfig": _CliActions(
             name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n"),
 
-
         "analysis": _CliActions(
-            name="process", run=_analysis, description=f"Type {__entry_point_name} -h for help.\n")
+            name="analysis", run=_analysis, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "cutwaveform": _CliActions(
+            name="cutwaveform", run=_cutwaveform, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -603,7 +606,7 @@ def _analysis():
     arg_parse.add_argument("-o", "--output_folder", help="output folder path to save modified mseed "
                                                          "files", type=str, required=True)
 
-    arg_parse.add_argument("-n", "--project_name", help="project name", type=str, required=True)
+    arg_parse.add_argument("-n", "--project_name", help="output project name", type=str, required=True)
 
     parsed_args = arg_parse.parse_args()
     #cfg = AnalysisParameters(parsed_args.config_file_path)
@@ -627,28 +630,97 @@ def _analysis():
     sd = Analysis(parsed_args.config_file_path, files.project, parsed_args.output_folder)
     print('After')
     sd.run_analysis()
+
+    # search_files antes
     project_file_path = os.path.join(parsed_args.output_folder, parsed_args.project_name + '.pkl')
-    sp.save_project(path_file_to_storage=project_file_path)
+    files.save_project(path_file_to_storage=project_file_path)
 
-    #print(tr)
+def _cutwaveform():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} cut waveforms. ",
+                               description="cut wavwforms command")
 
+    arg_parse.epilog = """
+        Overview:
+          Cut waveforms.
+        Usage: surfquake cutwaveform -p [project_file_path] -o [output_folder] -n [net] -s [station] -c [channel]
+        -t [time] -to [starttime] -te [endtime]
+        """
 
+    arg_parse.add_argument("-p", "--file_path", help="path to mseed files", type=str,
+                           required=True)
 
+    arg_parse.add_argument("-o", "--output_folder", help="output folder path to save modified mseed "
+                                                         "files and project", type=str, required=True)
 
-    #print("Querying Catalog --> ", parsed_args.lat_min, parsed_args.lat_max, parsed_args.lon_min, parsed_args.lon_max,
-    #      parsed_args.depth_min, parsed_args.depth_max, parsed_args.mag_min, parsed_args.mag_max)
+    arg_parse.add_argument("-n", "--net", help="net filter", type=str, required=False)
 
-    #bmc = BuildMTIConfigs(catalog_file_path=parsed_args.catalog_file_path, mti_config=parsed_args.mti_config_template,
-    #                      output_path=parsed_args.output_folder)
+    arg_parse.add_argument("-s", "--station", help="station filter", type=str, required=False)
 
-    #bmc.write_mti_ini_file(starttime=parsed_args.starttime, endtime=parsed_args.endtime,
-    #                       lat_min=float(parsed_args.lat_min),
-    #                       lat_max=float(parsed_args.lat_max), lon_min=float(parsed_args.lon_min),
-    #                       lon_max=float(parsed_args.lon_max),
-    #                       depth_min=float(parsed_args.depth_min), depth_max=float(parsed_args.depth_max),
-    #                       mag_min=float(parsed_args.mag_min),
-    #                       mag_max=float(parsed_args.mag_max))
+    arg_parse.add_argument("-c", "--channel", help="channel filter", type=str, required=False)
 
+    arg_parse.add_argument("-t", "--time", help="time", type=int, required=False)
+
+    arg_parse.add_argument("-to", "--starttime", help="start time", type=str, required=True)
+
+    arg_parse.add_argument("-te", "--endtime", help="end time", type=str, required=False)
+
+    parsed_args = arg_parse.parse_args()
+
+    filter = {}
+
+    if parsed_args.net is not None:
+        filter['net'] = parsed_args.net
+
+    if parsed_args.station is not None:
+        filter['station'] = parsed_args.station
+
+    if parsed_args.channel is not None:
+        filter['channel'] = parsed_args.channel
+
+    # 1. Get files
+    freeze_support()
+    sp = SurfProject(parsed_args.file_path)
+    sp.search_files()
+
+    # 2. Filter files
+    if len(filter) > 0:
+        print('Hola')
+        #sp.filter_project_keys(**filter)
+        sp.filter_project_keys()
+
+    # 3. Filter time
+    # 3.1. Check starttime, endtime, time
+    date_format = "%Y-%m-%d %H:%M:%S"
+    starttime = datetime.strptime(parsed_args.starttime, date_format)
+
+    if parsed_args.endtime is not None:
+        endtime = datetime.strptime(parsed_args.endtime, date_format)
+    elif parsed_args.time is not None:
+        endtime = starttime + timedelta(minutes=parsed_args.time)
+    else:
+        endtime = starttime + timedelta(minutes=60)
+
+    result = sp.filter_time(starttime=parsed_args.starttime, endtime=endtime)
+
+    # 4. Cut MSEED
+    if len(result) > 0:
+        print('cut')
+        # Funcion estatica para cortar los ficheros
+
+    # 5. Save project
+
+    print('Hey')
+
+    #freeze_support()
+    #sp = SurfProject(parsed_args.project_file_path)
+    #sp.search_files()
+    #files = sp.load_project(parsed_args.project_file_path)
+    #sd = Analysis(parsed_args.config_file_path, sp.project, parsed_args.output_folder)
+    #sd = Analysis(parsed_args.config_file_path, files.project, parsed_args.output_folder)
+    #print('After')
+    #sd.run_analysis()
+    #project_file_path = os.path.join(parsed_args.output_folder, parsed_args.project_name + '.pkl')
+    #files.save_project(path_file_to_storage=project_file_path)
 
 if __name__ == "__main__":
     freeze_support()

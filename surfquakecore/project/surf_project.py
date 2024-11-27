@@ -328,7 +328,6 @@ class SurfProject:
                 result.append(file[0])
 
         else:
-
             for file in self.data_files:
                 pos_file = file[0]
                 st0 = file[1]
@@ -362,6 +361,8 @@ class SurfProject:
         files_path = self.filter_time(list_files=self.data_files, starttime=start, endtime=end)
         return files_path
 
+    def cut_waveform(self,):
+        print('cut waveform')
 
 class ProjectSaveFailed(Exception):
     def __init__(self, message="Error saving project"):
