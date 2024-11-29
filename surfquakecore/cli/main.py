@@ -16,6 +16,9 @@ from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
 from datetime import datetime, timedelta
+from obspy import UTCDateTime
+
+from pyasn1.type.useful import UTCTime
 
 from examples.mangage_project import project_file_path
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
@@ -606,34 +609,53 @@ def _analysis():
     arg_parse.add_argument("-o", "--output_folder", help="output folder path to save modified mseed "
                                                          "files", type=str, required=True)
 
-    arg_parse.add_argument("-n", "--project_name", help="output project name", type=str, required=True)
+    arg_parse.add_argument("-n", "--net", help="net filter", type=str, required=False)
+
+    arg_parse.add_argument("-s", "--station", help="station filter", type=str, required=False)
+
+    arg_parse.add_argument("-ch", "--channel", help="channel filter", type=str, required=False)
+
+    arg_parse.add_argument("-st", "--starttime", help="start time", type=str, required=False)
+
+    arg_parse.add_argument("-et", "--endtime", help="end time", type=str, required=False)
 
     parsed_args = arg_parse.parse_args()
-    #cfg = AnalysisParameters(parsed_args.config_file_path)
-    # 1.- Check config file. Return config file parsed
-    # 2.- Get project files
 
-    #sd = SeismogramData(parsed_args.config_file_path, parsed_args.project_file_path, parsed_args.output_folder)
-    #print(sd.config_file)
-    #d.run_analysis()
-    #print('Before: ')
-    #print(sd.tracer)
+    _filter = {}
+    _time = {}
+    date_format = "%Y-%m-%d %H:%M:%S"
 
-    #tr = sd.run_analysis()
-
-    #tr.plot()
     freeze_support()
     sp = SurfProject(parsed_args.project_file_path)
-    #sp.search_files()
     files = sp.load_project(parsed_args.project_file_path)
-    #sd = Analysis(parsed_args.config_file_path, sp.project, parsed_args.output_folder)
-    sd = Analysis(parsed_args.config_file_path, files.project, parsed_args.output_folder)
-    print('After')
-    sd.run_analysis()
 
-    # search_files antes
-    project_file_path = os.path.join(parsed_args.output_folder, parsed_args.project_name + '.pkl')
-    files.save_project(path_file_to_storage=project_file_path)
+    if parsed_args.net is not None:
+        _filter['net'] = parsed_args.net
+
+    if parsed_args.station is not None:
+        _filter['station'] = parsed_args.station
+
+    if parsed_args.channel is not None:
+        _filter['channel'] = parsed_args.channel
+
+    if parsed_args.starttime is not None:
+        _time['starttime'] = UTCDateTime(datetime.strptime(parsed_args.starttime, date_format))
+
+    if parsed_args.endtime is not None:
+        _time['endtime'] = UTCDateTime(datetime.strptime(parsed_args.endtime, date_format))
+
+    # 2. Filter files
+    if len(_filter) > 0:
+        files.filter_project_keys(**_filter)
+    else:
+        files.filter_project_keys()
+
+    # 3. Filter time
+    result = files.filter_time(**_time)
+
+    if len(result) > 0:
+        sd = Analysis(parsed_args.config_file_path, result, parsed_args.output_folder)
+        sd.run_analysis()
 
 def _cutwaveform():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} cut waveforms. ",
