@@ -32,8 +32,8 @@ class SurfProject:
         Attributes:
         - root_path (str): The root path to the folder where the user have the data files or a list filled
         with paths to files.
-        - project (dict)
-        - data_files (list)
+        - project (dict): e.g. {'WM.ARNO.HHZ' : [[FILE1, STATS_FILE1], [[FILE2, STATS_FILE2] ....'WM.MELI.HHN': ... ]
+        - data_files (list) [PATH_FILE1, PATH_FILE2, PATH_FILE3 ....]
 
         Methods:
         - __init__(root_path): Initialize a new instance of SurfProject.
@@ -42,6 +42,7 @@ class SurfProject:
         - search_files(verbose=True, **kwargs): Create a project. It can be used filters by nets,
         stations, channels selection and/or filter by timestamp
         - filter_project_keys(**kwargs): Filter a project (once is crated) using regular expressions.
+        - filter_time(**kwargs): Filter the project by span time and return a list with path of available files
         """
 
         self.root_path = root_path
@@ -71,10 +72,17 @@ class SurfProject:
                         print(key, os.path.basename(value[0]), value[1].sampling_rate, value[1].starttime,
                               value[1].endtime)
                     except:
-                        pass
-                        #print("exception arises at", key)
-        return ""
+                        print("exception arises at", key)
 
+        info = self.get_project_basic_info()
+
+        print('Networks: ', info["Networks"][0])
+        print('Stations: ', info["Stations"][0])
+        print('Channels: ', info["Channels"][0])
+        print("Num Networks: ",  info["Networks"][1], "Num Stations: ",  info["Stations"][1], "Num Channels: ",
+              info["Channels"][1], "Num Total Files: ",  info["num_files"])
+
+        return ""
     def __copy__(self):
         # Create a new instance of the class with the same data
         new_instance = self.__class__(self.root_path)
@@ -159,6 +167,22 @@ class SurfProject:
             returned_list = pool.map(partial_task, data_files)
 
         self._convert2dict(returned_list)
+        self._fill_list()
+
+        if verbose:
+            info = self.get_project_basic_info()
+
+            print('Networks: ', info["Networks"][0])
+            print('Stations: ', info["Stations"][0])
+            print('Channels: ', info["Channels"][0])
+            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ", info["num_files"])
+
+    def _fill_list(self):
+        for item in  self.project.items():
+            list_channel = item[1]
+            for file_path in list_channel:
+                self.data_files.append(file_path[0])
 
     def _parse_data_file(self, file: str, format: str, filter: dict, verbose: bool):
 
@@ -238,7 +262,6 @@ class SurfProject:
         """
 
         self.data_files = []
-        project_filtered = {}
 
         # filter dict by python wilcards remind
 
@@ -248,6 +271,7 @@ class SurfProject:
         net = kwargs.pop('net', '.+')
         station = kwargs.pop('station', '.+')
         channel = kwargs.pop('channel', '.+')
+        verbose = kwargs.pop('verbose', False)
         only_datafiles_list = kwargs.pop('only_datafiles_list', False)
 
         if net == '':
@@ -271,7 +295,17 @@ class SurfProject:
                 for j in value:
                     self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
 
+        # clean possible empty lists
+        self.remove_empty_keys()
 
+        if verbose:
+            info = self.get_project_basic_info()
+
+            print('Networks: ', info["Networks"][0])
+            print('Stations: ', info["Stations"][0])
+            print('Channels: ', info["Channels"][0])
+            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ", info["num_files"])
 
     def _search(self, project: dict, event: list):
         res = {}
@@ -285,21 +319,38 @@ class SurfProject:
 
         return res
 
-    def filter_project_time(self, starttime: str, endtime: str):
+    def filter_project_time(self, starttime, endtime, verbose=False):
+        """
+        Filters project data based on time range.
 
+        - starttime (str or UTCDateTime): Start time of the range.
+          If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+          Example: "2023-12-10 00:00:00"
+        - endtime (str or UTCDateTime): End time of the range.
+          If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+          Example: "2023-12-23 00:00:00"
         """
 
-        - starttime (str, "%Y-%m-%d %H:%M:%S"): String with the reference starttime, upper time spam threshold
-        (i.e., "2023-12-10 00:00:00")
+        # Clean the data_files_list
+        self.data_files = []
 
-        - endtime (str, "%Y-%m-%d %H:%M:%S" ): String with the reference endtime, lower time spam threshold
-        (i.e., "2023-12-23 00:00:00")
-
-        """
-
+        # Convert starttime and endtime to datetime objects if they are strings
         date_format = "%Y-%m-%d %H:%M:%S"
-        start = datetime.strptime(starttime, date_format)
-        end = datetime.strptime(endtime, date_format)
+        if isinstance(starttime, str):
+            start = datetime.strptime(starttime, date_format)
+        elif isinstance(starttime, UTCDateTime):
+            start = starttime.datetime  # Convert to Python datetime
+        else:
+            raise TypeError("starttime must be a string or UTCDateTime object.")
+
+        if isinstance(endtime, str):
+            end = datetime.strptime(endtime, date_format)
+        elif isinstance(endtime, UTCDateTime):
+            end = endtime.datetime  # Convert to Python datetime
+        else:
+            raise TypeError("endtime must be a string or UTCDateTime object.")
+
+        # Process project data
         if len(self.project) > 0:
             for key in self.project:
                 item = self.project[key]
@@ -314,6 +365,20 @@ class SurfProject:
                 for index in reversed(indices_to_remove):
                     item.pop(index)
                 self.project[key] = item
+        # clean possible empty lists
+        self.remove_empty_keys()
+        # Fill the data_files list
+        self._fill_list()
+
+        if verbose:
+            info = self.get_project_basic_info()
+
+            print('Networks: ', info["Networks"][0])
+            print('Stations: ', info["Stations"][0])
+            print('Channels: ', info["Channels"][0])
+            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ", info["num_files"])
+
 
     def filter_time(self, **kwargs) -> list:
 
@@ -362,6 +427,60 @@ class SurfProject:
         files_path = self.filter_time(list_files=self.data_files, starttime=start, endtime=end)
         return files_path
 
+
+    def get_project_basic_info(self):
+        """
+            Counts the number of unique stations in a dictionary where keys are in the format 'NET.STATION.CHANNEL'.
+
+            Args:
+                data_dict (dict): The input dictionary with keys in the format 'NET.STATION.CHANNEL'.
+
+            Returns:
+                int: The number of unique stations and channels
+        """
+
+        ## Take the stations names and its number
+
+        info = {}
+
+        networks = set()
+        stations = set()  # Use a set to store unique stations
+        channels = set()
+
+        for key in self.project.keys():
+            parts = key.split('.')  # Split the key by '.'
+            network = f"{parts[0]}"
+            networks.add(network)  # Add to the set
+            station = f"{parts[1]}"
+            stations.add(station)
+            channel = f"{parts[2]}"
+            channels.add(channel)
+        if len(stations) == 0:
+            stations = None
+
+        num_stations = len(stations)
+        num_channels = len(channels)
+        num_networks = len(networks)
+
+
+        ## Take the number of files
+        try:
+            total_components = sum(len(value_list) for value_list in self.project.values())
+        except:
+            total_components = None
+
+        info["Networks"] = [networks, num_networks]
+        info["Stations"] = [stations, num_stations]
+        info["Channels"] = [channels, num_channels]
+        info["num_files"] = total_components
+        return info
+
+    def remove_empty_keys(self):
+        """
+        Removes keys from the dictionary where the values are empty lists.
+        """
+        # Use dictionary comprehension to filter out keys with empty lists
+        self.project = {key: value for key, value in self.project.items() if value}
 
 class ProjectSaveFailed(Exception):
     def __init__(self, message="Error saving project"):
