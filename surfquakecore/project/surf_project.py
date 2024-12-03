@@ -22,7 +22,7 @@ import copy
 
 class SurfProject:
 
-    def __init__(self, root_path: Union[str, List[str]]):
+    def __init__(self, root_path: Union[str, List[str]] = None):
 
         """
 

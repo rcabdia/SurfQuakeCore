@@ -1005,6 +1005,67 @@ class PhasenetUtils:
         return dataset.map(index_to_entry, num_parallel_calls=num_parallel_calls)
 
     @staticmethod
+    def write_nlloc_format(dataframe, output_file, starttime=None, endtime=None):
+        """
+        Write a pandas DataFrame to a file in NonLinLoc Phase file format.
+
+        Parameters:
+            dataframe (pd.DataFrame): The input data with the required columns.
+            output_file (str): Path to the output file.
+            starttime (str or UTCDateTime, optional): Start time of the range.
+                If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+            endtime (str or UTCDateTime, optional): End time of the range.
+                If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+        """
+        # Convert starttime and endtime to pandas-compatible datetime objects
+        if starttime:
+            starttime = pd.Timestamp(str(starttime)) if isinstance(starttime, UTCDateTime) else pd.Timestamp(starttime)
+        if endtime:
+            endtime = pd.Timestamp(str(endtime)) if isinstance(endtime, UTCDateTime) else pd.Timestamp(endtime)
+
+        # If starttime and endtime are provided, filter the dataframe
+        if starttime or endtime:
+            dataframe['date_time'] = pd.to_datetime(dataframe['date_time'])
+            if starttime:
+                dataframe = dataframe[dataframe['date_time'] >= starttime]
+            if endtime:
+                dataframe = dataframe[dataframe['date_time'] <= endtime]
+
+        dataframe['date_time'] = pd.to_datetime(dataframe['date_time'])
+        # Write to NLLoc format
+        with open(output_file, 'w') as file:
+
+            # Write the header line
+            header = ("Station_name\tInstrument\tComponent\tP_phase_onset\tP_phase_descriptor\t"
+                      "First_Motion\tDate\tHourmin\tSeconds\tGAU\tErr\tCoda_duration\tAmplitude\tPeriod\n")
+            file.write(header)
+
+            for _, row in dataframe.iterrows():
+                station = row['station'].ljust(6)  # Station name, left-justified, 6 chars
+                instrument = "?".ljust(4)  # Placeholder for Instrument
+                component = "?".ljust(4)  # Placeholder for Component
+                p_phase_onset = "?"  # Placeholder for P phase onset
+                phase_descriptor = row['phase'].ljust(6)  # Phase descriptor (e.g., P, S)
+                first_motion = "?"  # Placeholder for First Motion
+                date = f"{row['date']}"  # Date in yyyymmdd format
+                hour_min = f"{row['date_time'].hour:02}{row['date_time'].minute:02}"  # hhmm
+                seconds = f"{row['date_time'].second + row['date_time'].microsecond / 1e6:07.4f}"  # ss.ssss
+                err = "GAU"  # Error type (GAU)
+                err_mag = f"{row['weight']:.2E}"  # Error magnitude in seconds
+                coda_duration = "-1.00E+00"  # Placeholder for Coda duration
+                amplitude = f"{row['amplitude']:.2E}"  # Amplitude
+                period = "-1.00E+00"  # Placeholder for Period
+
+                # Construct the line
+                line = (
+                    f"{station} {instrument} {component} {p_phase_onset} {phase_descriptor} {first_motion} "
+                    f"{date} {hour_min} {seconds} {err} {err_mag} {coda_duration} {amplitude} {period}\n"
+                )
+                file.write(line)
+
+            # Add a blank line at the end for NLLoc format compliance
+            file.write("\n")
+    @staticmethod
     def convert2real(picks, pick_dir: str, clean_output_folder = False):
         """
         :param picks: picks is output from method split_picks in mseedutils
