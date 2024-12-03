@@ -321,7 +321,8 @@ class SurfProject:
 
         return res
 
-    def filter_project_time(self, starttime, endtime, verbose=False):
+    def filter_project_time(self, starttime, endtime, tol=86400, verbose=False):
+
         """
         Filters project data based on time range.
 
@@ -340,6 +341,7 @@ class SurfProject:
         date_format = "%Y-%m-%d %H:%M:%S"
         if isinstance(starttime, str):
             start = datetime.strptime(starttime, date_format)
+            start = UTCDateTime(start)
         elif isinstance(starttime, UTCDateTime):
             start = starttime.datetime  # Convert to Python datetime
         else:
@@ -347,6 +349,7 @@ class SurfProject:
 
         if isinstance(endtime, str):
             end = datetime.strptime(endtime, date_format)
+            end = UTCDateTime(end)
         elif isinstance(endtime, UTCDateTime):
             end = endtime.datetime  # Convert to Python datetime
         else:
@@ -360,10 +363,21 @@ class SurfProject:
                 for index, value in enumerate(item):
                     start_data = value[1].starttime
                     end_data = value[1].endtime
-                    if start <= start_data and end >= end_data:
+                    if start_data >= start and end_data > end and (start_data - start) <= tol:
                         pass
+
+                    elif start_data <= start and end_data >= end:
+                        pass
+
+                    elif start_data <= start and end_data <= end and (end - end_data) <= tol:
+                        pass
+
+                    elif start_data >= start and end_data <= end:
+                        pass
+
                     else:
                         indices_to_remove.append(index)
+
                 for index in reversed(indices_to_remove):
                     item.pop(index)
                 self.project[key] = item
