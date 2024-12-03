@@ -74,13 +74,15 @@ class SurfProject:
                     except:
                         print("exception arises at", key)
 
-        info = self.get_project_basic_info()
+            info = self.get_project_basic_info()
 
-        print('Networks: ', info["Networks"][0])
-        print('Stations: ', info["Stations"][0])
-        print('Channels: ', info["Channels"][0])
-        print("Num Networks: ",  info["Networks"][1], "Num Stations: ",  info["Stations"][1], "Num Channels: ",
-              info["Channels"][1], "Num Total Files: ",  info["num_files"])
+            print('Networks: ',  ','.join(info["Networks"][0]))
+            print('Stations: ', ','.join(info["Stations"][0]))
+            print('Channels: ', ','.join(info["Channels"][0]))
+            print("Num Networks: ",  info["Networks"][1], "Num Stations: ",  info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ",  info["num_files"])
+        else:
+            print("Empty Project")
 
         return ""
     def __copy__(self):
@@ -301,9 +303,9 @@ class SurfProject:
         if verbose:
             info = self.get_project_basic_info()
 
-            print('Networks: ', info["Networks"][0])
-            print('Stations: ', info["Stations"][0])
-            print('Channels: ', info["Channels"][0])
+            print('Networks: ', str(info["Networks"][0]))
+            print('Stations: ', str(info["Stations"][0]))
+            print('Channels: ', str(info["Channels"][0]))
             print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
                   info["Channels"][1], "Num Total Files: ", info["num_files"])
 
@@ -446,6 +448,10 @@ class SurfProject:
         networks = set()
         stations = set()  # Use a set to store unique stations
         channels = set()
+        num_stations = 0
+        num_channels = 0
+        num_networks = 0
+        total_components = 0
 
         for key in self.project.keys():
             parts = key.split('.')  # Split the key by '.'
@@ -455,24 +461,25 @@ class SurfProject:
             stations.add(station)
             channel = f"{parts[2]}"
             channels.add(channel)
-        if len(stations) == 0:
-            stations = None
 
-        num_stations = len(stations)
-        num_channels = len(channels)
-        num_networks = len(networks)
+        if len(stations) > 0:
+            num_stations = len(stations)
+            num_channels = len(channels)
+            num_networks = len(networks)
 
 
         ## Take the number of files
-        try:
-            total_components = sum(len(value_list) for value_list in self.project.values())
-        except:
-            total_components = None
 
-        info["Networks"] = [networks, num_networks]
-        info["Stations"] = [stations, num_stations]
-        info["Channels"] = [channels, num_channels]
-        info["num_files"] = total_components
+        if len(stations) > 0:
+            total_components = sum(len(value_list) for value_list in self.project.values())
+
+
+        if len(stations) > 0:
+            info["Networks"] = [networks, num_networks]
+            info["Stations"] = [stations, num_stations]
+            info["Channels"] = [channels, num_channels]
+            info["num_files"] = total_components
+
         return info
 
     def remove_empty_keys(self):
