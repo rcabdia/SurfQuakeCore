@@ -76,15 +76,17 @@ class SurfProject:
 
             info = self.get_project_basic_info()
 
-            print('Networks: ',  ','.join(info["Networks"][0]))
+            print('Networks: ', ','.join(info["Networks"][0]))
             print('Stations: ', ','.join(info["Stations"][0]))
             print('Channels: ', ','.join(info["Channels"][0]))
-            print("Num Networks: ",  info["Networks"][1], "Num Stations: ",  info["Stations"][1], "Num Channels: ",
-                  info["Channels"][1], "Num Total Files: ",  info["num_files"])
+            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ", info["num_files"])
+            print("Start Project: ", info["Start"], ", End Project: ", info["End"])
         else:
             print("Empty Project")
 
         return ""
+
     def __copy__(self):
         # Create a new instance of the class with the same data
         new_instance = self.__class__(self.root_path)
@@ -100,7 +102,7 @@ class SurfProject:
     def load_project(path_to_project_file: str):
         return pickle.load(open(path_to_project_file, "rb"))
 
-    def save_project(self, path_file_to_storage: str)->bool:
+    def save_project(self, path_file_to_storage: str) -> bool:
 
         if not self.project:
             return False
@@ -181,7 +183,7 @@ class SurfProject:
                   info["Channels"][1], "Num Total Files: ", info["num_files"])
 
     def _fill_list(self):
-        for item in  self.project.items():
+        for item in self.project.items():
             list_channel = item[1]
             for file_path in list_channel:
                 self.data_files.append(file_path[0])
@@ -395,7 +397,6 @@ class SurfProject:
             print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
                   info["Channels"][1], "Num Total Files: ", info["num_files"])
 
-
     def filter_time(self, **kwargs) -> list:
 
         # filter the list output of filter_project_keys by trimed times
@@ -443,7 +444,6 @@ class SurfProject:
         files_path = self.filter_time(list_files=self.data_files, starttime=start, endtime=end)
         return files_path
 
-
     def get_project_basic_info(self):
         """
             Counts the number of unique stations in a dictionary where keys are in the format 'NET.STATION.CHANNEL'.
@@ -465,6 +465,8 @@ class SurfProject:
         num_stations = 0
         num_channels = 0
         num_networks = 0
+        start_time = []
+        end_time = []
         total_components = 0
 
         for key in self.project.keys():
@@ -475,24 +477,27 @@ class SurfProject:
             stations.add(station)
             channel = f"{parts[2]}"
             channels.add(channel)
+            for item in self.project[key]:
+                start_time.append(item[1].starttime)
+                end_time.append(item[1].endtime)
 
         if len(stations) > 0:
             num_stations = len(stations)
             num_channels = len(channels)
             num_networks = len(networks)
 
-
         ## Take the number of files
 
         if len(stations) > 0:
             total_components = sum(len(value_list) for value_list in self.project.values())
-
 
         if len(stations) > 0:
             info["Networks"] = [networks, num_networks]
             info["Stations"] = [stations, num_stations]
             info["Channels"] = [channels, num_channels]
             info["num_files"] = total_components
+            info["Start"] = min(start_time).strftime(format="%Y-%m-%d %H:%M:%S")
+            info["End"] = max(end_time).strftime(format="%Y-%m-%d %H:%M:%S")
 
         return info
 
@@ -502,6 +507,7 @@ class SurfProject:
         """
         # Use dictionary comprehension to filter out keys with empty lists
         self.project = {key: value for key, value in self.project.items() if value}
+
 
 class ProjectSaveFailed(Exception):
     def __init__(self, message="Error saving project"):
