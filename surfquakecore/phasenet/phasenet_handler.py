@@ -1017,6 +1017,7 @@ class PhasenetUtils:
             endtime (str or UTCDateTime, optional): End time of the range.
                 If str, it should follow the format "%Y-%m-%d %H:%M:%S".
         """
+
         # Convert starttime and endtime to pandas-compatible datetime objects
         if starttime:
             starttime = pd.Timestamp(str(starttime)) if isinstance(starttime, UTCDateTime) else pd.Timestamp(starttime)
@@ -1037,7 +1038,7 @@ class PhasenetUtils:
 
             # Write the header line
             header = ("Station_name\tInstrument\tComponent\tP_phase_onset\tP_phase_descriptor\t"
-                      "First_Motion\tDate\tHourmin\tSeconds\tGAU\tErr\tCoda_duration\tAmplitude\tPeriod\n")
+                      "First_Motion\tDate\tHour_min\tSeconds\tErr\tErrMag\tCoda_duration\tAmplitude\tPeriod\n")
             file.write(header)
 
             for _, row in dataframe.iterrows():
@@ -1051,10 +1052,29 @@ class PhasenetUtils:
                 hour_min = f"{row['date_time'].hour:02}{row['date_time'].minute:02}"  # hhmm
                 seconds = f"{row['date_time'].second + row['date_time'].microsecond / 1e6:07.4f}"  # ss.ssss
                 err = "GAU"  # Error type (GAU)
-                err_mag = f"{row['weight']:.2E}"  # Error magnitude in seconds
-                coda_duration = "-1.00E+00"  # Placeholder for Coda duration
-                amplitude = f"{row['amplitude']:.2E}"  # Amplitude
-                period = "-1.00E+00"  # Placeholder for Period
+
+                if row['weight'] > 0.95:
+                    weight = 2.00E-02
+                elif row['weight'] <= 0.95 and row['weight'] > 0.9:
+                    weight = 4.00E-02
+                elif row['weight'] <= 0.9 and row['weight'] > 0.8:
+                    weight = 7.00E-02
+                elif row['weight'] <= 0.8 and row['weight'] > 0.7:
+                    weight = 1.50E-01
+                elif row['weight'] <= 0.7 and row['weight'] > 0.6:
+                    weight = 1.00E-01
+                else:
+                    weight = 5.00E-01
+
+                err_mag = f"{weight:.2e}"  # Error magnitude in seconds
+                coda_duration = "-1.00e+00"  # Placeholder for Coda duration
+                amplitude = f"{row['amplitude']:.2e}"  # Amplitude
+                period = "-1.00e+00"  # Placeholder for Period
+
+                # err_mag = f"{row['weight']:.2E}"  # Error magnitude in seconds
+                # coda_duration = "-1.00E+00"  # Placeholder for Coda duration
+                # amplitude = f"{row['amplitude']:.2E}"  # Amplitude
+                # period = "-1.00E+00"  # Placeholder for Period
 
                 # Construct the line
                 line = (
@@ -1065,6 +1085,7 @@ class PhasenetUtils:
 
             # Add a blank line at the end for NLLoc format compliance
             file.write("\n")
+
     @staticmethod
     def convert2real(picks, pick_dir: str, clean_output_folder = False):
         """
