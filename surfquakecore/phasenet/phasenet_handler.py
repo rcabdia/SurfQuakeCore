@@ -1044,7 +1044,7 @@ class PhasenetUtils:
             for _, row in dataframe.iterrows():
                 station = row['station'].ljust(6)  # Station name, left-justified, 6 chars
                 instrument = "?".ljust(4)  # Placeholder for Instrument
-                component = "?".ljust(4)  # Placeholder for Component
+                component = row['channel'].ljust(4)  # Placeholder for Component
                 p_phase_onset = "?"  # Placeholder for P phase onset
                 phase_descriptor = row['phase'].ljust(6)  # Phase descriptor (e.g., P, S)
                 first_motion = "?"  # Placeholder for First Motion
@@ -1160,7 +1160,7 @@ class PhasenetUtils:
         print('get_picks & converting to REAL associator format')
         prob_threshold = 0.3
         columns = ['date', 'fname', 'year', 'month', 'day', 'net', 'station', 'flag', 'tt', 'date_time',
-                   'weight', 'amplitude', 'phase']
+                   'weight', 'amplitude', 'phase', 'channel']
         split_picks_ = pd.DataFrame(columns=columns)
 
         stats = picks['stats']
@@ -1200,6 +1200,7 @@ class PhasenetUtils:
             day = t0[i].day
             station = stats[i].station
             network = stats[i].network
+            channel = stats[i].channel
 
             ss = t0[i].hour*3600 + t0[i].minute*60 + t0[i].second + t0[i].microsecond/1000000
 
@@ -1236,7 +1237,7 @@ class PhasenetUtils:
                         t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
                         amp = float(pamp[j])*2080*25 if len(p_amp) > 0 else 0
                         split_aux_p.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station,
-                                            1, tp, t_pick_string, pprob[j], amp, "P"])
+                                            1, tp, t_pick_string, pprob[j], amp, "P", channel])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_p, columns=columns)], ignore_index=True)
 
@@ -1269,7 +1270,7 @@ class PhasenetUtils:
                         t_pick = date_start + timedelta(seconds=delta_time)
                         t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
                         split_aux_s.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station, 1,
-                                            tp, t_pick_string, sprob[j], amp, "S"])
+                                            tp, t_pick_string, sprob[j], amp, "S", channel])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_s, columns=columns)], ignore_index=True)
 
