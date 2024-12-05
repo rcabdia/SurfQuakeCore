@@ -264,11 +264,11 @@ class MTIManager:
                 tr = st[0]
                 tr.trim(starttime=start, endtime=end)
 
-                # TODO: It is not still checked the fill_gaps functionality
+                # TODO: It is not TOTALLY still checked the fill_gaps functionality
                 tr = cls.fill_gaps(tr)
                 if tr is not None:
-                    f1 = 0.01
-                    f2 = 0.02
+                    f1 = 0.010
+                    f2 = 0.014
                     f3 = 0.35 * tr.stats.sampling_rate
                     f4 = 0.40 * tr.stats.sampling_rate
                     pre_filt = (f1, f2, f3, f4)
@@ -277,7 +277,7 @@ class MTIManager:
                     tr.detrend(type='linear')
                     tr.taper(max_percentage=0.05)
                     if remove_response:
-                        tr.remove_response(inventory=inventory, pre_filt=pre_filt, output="VEL", water_level=60)
+                        tr.remove_response(inventory=inventory, pre_filt=pre_filt, output="VEL", water_level=80)
                         tr.detrend(type='linear')
                         tr.taper(max_percentage=0.05)
                     all_traces.append(tr)
@@ -460,7 +460,7 @@ class MTIManager:
                               "starttime": starttime, "npts": npts}
 
                     # dummy_data = np.zeros(npts)
-                    dummy_data = self._generate_white_noise(npts, 1E-1*np.max(np.abs(traces[0].data)))
+                    dummy_data = self._generate_white_noise(npts, 1E-3*np.max(np.abs(traces[0].data)))
                     dummy_trace = Trace(data=dummy_data, header=header)
                     filled_stream.append(dummy_trace)
 
