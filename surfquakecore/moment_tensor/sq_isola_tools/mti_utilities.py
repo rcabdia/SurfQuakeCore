@@ -375,7 +375,13 @@ class MTIManager:
 
                 # Perform RT -> NE rotation
                 print("Rotating Traces: ", trace.id, paired_channel.id)
-                n_data, e_data = rotate_ne_rt(tr1_data, tr2_data, azimuth)
+                baz = azimuth+180
+                if baz >= 360:
+                    baz = baz-360
+                if trace.stats.channel[-1] == "1" or trace.stats.channel[-1] == "Y":
+                    n_data, e_data = rotate_ne_rt(tr1_data, tr2_data, baz)
+                elif trace.stats.channel[-1] == "2" or trace.stats.channel[-1] == "X":
+                    n_data, e_data = rotate_ne_rt(tr2_data, tr1_data, baz)
 
                 # Replace original traces with rotated data
                 trace.data = n_data
