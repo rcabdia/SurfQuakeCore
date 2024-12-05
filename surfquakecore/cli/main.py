@@ -243,7 +243,8 @@ def _locate():
           Further details can be found in formats section http://alomax.free.fr/nlloc/:
             
         Usage: surfquake locate -i [inventory_file_path] -c [config_file_path] -o [path_to output_path] 
-        -g [if travel_time_generation needed] -s [if stations_corrections need]
+        -g [if travel_time_generation needed] -s [if stations_corrections need] -n 
+        [If you want to iterate number of iterations]
 
         Reference: Lomax, A., A. Michelini, A. Curtis, 2009. Earthquake Location, Direct, Global-Search Methods, in 
         Complexity In Encyclopedia of Complexity and System Science, Part 5, Springer, New York, pp. 2449-2473, 
@@ -267,9 +268,14 @@ def _locate():
                            action="store_true")
 
     arg_parse.add_argument("-s", "--stations_corrections", help="If you want to iterate to include "
-                                                                "stations corrections", action="store_true")
+                                                                "stations corrections, default iterations 10", action="store_true")
+
+    arg_parse.add_argument('-n', '--number_iterations', type=int, metavar='N', help='an integer for the '
+                                                                                    'number of iterations',
+                           required=False)
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
     nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
 
     if parsed_args.generate_grid:
@@ -280,10 +286,13 @@ def _locate():
 
     print("Starting Locations")
     if parsed_args.stations_corrections:
+        if parsed_args.number_iterations:
+            num_iter = int(parsed_args.number_iterations)
+        else:
+            num_iter = 10
         # including stations_corrections
-        for i in range(25):
-            print("Running Location iteration", i)
-            nll_manager.run_nlloc()
+        for i in range(1, (num_iter + 1)):
+            nll_manager.run_nlloc(num_iter=i)
     else:
         nll_manager.run_nlloc()
     print("Finished Locations see output at, ", os.path.join(parsed_args.out_dir_path, "loc"))

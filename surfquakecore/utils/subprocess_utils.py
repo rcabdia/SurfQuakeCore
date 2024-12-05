@@ -30,7 +30,8 @@ def exc_cmd(cmd, **kwargs):
             std_out, std_err = p.communicate()  # try again if timeout fails.
 
         # Print the stdout and stderr to the terminal
-        print(std_out)
+        if std_out:
+            print(std_out)
 
         if p.returncode != 0:  # Bad error.
             raise sb.CalledProcessError(p.returncode, std_err)
