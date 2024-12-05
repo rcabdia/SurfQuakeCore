@@ -19,11 +19,10 @@ import numpy as np
 import obspy
 import pandas as pd
 from obspy import UTCDateTime, read, Inventory
-
+from obspy.signal.rotate import rotate_ne_rt
 from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
-from obspy.signal.trigger import trigger_onset
+# from obspy.signal.trigger import trigger_onset
 from obspy.taup import TauPyModel
-
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
 
 
@@ -285,11 +284,215 @@ class MTIManager:
                 print("It cannot be processed file ", file)
         st = Stream(traces=all_traces)
         st.merge()
+        try:
+            st = cls.rotate_to_ne(st, inventory)
+        except Exception as error:
+            print('Rotating Stream Error: ' + repr(error))
+            print(error)
+
         if save_stream_plot:
             output_dir = os.path.join(output_directory, "stream_raw.png")
             st.plot(outfile=output_dir, size=(800, 600))
 
         return st
+
+    @classmethod
+    def rotate_to_ne(cls, stream, inventory):
+
+        """
+        Rotates horizontal components in a stream to NE orientation if needed.
+
+        Parameters:
+            stream (Stream): ObsPy Stream containing multiple traces.
+            inventory (Inventory): ObsPy Inventory containing metadata for traces.
+            save_path (str): Optional path to save the rotated stream.
+
+        Returns:
+            Stream: Original stream with rotated traces substituted.
+        """
+
+        rotated_ids = set()  # Track rotated trace IDs for removal
+
+        for trace in stream:
+            trace_id = trace.id
+
+            # Skip if already processed
+            if trace_id in rotated_ids:
+                continue
+
+            # Retrieve station and channel information
+            station = trace.stats.station
+            network = trace.stats.network
+            channel = trace.stats.channel
+            location = trace.stats.location
+
+            # Find corresponding station metadata in the inventory
+            try:
+                station_metadata = inventory.get_channel_metadata(trace.id)
+            except KeyError:
+                continue  # Skip if no metadata is available
+
+            # Extract azimuth and dip
+            azimuth = station_metadata['azimuth']
+            dip = station_metadata['dip']
+
+            # Skip non-horizontal traces
+            if not (-5 <= dip <= 5):
+                continue
+
+            # Skip if already in NE orientation
+            if channel[-1] in ["N", "E"]:
+                continue
+
+            # Find paired horizontal channel
+            paired_channel = None
+            for tr in stream:
+                if (
+                        tr.stats.station == station and
+                        tr.stats.network == network and
+                        tr.stats.location == location and
+                        tr.stats.channel != channel and
+                        tr.stats.channel[-1] in ["1", "2", "R", "T"]
+                ):
+                    paired_channel = tr
+                    break
+
+            if not paired_channel:
+                continue  # Skip if no pair found
+
+            # Retrieve metadata for paired channel
+            try:
+                paired_metadata = inventory.get_channel_metadata(paired_channel.id)
+                paired_azimuth = paired_metadata["azimuth"]
+            except KeyError:
+                continue
+
+            # Rotate if azimuth difference is significant
+            if np.abs(azimuth) >= 5:
+                # Extract data
+                tr1_data = trace.data
+                tr2_data = paired_channel.data
+
+                # Perform RT -> NE rotation
+                print("Rotating Traces: ", trace.id, paired_channel.id)
+                n_data, e_data = rotate_ne_rt(tr1_data, tr2_data, azimuth)
+
+                # Replace original traces with rotated data
+                trace.data = n_data
+                paired_channel.data = e_data
+
+                # Mark as processed
+                rotated_ids.add(trace_id)
+                rotated_ids.add(paired_channel.id)
+
+        stream = stream.sort()
+        return stream
+
+    @classmethod
+    def rotate_to_ne_change_name(cls, stream, inventory):
+        """
+        Rotates horizontal components in a stream to NE orientation if needed.
+
+        Parameters:
+            stream (Stream): ObsPy Stream containing multiple traces.
+            inventory (Inventory): ObsPy Inventory containing metadata for traces.
+            save_path (str): Optional path to save the rotated stream.
+
+        Returns:
+            Stream: Original stream with rotated traces substituted.
+        """
+        rotated_stream = obspy.Stream()  # Store rotated traces
+        rotated_ids = set()  # Track rotated trace IDs for removal
+
+        for trace in stream:
+            trace_id = trace.id
+
+            # Skip if already processed
+            if trace_id in rotated_ids:
+                continue
+
+            # Retrieve station and channel information
+            station = trace.stats.station
+            network = trace.stats.network
+            channel = trace.stats.channel
+            location = trace.stats.location
+
+            # Find corresponding station metadata in the inventory
+            try:
+                station_metadata = inventory.get_channel_metadata(trace.id)
+            except KeyError:
+                continue  # Skip if no metadata is available
+
+            # Extract azimuth and dip
+            azimuth = station_metadata['azimuth']
+            dip = station_metadata['dip']
+
+            # Skip non-horizontal traces
+            if not (-5 <= dip <= 5):
+                continue
+
+            # Skip if already in NE orientation
+            if channel[-1] in ["N", "E"]:
+                continue
+
+            # Find paired horizontal channel
+            paired_channel = None
+            for tr in stream:
+                if (
+                    tr.stats.station == station and
+                    tr.stats.network == network and
+                    tr.stats.location == location and
+                    tr.stats.channel != channel and
+                    tr.stats.channel[-1] in ["1", "2", "R", "T"]
+                ):
+                    paired_channel = tr
+                    break
+
+            if not paired_channel:
+                continue  # Skip if no pair found
+
+            # Retrieve metadata for paired channel
+            try:
+                paired_metadata = inventory.get_channel_metadata(paired_channel.id)
+                paired_azimuth = paired_metadata["azimuth"]
+            except KeyError:
+                continue
+
+            # Rotate if azimuth difference is significant
+            if np.abs(azimuth) >= 5:
+                # Extract data
+                tr1_data = trace.data
+                tr2_data = paired_channel.data
+
+                # Perform RT -> NE rotation
+                n_data, e_data = rotate_ne_rt(tr1_data, tr2_data, azimuth)
+
+                # Create rotated traces
+                n_trace = trace.copy()
+                n_trace.data = n_data
+                n_trace.stats.channel = channel[:-1] + "N"
+
+                e_trace = paired_channel.copy()
+                e_trace.data = e_data
+                e_trace.stats.channel = channel[:-1] + "E"
+
+                # Add rotated traces to the rotated stream
+                rotated_stream.append(n_trace)
+                rotated_stream.append(e_trace)
+
+                # Mark as processed
+                rotated_ids.add(trace_id)
+                rotated_ids.add(paired_channel.id)
+
+        # Remove original traces that were rotated
+        stream.traces = [tr for tr in stream if tr.id not in rotated_ids]
+
+        # Add rotated traces to the original stream
+        stream += rotated_stream
+
+        stream = stream.sort()
+        return stream
+
 
     def get_rms_times(self, tr: Trace, p_arrival_time: UTCDateTime, distance_km, magnitude,
                       freqmin=0.5, freqmax=8) -> float:
