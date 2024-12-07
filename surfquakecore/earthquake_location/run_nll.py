@@ -205,6 +205,16 @@ class NllManager:
 
         :return:
         """
+
+        # check if output and work dir exists otherwise try to crate it
+        if os.path.isdir(self.__location_output):
+            pass
+        else:
+            try:
+                os.makedirs(self.__location_output)
+            except Exception as error:
+                print("An exception occurred:", error)
+
         # temporary dir.
         self.__create_dir("temp")
 

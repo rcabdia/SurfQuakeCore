@@ -249,15 +249,6 @@ def _associate():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
-    # check if output and work dir exists otherwise try to crate it
-    if os.path.isdir(parsed_args.work_dir_path) and os.path.isdir(parsed_args.save_dir):
-        pass
-    else:
-        try:
-            os.makedirs(parsed_args.work_dir_path)
-            os.makedirs(parsed_args.save_dir)
-        except Exception as error:
-            print("An exception occurred:", error)
 
     rc = RealCore(parsed_args.inventory_file_path, parsed_args.config_file_path, parsed_args.data_dir,
                   parsed_args.work_dir_path, parsed_args.save_dir)
@@ -310,14 +301,7 @@ def _locate():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
-    # check if output and work dir exists otherwise try to crate it
-    if os.path.isdir(parsed_args.out_dir_path):
-        pass
-    else:
-        try:
-            os.makedirs(parsed_args.out_dir_path)
-        except Exception as error:
-            print("An exception occurred:", error)
+
 
     nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
 
@@ -387,18 +371,6 @@ def _source():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    if os.path.isdir(parsed_args.loc_files_path):
-        pass
-    else:
-        raise Exception("Loc files directory does not exist")
-
-    if os.path.isdir(parsed_args.output_dir_path):
-        pass
-    else:
-        try:
-            os.makedirs(parsed_args.output_dir_path)
-        except Exception as error:
-            print("An exception occurred:", error)
 
     # load_project #
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.project_file_path)
@@ -510,13 +482,6 @@ def _csv2xml():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
-    if os.path.isdir(parsed_args.output_path):
-        pass
-    else:
-        try:
-            os.makedirs(parsed_args.output_path)
-        except Exception as error:
-            print("An exception occurred:", error)
 
     if parsed_args.resp_files_path:
         sc = Convert(parsed_args.csv_file_path, resp_files=parsed_args.resp_files_path)

@@ -74,8 +74,20 @@ class Automag:
         return options
 
     def _check_folders(self):
-        if not os.path.exists(self.output_directory):
-            os.makedirs(self.output_directory)
+
+        if os.path.isdir(self.locations_directory):
+            pass
+        else:
+            raise Exception("Loc files directory does not exist")
+
+        if os.path.isdir(self.output_directory):
+            pass
+        else:
+            try:
+                os.makedirs(self.output_directory)
+            except Exception as error:
+                print("An exception occurred:", error)
+
 
     def get_now_files(self, date):
 
