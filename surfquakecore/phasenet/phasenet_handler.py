@@ -72,7 +72,7 @@ class Config:
 
 class PhasenetISP:
     def __init__(self, files, batch_size=3, highpass_filter=0.5, min_p_prob=0.3, min_s_prob=0.3,
-                 min_peak_distance=50, amplitude=False, plot_figure=False, save_prob=False):
+                 min_peak_distance=50, amplitude=False, plot_figure=False, save_prob=False, output=None):
         """
 
         Main class to initialize the picker
@@ -126,6 +126,16 @@ class PhasenetISP:
         self.save_prob = save_prob
 
         self.data_reader = None
+
+        if output is not None:
+            # check if output dir exists otherwise try to crate it
+            if os.path.isdir(output):
+                pass
+            else:
+                try:
+                    os.makedirs(output)
+                except Exception as error:
+                    print("An exception occurred:", error)
 
     def phasenet(self):
         with tf.compat.v1.name_scope('create_inputs'):

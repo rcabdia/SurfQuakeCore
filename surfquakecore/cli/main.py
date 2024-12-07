@@ -119,13 +119,6 @@ def _project():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
-    if os.path.isdir(parsed_args.save_dir):
-        pass
-    else:
-        try:
-            os.makedirs(parsed_args.save_dir)
-        except Exception as error:
-            print("An exception occurred:", error)
 
     print(f"Project from {parsed_args.data_dir} saving to {parsed_args.save_dir} as {parsed_args.project_name}")
     sp = SurfProject(parsed_args.data_dir)
@@ -176,20 +169,13 @@ def _pick():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
-    # check if output dir exists otherwise try to crate it
-    if os.path.isdir(parsed_args.d):
-        pass
-    else:
-        try:
-            os.makedirs(parsed_args.d)
-        except Exception as error:
-            print("An exception occurred:", error)
+
 
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.f)
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
 
         picker = PhasenetISP(sp_loaded.project, amplitude=True, min_p_prob=parsed_args.p,
-                             min_s_prob=parsed_args.s)
+                             min_s_prob=parsed_args.s, output=parsed_args.d)
 
         # Running Stage
         picks = picker.phasenet()

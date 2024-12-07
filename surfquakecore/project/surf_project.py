@@ -107,6 +107,14 @@ class SurfProject:
         if not self.project:
             return False
 
+        if os.path.isdir(os.path.dirname(path_file_to_storage)):
+            pass
+        else:
+            try:
+                os.makedirs(os.path.dirname(path_file_to_storage))
+            except Exception as error:
+                print("An exception occurred:", error)
+
         with open(path_file_to_storage, "wb") as file_to_store:
             pickle.dump(self, file_to_store, protocol=pickle.HIGHEST_PROTOCOL)
 
