@@ -118,13 +118,20 @@ def _project():
                            action="store_true")
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+    if os.path.isdir(parsed_args.save_dir):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.save_dir)
+        except Exception as error:
+            print("An exception occurred:", error)
 
     print(f"Project from {parsed_args.data_dir} saving to {parsed_args.save_dir} as {parsed_args.project_name}")
     sp = SurfProject(parsed_args.data_dir)
     project_file_path = os.path.join(parsed_args.save_dir, parsed_args.project_name)
     sp.search_files(verbose=parsed_args.verbose)
     print(sp)
-    print("End of project creation, number of files ", len(sp.project))
     sp.save_project(path_file_to_storage=project_file_path)
 
 
@@ -168,10 +175,19 @@ def _pick():
                            action="store_true")
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+    # check if output dir exists otherwise try to crate it
+    if os.path.isdir(parsed_args.d):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.d)
+        except Exception as error:
+            print("An exception occurred:", error)
 
-    # project = MseedUtil.load_project(file=arg_parse.f)
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.f)
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
+
         picker = PhasenetISP(sp_loaded.project, amplitude=True, min_p_prob=parsed_args.p,
                              min_s_prob=parsed_args.s)
 
@@ -198,7 +214,7 @@ def _associate():
           The association was performed using REAL algorithm. 
 
         Usage: surfquake associate -i [inventory_file_path] -p [path to data picking folder] -c [path to 
-        real_config_file.ini] -w [work directory] -s [path to directory where project will be saved] --verbose
+        real_config_file.ini] -w [work directory] -s [path to directory where associates picks will be saved] --verbose
           
         Reference: Zhang et al. 2019, Rapid Earthquake Association and Location, Seismol. Res. Lett. 
         https://doi.org/10.1785/0220190052
@@ -209,24 +225,40 @@ def _associate():
           # reference for structs: https://github.com/Dal-mzhang/REAL/blob/master/REAL_userguide_July2021.pdf
         """
 
-    arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless", type=str,
+    arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
+                           type=str,
                            required=True)
 
-    arg_parse.add_argument("-p", "--data-dir", help="path to data picking folder", type=str,
+    arg_parse.add_argument("-p", "--data-dir", help="path to data picking folder",
+                           type=str,
                            required=True)
 
-    arg_parse.add_argument("-c", "--config_file_path", help="Path to real_config_file.ini", type=str, required=True)
+    arg_parse.add_argument("-c", "--config_file_path", help="Path to real_config_file.ini",
+                           type=str, required=True)
 
-    arg_parse.add_argument("-w", "--work_dir_path", help="Path to working_directory (Generated Travel Times)", type=str,
+    arg_parse.add_argument("-w", "--work_dir_path", help="Path to working_directory "
+                                                         "(Generated Travel Times)", type=str,
                            required=True)
 
-    arg_parse.add_argument("-s", "--save_dir", help="Path to directory where project will be saved", type=str,
+    arg_parse.add_argument("-s", "--save_dir",
+                           help="Path to directory where associated picks will be saved", type=str,
                            required=True)
 
     arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
                            action="store_true")
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+    # check if output and work dir exists otherwise try to crate it
+    if os.path.isdir(parsed_args.work_dir_path) and os.path.isdir(parsed_args.save_dir):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.work_dir_path)
+            os.makedirs(parsed_args.save_dir)
+        except Exception as error:
+            print("An exception occurred:", error)
+
     rc = RealCore(parsed_args.inventory_file_path, parsed_args.config_file_path, parsed_args.data_dir,
                   parsed_args.work_dir_path, parsed_args.save_dir)
     rc.run_real()
@@ -269,7 +301,8 @@ def _locate():
                            action="store_true")
 
     arg_parse.add_argument("-s", "--stations_corrections", help="If you want to iterate to include "
-                                                                "stations corrections, default iterations 10", action="store_true")
+                                                                "stations corrections, default iterations 10",
+                           action="store_true")
 
     arg_parse.add_argument('-n', '--number_iterations', type=int, metavar='N', help='an integer for the '
                                                                                     'number of iterations',
@@ -277,6 +310,15 @@ def _locate():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
+    # check if output and work dir exists otherwise try to crate it
+    if os.path.isdir(parsed_args.out_dir_path):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.out_dir_path)
+        except Exception as error:
+            print("An exception occurred:", error)
+
     nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
 
     if parsed_args.generate_grid:
@@ -343,6 +385,20 @@ def _source():
                            required=True)
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+
+    if os.path.isdir(parsed_args.loc_files_path):
+        pass
+    else:
+        raise Exception("Loc files directory does not exist")
+
+    if os.path.isdir(parsed_args.output_dir_path):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.output_dir_path)
+        except Exception as error:
+            print("An exception occurred:", error)
 
     # load_project #
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.project_file_path)
@@ -402,15 +458,18 @@ def _mti():
                            action="store_true")
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
 
     sp = SurfProject.load_project(path_to_project_file=parsed_args.path_to_project_file)
     print(sp)
+
     bic = BayesianIsolaCore(
         project=sp,
         inventory_file=parsed_args.inventory_file_path,
         output_directory=parsed_args.output_dir_path,
         save_plots=parsed_args.save_plots,
     )
+
     print("Starting Inversion")
     bic.run_inversion(mti_config=parsed_args.config_files_path)
 
@@ -448,7 +507,16 @@ def _csv2xml():
 
     arg_parse.add_argument("-n", "--stations_xml_name", help="Name of the xml file to be saved", type=str,
                            required=True)
+
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+    if os.path.isdir(parsed_args.output_path):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.output_path)
+        except Exception as error:
+            print("An exception occurred:", error)
 
     if parsed_args.resp_files_path:
         sc = Convert(parsed_args.csv_file_path, resp_files=parsed_args.resp_files_path)
@@ -496,6 +564,16 @@ def _buildcatalog():
                                                                  "will be saved", type=str, required=True)
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+
+    if os.path.isdir(parsed_args.path_to_output_folder):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.path_to_output_folder)
+        except Exception as error:
+            print("An exception occurred:", error)
+
     catalog_path_pkl = os.path.join(parsed_args.path_to_output_folder, "catalog_obj.pkl")
     catalog_path_surf = os.path.join(parsed_args.path_to_output_folder, "catalog_surf.txt")
 
@@ -570,6 +648,16 @@ def _buildmticonfig():
                                                    "to the catalog", type=float, required=False)
 
     parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+
+    if os.path.isdir(parsed_args.output_folder):
+        pass
+    else:
+        try:
+            os.makedirs(parsed_args.output_folder)
+        except Exception as error:
+            print("An exception occurred:", error)
+
     print("Querying Catalog --> ", parsed_args.lat_min, parsed_args.lat_max, parsed_args.lon_min, parsed_args.lon_max,
           parsed_args.depth_min, parsed_args.depth_max, parsed_args.mag_min, parsed_args.mag_max)
 

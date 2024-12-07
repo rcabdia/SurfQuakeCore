@@ -59,8 +59,13 @@ class BayesianIsolaCore:
 
         # if not os.path.exists(self.working_directory):
         #     os.makedirs(self.working_directory)
+
         if not os.path.exists(self.output_directory):
-            os.makedirs(self.output_directory)
+            try:
+                os.makedirs(self.output_directory)
+            except Exception as error:
+                print("An exception occurred:", error)
+
 
         self._cpu_count = max(1, os.cpu_count() - 1)
         self._inventory: Optional[Inventory] = None
