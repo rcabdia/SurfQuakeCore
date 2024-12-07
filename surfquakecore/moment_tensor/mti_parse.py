@@ -199,7 +199,7 @@ class WriteMTI:
 
         return iversion_json_files
 
-    def mti_summary(self, output):
+    def mti_summary(self):
         dates = []
         lats = []
         longs = []
@@ -235,7 +235,7 @@ class WriteMTI:
                     "mrr": mrr, "mtt": mtt, "mpp": mpp,
                     "mrt": mrt, "mrp": mrp, "mtp": mtp, "plane_1_strike": plane_1_strike, "plane_1_dip": plane_1_dip,
                     "plane_1_slip_rake": plane_1_slip_rake, "plane_2_strike": plane_2_strike, "plane_2_dip": plane_2_dip,
-                    "plane_2_slip_rake": plane_2_slip_rake }
+                    "plane_2_slip_rake": plane_2_slip_rake}
 
         mti_files = self.list_files_with_iversion_json()
         for file in mti_files:
@@ -271,6 +271,7 @@ class WriteMTI:
 
         df_mti = pd.DataFrame.from_dict(mti_dict)
         print(df_mti)
+        output = os.path.join(self.root_folder, "summary_mti.txt")
         df_mti.to_csv(output, sep=";", index=False)
         print("Saved MTI summary at ", output)
 

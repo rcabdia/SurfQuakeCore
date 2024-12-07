@@ -183,6 +183,7 @@ def _pick():
         picks_results = PhasenetUtils.split_picks(picks)
         PhasenetUtils.convert2real(picks_results, parsed_args.d)
         PhasenetUtils.save_original_picks(picks_results, parsed_args.d)
+        PhasenetUtils.write_nlloc_format(picks_results, parsed_args.d)
     else:
         print("Empty Project, Nothing to pick!")
 
@@ -412,10 +413,11 @@ def _mti():
     )
     print("Starting Inversion")
     bic.run_inversion(mti_config=parsed_args.config_files_path)
-    print("End of process, please review output directory")
+
+    print("Writing Summary")
     wm = WriteMTI(parsed_args.output_dir_path)
-    file_summary = os.path.join(parsed_args.output_dir_path, "summary_mti.txt")
-    wm.mti_summary(output=file_summary)
+    wm.mti_summary()
+    print("End of process, please review output directory")
 
 
 def _csv2xml():

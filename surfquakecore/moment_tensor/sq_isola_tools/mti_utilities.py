@@ -352,7 +352,7 @@ class MTIManager:
                         tr.stats.network == network and
                         tr.stats.location == location and
                         tr.stats.channel != channel and
-                        tr.stats.channel[-1] in ["1", "2", "R", "T"]
+                        tr.stats.channel[-1] in ["1", "2", "R", "T", "Y", "X"]
                 ):
                     paired_channel = tr
                     break
@@ -369,6 +369,15 @@ class MTIManager:
 
             # Rotate if azimuth difference is significant
             if np.abs(azimuth) >= 5:
+
+
+                # Extract correct azimuth from north:
+                if trace.stats.channel in ["1", "R",  "Y"]:
+                    pass
+                elif trace.stats.channel in ["2", "T",  "X"]:
+                    azimuth = paired_azimuth
+
+
                 # Extract data
                 tr1_data = trace.data
                 tr2_data = paired_channel.data
@@ -378,9 +387,9 @@ class MTIManager:
                 baz = azimuth+180
                 if baz >= 360:
                     baz = baz-360
-                if trace.stats.channel[-1] == "1" or trace.stats.channel[-1] == "Y":
+                if trace.stats.channel[-1] in ["1", "R",  "Y"]:
                     n_data, e_data = rotate_ne_rt(tr1_data, tr2_data, baz)
-                elif trace.stats.channel[-1] == "2" or trace.stats.channel[-1] == "X":
+                elif trace.stats.channel in ["2", "T",  "X"]:
                     n_data, e_data = rotate_ne_rt(tr2_data, tr1_data, baz)
 
                 # Replace original traces with rotated data

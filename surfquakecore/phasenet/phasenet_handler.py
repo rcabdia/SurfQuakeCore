@@ -1005,7 +1005,7 @@ class PhasenetUtils:
         return dataset.map(index_to_entry, num_parallel_calls=num_parallel_calls)
 
     @staticmethod
-    def write_nlloc_format(dataframe, output_file, starttime=None, endtime=None):
+    def write_nlloc_format(dataframe, output, starttime=None, endtime=None):
         """
         Write a pandas DataFrame to a file in NonLinLoc Phase file format.
 
@@ -1033,6 +1033,8 @@ class PhasenetUtils:
                 dataframe = dataframe[dataframe['date_time'] <= endtime]
 
         dataframe['date_time'] = pd.to_datetime(dataframe['date_time'])
+
+        output_file = os.path.join(output, "nll_picks.txt")
         # Write to NLLoc format
         with open(output_file, 'w') as file:
 
