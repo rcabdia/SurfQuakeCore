@@ -208,6 +208,7 @@ class BayesianIsolaCore:
             if self.stream:
                 # Directly use the preprocessed stream
                 st = self.stream
+                st = MTIManager.rotate_to_ne(st, self.inventory)
             else:
                 # Process files from the project
                 if not files_list:
