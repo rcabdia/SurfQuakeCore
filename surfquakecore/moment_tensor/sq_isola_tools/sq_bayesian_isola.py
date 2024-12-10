@@ -24,7 +24,7 @@ from surfquakecore.moment_tensor.sq_isola_tools.mti_utilities import MTIManager
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, MomentTensorResult
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.utils.system_utils import get_python_major_version
-
+from obspy import Stream
 
 def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
     """
@@ -41,11 +41,11 @@ def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
 
 
 class BayesianIsolaCore:
-    def __init__(self, project: SurfProject, inventory_file: str,
-                 output_directory: str, save_plots=False):
+    def __init__(self, project: Union['SurfProject', Stream], inventory_file: str,
+                 output_directory: str,  save_plots=False):
         """
 
-        :param project: SurfProject object
+        :param project: Either a SurfProject object or an obspy Stream
         :param inventory_file: File to the metadata file
         :param output_directory: Root path to the output directory where inversion results will be saved
         :param save_plots: if figures summarizing the results for each inversion are desired
@@ -53,7 +53,17 @@ class BayesianIsolaCore:
 
         self.working_directory: Optional[str] = None
         self.inventory_file = inventory_file
-        self.project = project
+
+        # Handle input type
+        if isinstance(project, SurfProject):
+            self.project = project
+            self.stream = None  # Not provided directly
+        elif isinstance(project, Stream):
+            self.project = None  # No project provided
+            self.stream = project
+        else:
+            raise TypeError("project_or_stream must be a SurfProject or obspy Stream.")
+
         self.output_directory = output_directory
         self.save_plots = save_plots
 
@@ -69,6 +79,7 @@ class BayesianIsolaCore:
 
         self._cpu_count = max(1, os.cpu_count() - 1)
         self._inventory: Optional[Inventory] = None
+
 
     def __enter__(self):
         return self
@@ -158,19 +169,31 @@ class BayesianIsolaCore:
                              f"with valid .ini files or a MomentTensorInversionConfig instance.")
 
         save_stream_plot = kwargs.pop('save_plot', self.save_plots)
+        map_stations = kwargs.pop('map_stations', None)
 
+        # Loop over configurations
         for mti_config in _mti_configurations:
             try:
-                files_list = self._get_files_from_config(mti_config)
+                # Handle files list based on the input type
+                if self.project:
+                    files_list = self._get_files_from_config(mti_config)
+                elif self.stream:
+                    files_list = []  # No files needed for directly-preprocessed stream
+                else:
+                    raise RuntimeError("Neither a project nor a preprocessed stream is available.")
+
+                # Execute inversion
                 self._run_inversion(
                     mti_config=mti_config,
                     files_list=files_list,
-                    save_stream_plot=save_stream_plot
-                )
+                    save_stream_plot=save_stream_plot,
+                    map_stations=map_stations)
+
             except Exception as e:
                 print(f"An exception occurred for {files_list}: {e}")
 
-    def _run_inversion(self, mti_config: MomentTensorInversionConfig, files_list, save_stream_plot=False):
+    def _run_inversion(self, mti_config: MomentTensorInversionConfig, files_list=None, save_stream_plot=False,
+                       map_stations=None):
 
         # TODO: might be is good idea to include option to remove previuos inversions
         # cleaning working directory
@@ -181,15 +204,23 @@ class BayesianIsolaCore:
                 os.makedirs(local_folder)
 
             print("Processing Seismic Waveforms")
-            st = MTIManager.default_processing(
-                files_path=files_list,
-                origin_time=mti_config.origin_date,
-                inventory=self.inventory,
-                output_directory=local_folder,
-                regional=True,
-                remove_response=mti_config.signal_processing_parameters.remove_response,
-                save_stream_plot=save_stream_plot
-            )
+            # Determine the stream to use
+            if self.stream:
+                # Directly use the preprocessed stream
+                st = self.stream
+            else:
+                # Process files from the project
+                if not files_list:
+                    raise ValueError("No files provided for processing and no stream is available.")
+                st = MTIManager.default_processing(
+                    files_path=files_list,
+                    origin_time=mti_config.origin_date,
+                    inventory=self.inventory,
+                    output_directory=local_folder,
+                    regional=True,
+                    remove_response=mti_config.signal_processing_parameters.remove_response,
+                    save_stream_plot=save_stream_plot
+                )
 
             with self._load_work_directory() as green_func_dir:
 
@@ -226,7 +257,8 @@ class BayesianIsolaCore:
                 inputs.read_network_coordinates(filename=os.path.join(green_func_dir, "stations.txt"),
                                                 min_distance=mti_config.inversion_parameters.min_dist * 1E3,
                                                 max_distance=mti_config.inversion_parameters.max_dist * 1E3,
-                                                max_n_of_stations=mti_config.inversion_parameters.max_number_stations)
+                                                max_n_of_stations=mti_config.inversion_parameters.max_number_stations,
+                                                map_stations=map_stations)
                 #
                 stations = inputs.stations
                 stations_index = inputs.stations_index
