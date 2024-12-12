@@ -198,6 +198,7 @@ class BayesianIsolaCore:
     def _run_inversion(self, mti_config: MomentTensorInversionConfig, files_list=None, save_stream_plot=False,
                        map_stations=None):
 
+
         # TODO: might be is good idea to include option to remove previuos inversions
         # cleaning working directory
         try:
