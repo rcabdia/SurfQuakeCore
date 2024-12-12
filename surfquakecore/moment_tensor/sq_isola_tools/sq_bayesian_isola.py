@@ -41,7 +41,7 @@ def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
 
 
 class BayesianIsolaCore:
-    def __init__(self, project: Union['SurfProject', Stream], inventory_file: str,
+    def __init__(self, project: Union[SurfProject, Stream], inventory_file: Union[str, Inventory],
                  output_directory: str,  save_plots=False):
         """
 
@@ -90,7 +90,10 @@ class BayesianIsolaCore:
     @property
     def inventory(self) -> Inventory:
         if not self._inventory:
-            self._inventory = read_inventory(self.inventory_file)
+            if isinstance(self.inventory_file, Inventory):
+                self._inventory = self.inventory_file
+            else:
+                self._inventory = read_inventory(self.inventory_file)
 
         return self._inventory
 
@@ -208,7 +211,10 @@ class BayesianIsolaCore:
             if self.stream:
                 # Directly use the preprocessed stream
                 st = self.stream
-                st = MTIManager.rotate_to_ne(st, self.inventory)
+                try:
+                    st = MTIManager.rotate_to_ne(st, self.inventory)
+                except:
+                    print("coudn't rotate components")
             else:
                 # Process files from the project
                 if not files_list:
