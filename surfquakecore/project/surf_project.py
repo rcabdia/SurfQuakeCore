@@ -48,6 +48,7 @@ class SurfProject:
         self.root_path = root_path
         self.project = {}
         self.data_files = []
+        self.data_files_full = []
 
     def __add__(self, other):
         if isinstance(other, SurfProject):
@@ -195,6 +196,13 @@ class SurfProject:
             list_channel = item[1]
             for file_path in list_channel:
                 self.data_files.append(file_path[0])
+
+    def _fill_list_full(self):
+        self.data_files_full = []
+        for item in self.project.items():
+            list_channel = item[1]
+            for file_path in list_channel:
+                self.data_files_full.append([file_path[0], file_path[1].starttime, file_path[1].endtime])
 
     def _parse_data_file(self, file: str, format: str, filter: dict, verbose: bool):
 
@@ -353,7 +361,7 @@ class SurfProject:
             start = datetime.strptime(starttime, date_format)
             start = UTCDateTime(start)
         elif isinstance(starttime, UTCDateTime):
-            start = starttime.datetime  # Convert to Python datetime
+            start = starttime
         else:
             raise TypeError("starttime must be a string or UTCDateTime object.")
 
@@ -361,7 +369,7 @@ class SurfProject:
             end = datetime.strptime(endtime, date_format)
             end = UTCDateTime(end)
         elif isinstance(endtime, UTCDateTime):
-            end = endtime.datetime  # Convert to Python datetime
+            end = endtime
         else:
             raise TypeError("endtime must be a string or UTCDateTime object.")
 
@@ -407,29 +415,38 @@ class SurfProject:
 
     def filter_time(self, **kwargs) -> list:
 
-        # filter the list output of filter_project_keys by trimed times
-
         result = []
         st1 = kwargs.pop('starttime', None)  # st1 is UTCDateTime
         et1 = kwargs.pop('endtime', None)  # st2 is UTCDateTime
+        tol = kwargs.pop('tol', 86400)
+        use_full = kwargs.pop('use_full', False)
+
+        # filter the list output of filter_project_keys by trimed times
+        if use_full:
+                self._fill_list_full()
+                data_files = self.data_files_full
+        else:
+            # continuing with old style, only accessible when self.filter_project_keys, otherwise the data_files
+            # does not have info of span time
+            data_files = self.data_files
 
         if st1 is None and et1 is None:
-            for file in self.data_files:
+            for file in data_files:
                 result.append(file[0])
 
         else:
 
-            for file in self.data_files:
+            for file in data_files:
                 pos_file = file[0]
                 st0 = file[1]
                 et0 = file[2]
                 # check times as a filter
 
-                if st1 >= st0 and et1 > et0 and (st1 - st0) <= 86400:
+                if st1 >= st0 and et1 > et0 and (st1 - st0) <= tol:
                     result.append(pos_file)
                 elif st1 <= st0 and et1 >= et0:
                     result.append(pos_file)
-                elif st1 <= st0 and et1 <= et0 and (et0 - et1) <= 86400:
+                elif st1 <= st0 and et1 <= et0 and (et0 - et1) <= tol:
                     result.append(pos_file)
                 elif st1 >= st0 and et1 <= et0:
                     result.append(pos_file)
