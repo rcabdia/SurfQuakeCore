@@ -271,10 +271,13 @@ class BayesianIsolaCore:
                 stations = inputs.stations
                 stations_index = inputs.stations_index
 
-                # NEW FILTER STATIONS PARTICIPATION BY RMS THRESHOLD
-                mt.get_participation()
-
-                inputs.stations, inputs.stations_index = mt.filter_mti_inputTraces(stations, stations_index)
+                # NEW FILTER STATIONS PARTICIPATION BY RMS THRESHOLD OR MANUALLY IF ISP IS USED
+                if map_stations is not None:
+                    print("Stations/Channels Manually selected")
+                else:
+                    print("Stations/Channels automatically Filtered by RMS THRESHOLD ")
+                    mt.get_participation()
+                    inputs.stations, inputs.stations_index = mt.filter_mti_inputTraces(stations, stations_index)
 
                 # read crustal file and writes in green folder, read_crust(source, output='green/crustal.dat')
                 inputs.read_crust(mti_config.inversion_parameters.earth_model_file,
