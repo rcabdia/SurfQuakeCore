@@ -1,6 +1,8 @@
 from operator import truediv
 
-from obspy import read, Stream, read_inventory
+from obspy import read, Stream, read_inventory, UTCDateTime
+from obspy.taup import TauPyModel
+from obspy.geodetics import gps2dist_azimuth, kilometer2degrees
 from tensorflow.python.ops.random_ops import parameterized_truncated_normal
 import os
 import copy
@@ -11,7 +13,7 @@ import pywt
 from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
 from surfquakecore.utils.obspy_utils import ObspyUtil, Filters
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from surfquakecore.utils import BaseDataClass
 from surfquakecore.data_processing.source_tools import ReadSource
 from multiprocessing import freeze_support
@@ -613,7 +615,12 @@ class Check:
 class Analysis:
 
     def __init__(self, config_file, file_path, output_path):
-        self.config_file = self.load_analysis_configuration(config_file)
+        print('CLASE ANALISIS')
+        self.config_file = None
+
+        if config_file is not None:
+            self.config_file = self.load_analysis_configuration(config_file)
+        
         self.output = output_path
         self.files = file_path
 
@@ -635,7 +642,53 @@ class Analysis:
             tr = sd.run_analysis(self.config_file)
             tr.write(os.path.join(self.output, tr.id), 'mseed')
 
+    def run_cut_waveforms(self, events, inventories, deltastart, deltaend):
+        model = TauPyModel("iasp91")
+        distance_event = []
 
+        for index, event in events.iterrows():
+            id = event['id']
+            lat = event['latitude']
+            lon = event['longitude']
+            depth = event['depth']
+            event_time = event['datetime']
+            
+            # Crear carpeta
+            event_folder = os.path.join(self.output, id)
+
+            self.create_folder(event_folder)
+
+            for index, inventory in inventories.iterrows():
+                distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory['latitude'], inventory['longitude'])
+                distance_km = kilometer2degrees(distance_km/1000)
+
+                # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
+                arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km, phase_list=["P", "S"])
+                p_time = None
+                s_time = None
+
+                if len(arrivals) > 0:
+                # Guardamos los tiempos de las ondas P y S
+                    for arrival in arrivals:
+                        if arrival.name == 'P' and p_time is None:
+                            p_time = arrival.time
+                        elif arrival.name == 'S' and s_time is None:
+                            s_time = arrival.time
+            
+                    start = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=deltastart)
+                    end = event["datetime"] + timedelta(seconds=s_time) + timedelta(seconds=deltaend)
+
+                    file = inventory["file"].split("/")
+
+                    if end is not None and start is not None:
+                        st = read(inventory["file"])
+                        st.trim(UTCDateTime(start), UTCDateTime(end))
+                        st.write(event_folder + '/' + file[len(file)-1] + '.mseed', format="MSEED")
+
+    def create_folder(self, name):
+        if not os.path.exists(name):
+            os.makedirs(name)
+       
 
 
 

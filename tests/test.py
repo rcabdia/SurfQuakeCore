@@ -5,6 +5,7 @@ from obspy import read
 from multiprocessing import freeze_support
 from surfquakecore.project.surf_project import SurfProject
 
+from obspy.taup import TauPyModel
 
 if __name__ == "__main__":
     action = "project"
@@ -20,5 +21,10 @@ if __name__ == "__main__":
     #cfg = parse_configuration_file("/home/sysop/Escritorio/geofisica/SurfQuakeCore/analysis_config.ini")
 
 
+    """Para ejecutar el analisis""" # TODO: crear documentacion
     s = surfquakecore.cli.main()
+
+    """Para cortar sismos"""
+    #model = TauPyModel(model="iasp91")
+    #arrivals = model.get_travel_times(source_depth_in_km=100, distance_in_degree=45, phase_list=["P", "S"])
     print('fin')

@@ -16,7 +16,14 @@ from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
 from datetime import datetime, timedelta
-from obspy import UTCDateTime
+from obspy import UTCDateTime, read_inventory, read
+from obspy.taup import TauPyModel
+from obspy.geodetics import gps2dist_azimuth, kilometer2degrees
+import pandas as pd
+import numpy as np
+import  math
+import matplotlib.pyplot as plt
+import matplotlib
 
 from pyasn1.type.useful import UTCTime
 
@@ -32,6 +39,9 @@ from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
 from surfquakecore.data_processing.seismogram_analysis import SeismogramData
 from surfquakecore.data_processing.analysis import Analysis
+
+matplotlib.use('Qt5Agg')
+plt.ion()
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -628,20 +638,25 @@ def _analysis():
     freeze_support()
     sp = SurfProject(parsed_args.project_file_path)
     files = sp.load_project(parsed_args.project_file_path)
-
+    print(files)
     if parsed_args.net is not None:
+        print('red')
         _filter['net'] = parsed_args.net
 
     if parsed_args.station is not None:
+        print('estacion')
         _filter['station'] = parsed_args.station
 
     if parsed_args.channel is not None:
+        print('canal')
         _filter['channel'] = parsed_args.channel
 
     if parsed_args.starttime is not None:
+        print('inicio')
         _time['starttime'] = UTCDateTime(datetime.strptime(parsed_args.starttime, date_format))
 
     if parsed_args.endtime is not None:
+        print('fin')
         _time['endtime'] = UTCDateTime(datetime.strptime(parsed_args.endtime, date_format))
 
     # 2. Filter files
@@ -652,7 +667,7 @@ def _analysis():
 
     # 3. Filter time
     result = files.filter_time(**_time)
-
+    print('RESULT: ', result)
     if len(result) > 0:
         sd = Analysis(parsed_args.config_file_path, result, parsed_args.output_folder)
         sd.run_analysis()
@@ -674,6 +689,12 @@ def _cutwaveform():
     arg_parse.add_argument("-o", "--output_folder", help="output folder path to save modified mseed "
                                                          "files and project", type=str, required=True)
 
+    arg_parse.add_argument("-e", "--event_path", help="file with events. csv extension"
+                                                         "files and project", type=str, required=True)
+
+    arg_parse.add_argument("-i", "--inventory_path", help="metadata file. xml extension"
+                                                         "files and project", type=str, required=True)
+
     arg_parse.add_argument("-n", "--net", help="net filter", type=str, required=False)
 
     arg_parse.add_argument("-s", "--station", help="station filter", type=str, required=False)
@@ -682,36 +703,185 @@ def _cutwaveform():
 
     arg_parse.add_argument("-t", "--time", help="time", type=int, required=False)
 
-    arg_parse.add_argument("-to", "--starttime", help="start time", type=str, required=True)
+    arg_parse.add_argument("-to", "--starttime", help="start time in seconds", type=int, required=False)
 
-    arg_parse.add_argument("-te", "--endtime", help="end time", type=str, required=False)
+    arg_parse.add_argument("-te", "--endtime", help="end time in seconds", type=int, required=False)
 
     parsed_args = arg_parse.parse_args()
 
-    filter = {}
-
-    if parsed_args.net is not None:
-        filter['net'] = parsed_args.net
-
-    if parsed_args.station is not None:
-        filter['station'] = parsed_args.station
-
-    if parsed_args.channel is not None:
-        filter['channel'] = parsed_args.channel
+    _filter = {}
 
     # 1. Get files
     freeze_support()
+    #sp = SurfProject(parsed_args.file_path)
+    #
     sp = SurfProject(parsed_args.file_path)
-    sp.search_files()
+    sp.search_files() 
+    #sp.load_project(parsed_args.file_path)
+
+    if parsed_args.net is not None:
+        print('red')
+        _filter['net'] = parsed_args.net
+
+    if parsed_args.station is not None:
+        print('estacion')
+        _filter['station'] = parsed_args.station
+
+    if parsed_args.channel is not None:
+        print('canal')
+        _filter['channel'] = parsed_args.channel
 
     # 2. Filter files
-    if len(filter) > 0:
-        print('Hola')
-        #sp.filter_project_keys(**filter)
+    if len(_filter) > 0:
+        sp.filter_project_keys(**_filter)
+    else:
         sp.filter_project_keys()
 
-    # 3. Filter time
-    # 3.1. Check starttime, endtime, time
+    # 3. Read Event files
+    df = pd.read_csv(parsed_args.event_path, sep=';')
+    
+    # 3.1. Add datetime column with datetime format (utc)
+    df['datetime'] = pd.to_datetime((df['date'] + ' ' + df['hour']), utc=True)
+
+    # 4. Check starttime and endtime arguments
+    if parsed_args.starttime is not None:
+        deltastart = parsed_args.starttime
+    else:
+        deltastart = 20 #seconds
+    
+    if parsed_args.endtime is not None:
+        deltaend = parsed_args.endtime
+    else:
+        deltaend = 60 #seconds
+
+    # 4. Read Inventory file
+    inventory = read_inventory(parsed_args.inventory_path)
+
+
+    # 5. Create dataframe with stations info:
+    df_inventory = pd.DataFrame(columns=['file', 'net', 'station', 'latitude', 'longitude', 'datetime'])
+    file_name = []
+    net_inventory = []
+    station_inventory = []
+    latitude_inventory = []
+    longitude_inventory = []
+    datetime_inventory = []
+    
+
+    for file in sp.project:
+        print(file)
+        _net = sp.project[file][0][1]['network']
+        _station = sp.project[file][0][1]['station']
+
+        file_name.append(sp.project[file][0][0])
+        net_inventory.append(sp.project[file][0][1]['network'])
+        station_inventory.append(sp.project[file][0][1]['station'])
+        datetime_inventory.append(sp.project[file][0][1]['starttime'])
+
+        for network in inventory.networks:
+            if network.code == _net:
+                for station in network.stations:
+                    if station.code == _station:
+                        latitude_inventory.append(station.latitude)
+                        longitude_inventory.append(station.longitude)
+
+    df_inventory['file'] = file_name
+    df_inventory['net'] = net_inventory
+    df_inventory['station'] = station_inventory
+    df_inventory['datetime'] = datetime_inventory
+    df_inventory['latitude'] = latitude_inventory
+    df_inventory['longitude'] = longitude_inventory
+    
+    sd = Analysis(None, None, parsed_args.output_folder)
+    sd.run_cut_waveforms(df, df_inventory, deltastart, deltaend)
+    # TauPyModel
+    model = TauPyModel("iasp91")
+    distance_event = []
+
+    for index, event in df.iterrows():
+        lat = event['latitude']
+        lon = event['longitude']
+        depth = event['depth']
+        event_time = event['datetime']
+        
+        time_P = []
+        time_S = []
+
+        for index, file in df_inventory.iterrows():
+            distance_km, _, _ = gps2dist_azimuth(lat, lon, file['latitude'], file['longitude'])
+            distance_km = kilometer2degrees(distance_km/1000)
+
+        # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
+            arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km, phase_list=["P", "S"])
+            p_time = None
+            s_time = None
+
+            if len(arrivals) > 0:
+        # Guardamos los tiempos de las ondas P y S
+                for arrival in arrivals:
+                    if arrival.name == 'P' and p_time is None:
+                        p_time = arrival.time
+                    elif arrival.name == 'S' and s_time is None:
+                        s_time = arrival.time
+                    
+            else:
+                time_S.append(math.nan)
+                time_P.append(math.nan)
+
+            start = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=deltastart)
+                    #try
+                    #time_P.append(ray_paths[0].time)  # Tiempo de la onda P
+                    #except IndexError:
+                    #    time_P.append(math.nan)  # Si no existe onda P, agregar NaN
+            end = event["datetime"] + timedelta(seconds=s_time) + timedelta(seconds=deltaend)
+                    #try:
+                        
+                    #time_S.append(ray_paths[1].time)  # Tiempo de la onda S
+                    #except IndexError:
+                    #    time_S.append(math.nan)
+
+
+            if end is not None and start is not None:
+                st = read(file["file"])
+                st.trim(UTCDateTime(start), UTCDateTime(end))
+                st.write(parsed_args.output_folder + '/archivo1', format="MSEED")
+
+        #while len(time_P) < len(distances):
+        #    time_P.append(math.nan)
+    
+        #while len(time_S) < len(distances):
+        #    time_S.append(math.nan)
+    
+
+
+        # Convertir a arrays de NumPy para una manipulación más fácil
+        time_P = np.array(time_P)
+        time_S = np.array(time_S)
+    
+        #plt.figure(figsize=(10, 6))
+        #plt.plot(distances, time_P, label=f'Onda P - Evento en ({lat}, {lon})', color='blue')
+        #plt.plot(distances, time_S, label=f'Onda S - Evento en ({lat}, {lon})', color='red')
+
+# Personalizar la gráfica
+
+    #plt.title("Tiempos de Arribo de Ondas Sísmicas para Varios Eventos")
+    #plt.xlabel("Distancia (grados)")
+    #plt.ylabel("Tiempo de Arribo (segundos)")
+    #plt.legend()
+    #plt.grid(True)
+    #%%matplotlib inline
+    
+    #plt.show(block=True)
+
+
+    # 3.3.2. Add starttime and endtime to dataframe
+    #df['starttime'] = df['datetime'] - timedelta(seconds=deltastart)
+    #df['endtime'] = df['datetime'] + timedelta(seconds=deltaend)
+
+    print(type(df['date'][0]))
+    
+
+    """
     date_format = "%Y-%m-%d %H:%M:%S"
     starttime = datetime.strptime(parsed_args.starttime, date_format)
 
@@ -743,7 +913,7 @@ def _cutwaveform():
     #sd.run_analysis()
     #project_file_path = os.path.join(parsed_args.output_folder, parsed_args.project_name + '.pkl')
     #files.save_project(path_file_to_storage=project_file_path)
-
+    """
 if __name__ == "__main__":
     freeze_support()
     main()
