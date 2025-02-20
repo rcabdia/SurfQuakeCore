@@ -664,15 +664,20 @@ class Analysis:
 
                 # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
                 arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km, phase_list=["P", "S"])
+                
+                if len(arrivals) == 0:
+                   arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km, phase_list=["p", "s"])
+                 
+                
                 p_time = None
                 s_time = None
 
                 if len(arrivals) > 0:
                 # Guardamos los tiempos de las ondas P y S
                     for arrival in arrivals:
-                        if arrival.name == 'P' and p_time is None:
+                        if (arrival.name == 'P' or arrival.name == 'p') and p_time is None:
                             p_time = arrival.time
-                        elif arrival.name == 'S' and s_time is None:
+                        elif (arrival.name == 'S' or arrival.name == 's') and s_time is None:
                             s_time = arrival.time
             
                     start = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=deltastart)
@@ -683,8 +688,8 @@ class Analysis:
                     if end is not None and start is not None:
                         st = read(inventory["file"])
                         st.trim(UTCDateTime(start), UTCDateTime(end))
-                        st.write(event_folder + '/' + file[len(file)-1] + '.mseed', format="MSEED")
-
+                        st.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+                        
     def create_folder(self, name):
         if not os.path.exists(name):
             os.makedirs(name)
