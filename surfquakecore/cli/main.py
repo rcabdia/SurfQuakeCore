@@ -684,7 +684,7 @@ def _cutwaveform():
         """
 
     arg_parse.add_argument("-p", "--file_path", help="path to mseed files", type=str,
-                           required=True)
+                           required=True) # TODO -  PROJECT .pkl
 
     arg_parse.add_argument("-o", "--output_folder", help="output folder path to save modified mseed "
                                                          "files and project", type=str, required=True)
@@ -716,8 +716,8 @@ def _cutwaveform():
     #sp = SurfProject(parsed_args.file_path)
     #
     sp = SurfProject(parsed_args.file_path)
-    sp.search_files() 
-    #sp.load_project(parsed_args.file_path)
+    #sp.search_files() 
+    files = sp.load_project(parsed_args.file_path)
 
     if parsed_args.net is not None:
         print('red')
@@ -733,9 +733,34 @@ def _cutwaveform():
 
     # 2. Filter files
     if len(_filter) > 0:
-        sp.filter_project_keys(**_filter)
+        files.filter_project_keys(**_filter)
     else:
-        sp.filter_project_keys()
+        files.filter_project_keys()
+
+    # 2.1. Create dataframe with project info: FILE, START, END, NET, STATION,CHANNEL
+    df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel'])
+    _file = []
+    _start = []
+    _end = []
+    _net = []
+    _station = []
+    _channel = []
+
+    for project_files in files.data_files:
+        _file.append(project_files[0])
+        _start.append(project_files[1])
+        _end.append(project_files[2])
+        _net.append(find_stats(files.project, project_files[0], 'network'))
+        _station.append(find_stats(files.project, project_files[0], 'station'))
+        _channel.append(find_stats(files.project, project_files[0], 'channel'))
+    
+    df_project['file'] = _file
+    df_project['start'] = _start
+    df_project['end'] = _end
+    df_project['net'] = _net
+    df_project['station'] = _station
+    df_project['channel'] = _channel
+
 
     # 3. Read Event files
     df = pd.read_csv(parsed_args.event_path, sep=';')
@@ -794,7 +819,18 @@ def _cutwaveform():
     
     sd = Analysis(None, None, parsed_args.output_folder)
     sd.run_cut_waveforms(df, df_inventory, deltastart, deltaend)
+
+def find_stats(lists, name, stat):
+    _value = [key for key, list in lists.items() if any(name in sublist for sublist in list)]
+
+    if len(_value) > 0:
+        for i, sublist in enumerate(lists[_value[0]]):
+            if name in sublist:
+                _i = sublist.index(name)
+                return lists[_value[0]][_i][1][stat]
     
+    return None
+
 if __name__ == "__main__":
     freeze_support()
     main()
