@@ -919,6 +919,8 @@ class SeismogramData:
 
     def __init__(self, file_path,  realtime = False, **kwargs):
 
+        #mas de un fichero
+
         stream = kwargs.pop('stream', [])
 
         #self.config_file = config_file

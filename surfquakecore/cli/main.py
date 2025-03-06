@@ -88,7 +88,10 @@ def _create_actions():
             name="analysis", run=_analysis, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "cutwaveform": _CliActions(
-            name="cutwaveform", run=_cutwaveform, description=f"Type {__entry_point_name} -h for help.\n")
+            name="cutwaveform", run=_cutwaveform, description=f"Type {__entry_point_name} -h for help.\n"),
+    
+        "processing": _CliActions(
+            name="processing", run=_processing, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -711,6 +714,8 @@ def _cutwaveform():
 
     _filter = {}
 
+
+
     # 1. Get files
     freeze_support()
     #sp = SurfProject(parsed_args.file_path)
@@ -763,21 +768,21 @@ def _cutwaveform():
 
 
     # 3. Read Event files
-    df = pd.read_csv(parsed_args.event_path, sep=';')
+    df_events = pd.read_csv(parsed_args.event_path, sep=';')
     
     # 3.1. Add datetime column with datetime format (utc)
-    df['datetime'] = pd.to_datetime((df['date'] + ' ' + df['hour']), utc=True)
+    df_events['datetime'] = pd.to_datetime((df_events['date'] + ' ' + df_events['hour']), utc=True)
 
     # 4. Check starttime and endtime arguments
     if parsed_args.starttime is not None:
         deltastart = parsed_args.starttime
     else:
-        deltastart = 20 #seconds
+        deltastart = 30 #seconds
     
     if parsed_args.endtime is not None:
         deltaend = parsed_args.endtime
     else:
-        deltaend = 60 #seconds
+        deltaend = 300 #seconds
 
     # 4. Read Inventory file
     inventory = read_inventory(parsed_args.inventory_path)
@@ -793,15 +798,15 @@ def _cutwaveform():
     datetime_inventory = []
     
 
-    for file in sp.project:
+    for file in files.project:
         print(file)
-        _net = sp.project[file][0][1]['network']
-        _station = sp.project[file][0][1]['station']
+        _net = files.project[file][0][1]['network']
+        _station = files.project[file][0][1]['station']
 
-        file_name.append(sp.project[file][0][0])
-        net_inventory.append(sp.project[file][0][1]['network'])
-        station_inventory.append(sp.project[file][0][1]['station'])
-        datetime_inventory.append(sp.project[file][0][1]['starttime'])
+        file_name.append(files.project[file][0][0])
+        net_inventory.append(files.project[file][0][1]['network'])
+        station_inventory.append(files.project[file][0][1]['station'])
+        datetime_inventory.append(files.project[file][0][1]['starttime'])
 
         for network in inventory.networks:
             if network.code == _net:
@@ -818,7 +823,100 @@ def _cutwaveform():
     df_inventory['longitude'] = longitude_inventory
     
     sd = Analysis(None, None, parsed_args.output_folder)
-    sd.run_cut_waveforms(df, df_inventory, deltastart, deltaend)
+    sd.run_cut_waveforms(df_project, df_events, df_inventory, deltastart, deltaend)
+
+
+def _processing():
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
+                               description="processing waveforms command")
+
+    arg_parse.epilog = """
+        Overview:
+            Cut mseed and apply processing to the waveforms. You can perform either or both of these operations
+            Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
+            -e [event_file] -n [net] -s [station] -ch [channel] -st [start_time] -et [end_time] -cs [cut_start_time]
+            -ce [cut_end_time] -t [cut_time]
+        """
+
+    arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
+                           required=True) 
+
+    arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here", 
+                           type=str, required=True)
+    
+    arg_parse.add_argument("-i", "--inventory_file", help="metadata file. xml extension", type=str, 
+                           required=True)
+    
+    arg_parse.add_argument("-c", "--config_file", help="absolute path to config file", type=str,
+                           required=False),
+
+    arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str, 
+                           required=False)
+
+    arg_parse.add_argument("-n", "--net", help="net filter", type=str, required=False)
+
+    arg_parse.add_argument("-s", "--station", help="station filter", type=str, required=False)
+
+    arg_parse.add_argument("-ch", "--channel", help="channel filter", type=str, required=False)
+
+    arg_parse.add_argument("-t", "--time", help="time in seconds. Cutting time mseed", type=int, required=False)
+
+    arg_parse.add_argument("-cs", "--cut_start_time", help="cut start time in seconds.  ", type=int, required=False)
+
+    arg_parse.add_argument("-ce", "--cut_end_time", help="cut end time in seconds", type=int, required=False)
+
+    arg_parse.add_argument("-st", "--start_time", help="start time for filter", type=str, required=False)
+
+    arg_parse.add_argument("-et", "--end_time", help="end time for filter", type=str, required=False)
+
+    parsed_args = arg_parse.parse_args()
+
+    # 1. Check if config or event files are not None
+    if parsed_args.config_file is None and parsed_args.event_file is None:
+        raise ValueError("Error: the command will do nothing. config_file and/or event_file are required")
+
+    # 2. Read and filter project
+    _filter = {}
+    _time = {}
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    freeze_support()
+    sp = SurfProject(parsed_args.project_file)
+    _files = sp.load_project(parsed_args.project_file)
+
+    files = Analysis.filter_files(_files, parsed_args.net, parsed_args.station, parsed_args.channel,
+                                  parsed_args.start_time, parsed_args.end_time)
+
+    if parsed_args.net is not None:
+        print('red')
+        _filter['net'] = parsed_args.net
+
+    if parsed_args.station is not None:
+        print('estacion')
+        _filter['station'] = parsed_args.station
+
+    if parsed_args.channel is not None:
+        print('canal')
+        _filter['channel'] = parsed_args.channel
+
+    if parsed_args.start_time is not None:
+        print('inicio')
+        _time['starttime'] = UTCDateTime(datetime.strptime(parsed_args.start_time, date_format))
+
+    if parsed_args.end_time is not None:
+        print('fin')
+        _time['endtime'] = UTCDateTime(datetime.strptime(parsed_args.end_time, date_format))
+
+    # 2.2. Net, station and channel filter
+    if len(_filter) > 0:
+        files.filter_project_keys(**_filter)
+    else:
+        files.filter_project_keys()
+
+    # 2.3. Time filter
+    result = files.filter_time(**_time)
+
+
 
 def find_stats(lists, name, stat):
     _value = [key for key, list in lists.items() if any(name in sublist for sublist in list)]

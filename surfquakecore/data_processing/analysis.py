@@ -1,5 +1,5 @@
 from operator import truediv
-
+from datetime import datetime
 from obspy import read, Stream, read_inventory, UTCDateTime
 from obspy.taup import TauPyModel
 from obspy.geodetics import gps2dist_azimuth, kilometer2degrees
@@ -624,6 +624,51 @@ class Analysis:
         self.output = output_path
         self.files = file_path
 
+    @staticmethod
+    def filter_files(project, net=None, station=None, channel=None, starttime=None, endtime=None):
+        filter = {}
+        time = {}
+        date_format = "%Y-%m-%d %H:%M:%S"
+
+        # Filter net
+        if net is not None:
+            filter['net'] = net
+        
+        # Filter station
+        if station is not None:
+            filter['station'] = station
+
+        # Filter channel
+        if channel is not None:
+            filter['channel'] = channel
+
+        # Filter start time
+        if starttime is not None:
+            try:
+                time['startime'] = UTCDateTime(datetime.strptime(starttime, date_format))
+            except ValueError:
+                raise ValueError(f"Error: start time '{starttime}' does not hace the correct format ({date_format}).")    
+
+        # Filter end time
+        if endtime is not None:
+            try:
+                time['endtime'] = UTCDateTime(datetime.strptime(endtime, date_format))
+            except ValueError:
+                raise ValueError(f"Error: end time '{endtime}' does not hace the correct format ({date_format}).")  
+
+        # Apply filter
+        if len(filter) > 0:
+            project.filter_project_keys(**filter)
+        else:
+            project.filter_project_keys()
+
+        # Apply filter time
+        if len(time) > 0:
+            return project.filter_time(**time)
+        else:
+            return project.filter_time()
+
+
     def load_analysis_configuration(self, config_file: str):
         rs = ReadSource(config_file)
         config = rs.read_file(config_file)
@@ -642,12 +687,12 @@ class Analysis:
             tr = sd.run_analysis(self.config_file)
             tr.write(os.path.join(self.output, tr.id), 'mseed')
 
-    def run_cut_waveforms(self, events, inventories, deltastart, deltaend):
+    def run_cut_waveforms(self, project, events, inventories, deltastart, deltaend):
         model = TauPyModel("iasp91")
         distance_event = []
 
         for index, event in events.iterrows():
-            id = event['id']
+            id = event['datetime'].strftime("%Y-%m-%d %H:%M:%S")
             lat = event['latitude']
             lon = event['longitude']
             depth = event['depth']
@@ -688,8 +733,12 @@ class Analysis:
                     if end is not None and start is not None:
                         st = read(inventory["file"])
                         st.trim(UTCDateTime(start), UTCDateTime(end))
-                        st.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
-                        
+                        try:
+                            #if config -> tratar config
+                            st.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+
+                        except:
+                            print('Empty file')                        
     def create_folder(self, name):
         if not os.path.exists(name):
             os.makedirs(name)
