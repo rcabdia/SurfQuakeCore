@@ -72,7 +72,7 @@ class Config:
 
 class PhasenetISP:
     def __init__(self, files, batch_size=3, highpass_filter=0.5, min_p_prob=0.3, min_s_prob=0.3,
-                 min_peak_distance=50, amplitude=False, plot_figure=False, save_prob=False):
+                 min_peak_distance=50, amplitude=False, plot_figure=False, save_prob=False, output=None):
         """
 
         Main class to initialize the picker
@@ -126,6 +126,16 @@ class PhasenetISP:
         self.save_prob = save_prob
 
         self.data_reader = None
+
+        if output is not None:
+            # check if output dir exists otherwise try to crate it
+            if os.path.isdir(output):
+                pass
+            else:
+                try:
+                    os.makedirs(output)
+                except Exception as error:
+                    print("An exception occurred:", error)
 
     def phasenet(self):
         with tf.compat.v1.name_scope('create_inputs'):
@@ -1005,6 +1015,90 @@ class PhasenetUtils:
         return dataset.map(index_to_entry, num_parallel_calls=num_parallel_calls)
 
     @staticmethod
+    def write_nlloc_format(dataframe, output, starttime=None, endtime=None):
+        """
+        Write a pandas DataFrame to a file in NonLinLoc Phase file format.
+
+        Parameters:
+            dataframe (pd.DataFrame): The input data with the required columns.
+            output_file (str): Path to the output file.
+            starttime (str or UTCDateTime, optional): Start time of the range.
+                If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+            endtime (str or UTCDateTime, optional): End time of the range.
+                If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+        """
+
+        # Convert starttime and endtime to pandas-compatible datetime objects
+        if starttime:
+            starttime = pd.Timestamp(str(starttime)) if isinstance(starttime, UTCDateTime) else pd.Timestamp(starttime)
+        if endtime:
+            endtime = pd.Timestamp(str(endtime)) if isinstance(endtime, UTCDateTime) else pd.Timestamp(endtime)
+
+        # If starttime and endtime are provided, filter the dataframe
+        if starttime or endtime:
+            dataframe['date_time'] = pd.to_datetime(dataframe['date_time'])
+            if starttime:
+                dataframe = dataframe[dataframe['date_time'] >= starttime]
+            if endtime:
+                dataframe = dataframe[dataframe['date_time'] <= endtime]
+
+        dataframe['date_time'] = pd.to_datetime(dataframe['date_time'])
+
+        output_file = os.path.join(output, "nll_picks.txt")
+        # Write to NLLoc format
+        with open(output_file, 'w') as file:
+
+            # Write the header line
+            header = ("Station_name\tInstrument\tComponent\tP_phase_onset\tP_phase_descriptor\t"
+                      "First_Motion\tDate\tHour_min\tSeconds\tErr\tErrMag\tCoda_duration\tAmplitude\tPeriod\n")
+            file.write(header)
+
+            for _, row in dataframe.iterrows():
+                station = row['station'].ljust(6)  # Station name, left-justified, 6 chars
+                instrument = "?".ljust(4)  # Placeholder for Instrument
+                component = row['channel'].ljust(4)  # Placeholder for Component
+                p_phase_onset = "?"  # Placeholder for P phase onset
+                phase_descriptor = row['phase'].ljust(6)  # Phase descriptor (e.g., P, S)
+                first_motion = "?"  # Placeholder for First Motion
+                date = f"{row['date']}"  # Date in yyyymmdd format
+                hour_min = f"{row['date_time'].hour:02}{row['date_time'].minute:02}"  # hhmm
+                seconds = f"{row['date_time'].second + row['date_time'].microsecond / 1e6:07.4f}"  # ss.ssss
+                err = "GAU"  # Error type (GAU)
+
+                if row['weight'] > 0.95:
+                    weight = 2.00E-02
+                elif row['weight'] <= 0.95 and row['weight'] > 0.9:
+                    weight = 4.00E-02
+                elif row['weight'] <= 0.9 and row['weight'] > 0.8:
+                    weight = 7.00E-02
+                elif row['weight'] <= 0.8 and row['weight'] > 0.7:
+                    weight = 1.50E-01
+                elif row['weight'] <= 0.7 and row['weight'] > 0.6:
+                    weight = 1.00E-01
+                else:
+                    weight = 5.00E-01
+
+                err_mag = f"{weight:.2e}"  # Error magnitude in seconds
+                coda_duration = "-1.00e+00"  # Placeholder for Coda duration
+                amplitude = f"{row['amplitude']:.2e}"  # Amplitude
+                period = "-1.00e+00"  # Placeholder for Period
+
+                # err_mag = f"{row['weight']:.2E}"  # Error magnitude in seconds
+                # coda_duration = "-1.00E+00"  # Placeholder for Coda duration
+                # amplitude = f"{row['amplitude']:.2E}"  # Amplitude
+                # period = "-1.00E+00"  # Placeholder for Period
+
+                # Construct the line
+                line = (
+                    f"{station} {instrument} {component} {p_phase_onset} {phase_descriptor} {first_motion} "
+                    f"{date} {hour_min} {seconds} {err} {err_mag} {coda_duration} {amplitude} {period}\n"
+                )
+                file.write(line)
+
+            # Add a blank line at the end for NLLoc format compliance
+            file.write("\n")
+
+    @staticmethod
     def convert2real(picks, pick_dir: str, clean_output_folder = False):
         """
         :param picks: picks is output from method split_picks in mseedutils
@@ -1078,7 +1172,7 @@ class PhasenetUtils:
         print('get_picks & converting to REAL associator format')
         prob_threshold = 0.3
         columns = ['date', 'fname', 'year', 'month', 'day', 'net', 'station', 'flag', 'tt', 'date_time',
-                   'weight', 'amplitude', 'phase']
+                   'weight', 'amplitude', 'phase', 'channel']
         split_picks_ = pd.DataFrame(columns=columns)
 
         stats = picks['stats']
@@ -1118,6 +1212,7 @@ class PhasenetUtils:
             day = t0[i].day
             station = stats[i].station
             network = stats[i].network
+            channel = stats[i].channel
 
             ss = t0[i].hour*3600 + t0[i].minute*60 + t0[i].second + t0[i].microsecond/1000000
 
@@ -1154,7 +1249,7 @@ class PhasenetUtils:
                         t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
                         amp = float(pamp[j])*2080*25 if len(p_amp) > 0 else 0
                         split_aux_p.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station,
-                                            1, tp, t_pick_string, pprob[j], amp, "P"])
+                                            1, tp, t_pick_string, pprob[j], amp, "P", channel])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_p, columns=columns)], ignore_index=True)
 
@@ -1187,7 +1282,7 @@ class PhasenetUtils:
                         t_pick = date_start + timedelta(seconds=delta_time)
                         t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
                         split_aux_s.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station, 1,
-                                            tp, t_pick_string, sprob[j], amp, "S"])
+                                            tp, t_pick_string, sprob[j], amp, "S", channel])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_s, columns=columns)], ignore_index=True)
 

@@ -89,7 +89,7 @@ class CovarianceMatrix:
 				for i in idx:
 					I = idx.index(i) * n
 					for j in idx:
-						if i == j:
+						if i == j and j < len(self.d.noise[r]) and i < len(self.d.noise[r]):
 							corr = np.correlate(self.d.noise[r][i].data, self.d.noise[r][i].data, 'full') / len(
 								self.d.noise[r][i].data)
 							corr = decimate(corr, 2)  # noise has 2-times higher sampling than data

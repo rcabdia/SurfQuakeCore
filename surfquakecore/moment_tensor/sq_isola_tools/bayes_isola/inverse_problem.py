@@ -45,19 +45,25 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 	:type origin_time: :class:`~obspy.core.utcdatetime.UTCDateTime`
 	:param samprate: Sampling rate used in the inversion
 	:type samprate: float
-	:param deviatoric: if ``True``, invert only deviatoric part of moment tensor (5 components), otherwise full moment tensor (6 components)
+	:param deviatoric: if ``True``, invert only deviatoric part of moment tensor (5 components),
+	otherwise full moment tensor (6 components)
 	:type deviatoric: bool, optional
 	:param decomp: if ``True``, decomposes found moment tensor in each grid point
 	:type decomp: bool, optional
-	:param invert_displacement: calculate L-2 difference between observed and modeled waveforms in displacement (if ``True``), otherwise compare it in velocity (default ``False``)
+	:param invert_displacement: calculate L-2 difference between observed and modeled waveforms in displacement
+	(if ``True``), otherwise compare it in velocity (default ``False``)
 	:type invert_displacement: bool, optional
 	:param elemse_path: path to elementary seismogram file
 	:type elemse_path: string, optional
-	:returns: Dictionary {'shift': order of `d_shift` item, 'a': coeficients of the elementary seismograms, 'VR': variance reduction, 'CN' condition number, and moment tensor decomposition (keys described at function :func:`decompose`)}
+	:returns: Dictionary {'shift': order of `d_shift` item, 'a': coeficients of the elementary seismograms,
+	'VR': variance reduction, 'CN' condition number, and moment tensor decomposition
+	(keys described at function :func:`decompose`)}
 	
 	It reads elementary seismograms for specified grid point, filter them and creates matrix :math:`G`.
-	Calculates :math:`G^T`, :math:`G^T G`, :math:`(G^T G)^{-1}`, and condition number of :math:`G^T G` (using :func:`~np.linalg.cond`)
-	Then reads shifted vectors :math:`d` and for each of them calculates :math:`G^T d` and the solution :math:`(G^T G)^{-1} G^T d`. Calculates variance reduction (VR) of the result.
+	Calculates :math:`G^T`, :math:`G^T G`, :math:`(G^T G)^{-1}`,
+	and condition number of :math:`G^T G` (using :func:`~np.linalg.cond`)
+	Then reads shifted vectors :math:`d` and for each of them calculates :math:`G^T d`
+	and the solution :math:`(G^T G)^{-1} G^T d`. Calculates variance reduction (VR) of the result.
 	
 	Finally chooses the time shift where the solution had the best VR and returns its parameters.
 	

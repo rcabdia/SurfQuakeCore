@@ -53,18 +53,16 @@ class RealCore:
         self.real_config: RealConfig = load_real_configuration(config_file_path)
 
     def _start_folder_tree(self):
-        if not os.path.exists(self.working_directory):
-            os.makedirs(self.working_directory)
-        # else:
-        #     files = glob.glob(self.working_directory + "/*")
-        #     for f in files:
-        #         os.remove(f)
-        # if not os.path.exists(self.output_directory):
-        #     os.makedirs(self.output_directory)
-        # else:
-        #     files = glob.glob(self.output_directory + "/*")
-        #     for f in files:
-        #         os.remove(f)
+
+        if os.path.isdir(self.working_directory) and os.path.isdir(self.output_directory):
+            pass
+        else:
+            try:
+                os.makedirs(self.working_directory)
+                os.makedirs(self.output_directory)
+            except Exception as error:
+                print("An exception occurred:", error)
+
 
     def _return_inventory(self):
         inv = {}

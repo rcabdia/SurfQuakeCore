@@ -10,6 +10,7 @@ class Convert:
         self.respfiles = resp_files
         self.sep = sep
         self.all_resps = []
+
         if self.respfiles is not None:
              self.check_resps()
 
@@ -138,6 +139,20 @@ class Convert:
 
     @staticmethod
     def write_xml(path, name, inventory):
+
+
+        if os.path.isdir(path):
+            pass
+        else:
+            raise Exception("Loc files directory does not exist")
+
+        if os.path.isdir(path):
+            pass
+        else:
+            try:
+                os.makedirs(path)
+            except Exception as error:
+                print("An exception occurred:", error)
 
         # Write to StationXML file
         xml_filename = os.path.join(path, name)

@@ -120,7 +120,7 @@ class InversionDataManager:
             f.write(f"{ics:d}\n{t0:3.1f}\n{t1:3.1f}\n{icc:d}\n")
 
     def read_network_coordinates(self, filename, network='', location='', channelcode='LH',
-                                 min_distance=None, max_distance=None, max_n_of_stations=None):
+                                 min_distance=None, max_distance=None, max_n_of_stations=None, map_stations=None):
         """
         Read information about stations from file in ISOLA format.
         Calculate their distances and azimuthes using WGS84 elipsoid.
@@ -199,6 +199,7 @@ class InversionDataManager:
             stats = stats[0:max_n_of_stations]
         self.stations = stats
         self.create_station_index()
+        self.set_use_components(map_stations=map_stations)
 
     def create_station_index(self):
         """
@@ -212,6 +213,27 @@ class InversionDataManager:
             self.stations_index[
                 '_'.join([stats[i]['network'], stats[i]['code'], stats[i]['location'], stats[i]['channelcode']])] = \
                 stats[i]
+
+    def set_use_components(self, map_stations=None):
+
+        # map is a list of [[station_name1, channel1, ch1, checked1], [station_name1, channel1, ch1, checked1],....]
+
+        if map_stations is not None and len(map_stations)>0:
+            for i in map_stations:
+                station_name = i[0]
+                channel = i[1]
+                ch = channel[2]
+                checked = i[2]
+                for j in range(len(self.stations)):
+                    if self.stations[j]['code'] == station_name:
+                        if ch == 'E' or ch == "2" or ch == "X":
+                            self.stations[j]['useE'] = checked
+
+                        elif ch == 'N' or ch == "1" or ch == "Y":
+                            self.stations[j]['useN'] = checked
+
+                        elif ch == 'Z':
+                            self.stations[j]['useZ'] = checked
 
     def write_stations(self, working_path):
         """

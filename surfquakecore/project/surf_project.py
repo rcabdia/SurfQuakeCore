@@ -22,7 +22,7 @@ import copy
 
 class SurfProject:
 
-    def __init__(self, root_path: Union[str, List[str]]):
+    def __init__(self, root_path: Union[str, List[str]] = None):
 
         """
 
@@ -32,8 +32,8 @@ class SurfProject:
         Attributes:
         - root_path (str): The root path to the folder where the user have the data files or a list filled
         with paths to files.
-        - project (dict)
-        - data_files (list)
+        - project (dict): e.g. {'WM.ARNO.HHZ' : [[FILE1, STATS_FILE1], [[FILE2, STATS_FILE2] ....'WM.MELI.HHN': ... ]
+        - data_files (list) [PATH_FILE1, PATH_FILE2, PATH_FILE3 ....]
 
         Methods:
         - __init__(root_path): Initialize a new instance of SurfProject.
@@ -42,11 +42,13 @@ class SurfProject:
         - search_files(verbose=True, **kwargs): Create a project. It can be used filters by nets,
         stations, channels selection and/or filter by timestamp
         - filter_project_keys(**kwargs): Filter a project (once is crated) using regular expressions.
+        - filter_time(**kwargs): Filter the project by span time and return a list with path of available files
         """
 
         self.root_path = root_path
         self.project = {}
         self.data_files = []
+        self.data_files_full = []
 
     def __add__(self, other):
         if isinstance(other, SurfProject):
@@ -71,8 +73,19 @@ class SurfProject:
                         print(key, os.path.basename(value[0]), value[1].sampling_rate, value[1].starttime,
                               value[1].endtime)
                     except:
-                        pass
-                        #print("exception arises at", key)
+                        print("exception arises at", key)
+
+            info = self.get_project_basic_info()
+
+            print('Networks: ', ','.join(info["Networks"][0]))
+            print('Stations: ', ','.join(info["Stations"][0]))
+            print('Channels: ', ','.join(info["Channels"][0]))
+            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ", info["num_files"])
+            print("Start Project: ", info["Start"], ", End Project: ", info["End"])
+        else:
+            print("Empty Project")
+
         return ""
 
     def __copy__(self):
@@ -90,11 +103,19 @@ class SurfProject:
     def load_project(path_to_project_file: str):
         return pickle.load(open(path_to_project_file, "rb"))
 
-    def save_project(self, path_file_to_storage: str)->bool:
+    def save_project(self, path_file_to_storage: str) -> bool:
 
         if not self.project:
             print('Aqui')
             return False
+
+        if os.path.isdir(os.path.dirname(path_file_to_storage)):
+            pass
+        else:
+            try:
+                os.makedirs(os.path.dirname(path_file_to_storage))
+            except Exception as error:
+                print("An exception occurred:", error)
 
         with open(path_file_to_storage, "wb") as file_to_store:
             pickle.dump(self, file_to_store, protocol=pickle.HIGHEST_PROTOCOL)
@@ -160,6 +181,29 @@ class SurfProject:
             returned_list = pool.map(partial_task, data_files)
 
         self._convert2dict(returned_list)
+        self._fill_list()
+
+        if verbose:
+            info = self.get_project_basic_info()
+
+            print('Networks: ', info["Networks"][0])
+            print('Stations: ', info["Stations"][0])
+            print('Channels: ', info["Channels"][0])
+            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ", info["num_files"])
+
+    def _fill_list(self):
+        for item in self.project.items():
+            list_channel = item[1]
+            for file_path in list_channel:
+                self.data_files.append(file_path[0])
+
+    def _fill_list_full(self):
+        self.data_files_full = []
+        for item in self.project.items():
+            list_channel = item[1]
+            for file_path in list_channel:
+                self.data_files_full.append([file_path[0], file_path[1].starttime, file_path[1].endtime])
 
     def _parse_data_file(self, file: str, format: str, filter: dict, verbose: bool):
 
@@ -239,7 +283,6 @@ class SurfProject:
         """
 
         self.data_files = []
-        project_filtered = {}
 
         # filter dict by python wilcards remind
 
@@ -249,6 +292,7 @@ class SurfProject:
         net = kwargs.pop('net', '.+')
         station = kwargs.pop('station', '.+')
         channel = kwargs.pop('channel', '.+')
+        verbose = kwargs.pop('verbose', False)
         only_datafiles_list = kwargs.pop('only_datafiles_list', False)
 
         if net == '':
@@ -273,6 +317,19 @@ class SurfProject:
                 for j in value:
                     self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
 
+        # clean possible empty lists
+        #self.remove_empty_keys()
+
+        #if verbose:
+        #    info = self.get_project_basic_info()
+
+        #    print('Networks: ', str(info["Networks"][0]))
+        #    print('Stations: ', str(info["Stations"][0]))
+        #    print('Channels: ', str(info["Channels"][0]))
+        #    print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+        #          info["Channels"][1], "Num Total Files: ", info["num_files"])
+
+
     def _search(self, project: dict, event: list):
         res = {}
         for key in project.keys():
@@ -285,21 +342,41 @@ class SurfProject:
 
         return res
 
-    def filter_project_time(self, starttime: str, endtime: str):
+    def filter_project_time(self, starttime, endtime, tol=86400, verbose=False):
 
         """
+        Filters project data based on time range.
 
-        - starttime (str, "%Y-%m-%d %H:%M:%S"): String with the reference starttime, upper time spam threshold
-        (i.e., "2023-12-10 00:00:00")
-
-        - endtime (str, "%Y-%m-%d %H:%M:%S" ): String with the reference endtime, lower time spam threshold
-        (i.e., "2023-12-23 00:00:00")
-
+        - starttime (str or UTCDateTime): Start time of the range.
+          If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+          Example: "2023-12-10 00:00:00"
+        - endtime (str or UTCDateTime): End time of the range.
+          If str, it should follow the format "%Y-%m-%d %H:%M:%S".
+          Example: "2023-12-23 00:00:00"
         """
 
+        # Clean the data_files_list
+        self.data_files = []
+
+        # Convert starttime and endtime to datetime objects if they are strings
         date_format = "%Y-%m-%d %H:%M:%S"
-        start = datetime.strptime(starttime, date_format)
-        end = datetime.strptime(endtime, date_format)
+        if isinstance(starttime, str):
+            start = datetime.strptime(starttime, date_format)
+            start = UTCDateTime(start)
+        elif isinstance(starttime, UTCDateTime):
+            start = starttime
+        else:
+            raise TypeError("starttime must be a string or UTCDateTime object.")
+
+        if isinstance(endtime, str):
+            end = datetime.strptime(endtime, date_format)
+            end = UTCDateTime(end)
+        elif isinstance(endtime, UTCDateTime):
+            end = endtime
+        else:
+            raise TypeError("endtime must be a string or UTCDateTime object.")
+
+        # Process project data
         if len(self.project) > 0:
             for key in self.project:
                 item = self.project[key]
@@ -307,38 +384,75 @@ class SurfProject:
                 for index, value in enumerate(item):
                     start_data = value[1].starttime
                     end_data = value[1].endtime
-                    if start <= start_data and end >= end_data:
+                    if start_data >= start and end_data > end and (start_data - start) <= tol:
                         pass
+
+                    elif start_data <= start and end_data >= end:
+                        pass
+
+                    elif start_data <= start and end_data <= end and (end - end_data) <= tol:
+                        pass
+
+                    elif start_data >= start and end_data <= end:
+                        pass
+
                     else:
                         indices_to_remove.append(index)
+
                 for index in reversed(indices_to_remove):
                     item.pop(index)
                 self.project[key] = item
+        # clean possible empty lists
+        self.remove_empty_keys()
+        # Fill the data_files list
+        self._fill_list()
+
+        if verbose:
+            info = self.get_project_basic_info()
+
+            print('Networks: ', info["Networks"][0])
+            print('Stations: ', info["Stations"][0])
+            print('Channels: ', info["Channels"][0])
+            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+                  info["Channels"][1], "Num Total Files: ", info["num_files"])
 
     def filter_time(self, **kwargs) -> list:
-
-        # filter the list output of filter_project_keys by trimed times
 
         result = []
         st1 = kwargs.pop('starttime', None)  # st1 is UTCDateTime
         et1 = kwargs.pop('endtime', None)  # st2 is UTCDateTime
+        tol = kwargs.pop('tol', 86400)
+        use_full = kwargs.pop('use_full', False)
+
+        # filter the list output of filter_project_keys by trimed times
+        if use_full:
+                self._fill_list_full()
+                data_files = self.data_files_full
+        else:
+            # continuing with old style, only accessible when self.filter_project_keys, otherwise the data_files
+            # does not have info of span time
+            data_files = self.data_files
 
         if st1 is None and et1 is None:
-            for file in self.data_files:
+            for file in data_files:
                 result.append(file[0])
 
         else:
+
+            #for file in data_files:
+
             for file in self.data_files:
+
                 pos_file = file[0]
                 st0 = file[1]
                 et0 = file[2]
                 # check times as a filter
 
-                if st1 >= st0 and et1 > et0 and (st1 - st0) <= 86400:
+                if st1 >= st0 and et1 > et0 and (st1 - st0) <= tol:
                     result.append(pos_file)
                 elif st1 <= st0 and et1 >= et0:
                     result.append(pos_file)
-                elif st1 <= st0 and et1 <= et0 and (et0 - et1) <= 86400:
+                elif st1 <= st0 and et1 <= et0 and (et0 - et1) <= tol:
                     result.append(pos_file)
                 elif st1 >= st0 and et1 <= et0:
                     result.append(pos_file)
@@ -361,8 +475,70 @@ class SurfProject:
         files_path = self.filter_time(list_files=self.data_files, starttime=start, endtime=end)
         return files_path
 
-    def cut_waveform(self,):
-        print('cut waveform')
+    def get_project_basic_info(self):
+        """
+            Counts the number of unique stations in a dictionary where keys are in the format 'NET.STATION.CHANNEL'.
+
+            Args:
+                data_dict (dict): The input dictionary with keys in the format 'NET.STATION.CHANNEL'.
+
+            Returns:
+                int: The number of unique stations and channels
+        """
+
+        ## Take the stations names and its number
+
+        info = {}
+
+        networks = set()
+        stations = set()  # Use a set to store unique stations
+        channels = set()
+        num_stations = 0
+        num_channels = 0
+        num_networks = 0
+        start_time = []
+        end_time = []
+        total_components = 0
+
+        for key in self.project.keys():
+            parts = key.split('.')  # Split the key by '.'
+            network = f"{parts[0]}"
+            networks.add(network)  # Add to the set
+            station = f"{parts[1]}"
+            stations.add(station)
+            channel = f"{parts[2]}"
+            channels.add(channel)
+            for item in self.project[key]:
+                start_time.append(item[1].starttime)
+                end_time.append(item[1].endtime)
+
+        if len(stations) > 0:
+            num_stations = len(stations)
+            num_channels = len(channels)
+            num_networks = len(networks)
+
+        ## Take the number of files
+
+        if len(stations) > 0:
+            total_components = sum(len(value_list) for value_list in self.project.values())
+
+        if len(stations) > 0:
+            info["Networks"] = [networks, num_networks]
+            info["Stations"] = [stations, num_stations]
+            info["Channels"] = [channels, num_channels]
+            info["num_files"] = total_components
+            info["Start"] = min(start_time).strftime(format="%Y-%m-%d %H:%M:%S")
+            info["End"] = max(end_time).strftime(format="%Y-%m-%d %H:%M:%S")
+
+        return info
+
+    def remove_empty_keys(self):
+        """
+        Removes keys from the dictionary where the values are empty lists.
+        """
+        # Use dictionary comprehension to filter out keys with empty lists
+        self.project = {key: value for key, value in self.project.items() if value}
+
 
 class ProjectSaveFailed(Exception):
     def __init__(self, message="Error saving project"):

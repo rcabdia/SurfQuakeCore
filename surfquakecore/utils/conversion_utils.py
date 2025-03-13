@@ -76,19 +76,19 @@ class ConversionUtils:
                         "Hourmin\t""Seconds\tGAU\tErr\tCoda_duration\tAmplitude\tPeriod\n")
 
                 for j in np.arange(0, len(data_save[i].phases)):
-                    weight=0
+
                     if data_save[i].phases[j].weight > 0.95:
-                        weight = 0.25E-02
-                    elif data_save[i].phases[j].weight <= 0.95 and data_save[i].phases[j].weight > 0.9:
-                        weight = 0.50E-02
-                    elif data_save[i].phases[j].weight <= 0.9 and data_save[i].phases[j].weight > 0.8:
-                        weight = 0.75E-02
-                    elif data_save[i].phases[j].weight <= 0.8 and data_save[i].phases[j].weight > 0.7:
-                        weight = 1.00E-02
-                    elif data_save[i].phases[j].weight <= 0.7 and data_save[i].phases[j].weight > 0.6:
-                        weight = 1.50E-02
-                    else:
                         weight = 2.00E-02
+                    elif 0.95 >= data_save[i].phases[j].weight > 0.9:
+                        weight = 4.00E-02
+                    elif 0.9 >= data_save[i].phases[j].weight > 0.8:
+                        weight = 7.00E-02
+                    elif 0.8 >= data_save[i].phases[j].weight > 0.7:
+                        weight = 1.50E-01
+                    elif 0.7 >= data_save[i].phases[j].weight > 0.6:
+                        weight = 1.00E-01
+                    else:
+                        weight = 5.00E-01
 
                     _time = datetime.datetime.utcfromtimestamp(data_save[i].phases[j].absolute_travel_time)
 

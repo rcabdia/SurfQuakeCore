@@ -231,14 +231,13 @@ class process_data:
 			st.trim(starttime, endtime)
 
 	# TODO: kontrola, jestli neorezavame mimo puvodni zaznam
-
+	# TODO: Test this new version
 	def decimate_shift(self):
 		"""
-		Generate ``self.data_shifts`` where are multiple copies of ``self.data`` (needed for plotting).
-		Decimate ``self.data_shifts`` to sampling rate for inversion ``self.samprate``.
-		Filter ``self.data_shifts`` by :func:`my_filter`.
-		Generate ``self.d_shifts`` where are multiple vectors :math:`d`, each of them shifted according to ``self.grid.SHIFT_min``, ``self.grid.SHIFT_max``, and ``self.grid.SHIFT_step``
-		"""
+        Generate ``self.data_shifts`` where are multiple copies of ``self.data`` (needed for plotting).
+        Decimate ``self.data_shifts`` to sampling rate for inversion ``self.samprate``.
+        Generate ``self.d_shifts`` where are multiple vectors :math:`d`, each of them shifted according to ``self.SHIFT_min``, ``self.SHIFT_max``, and ``self.SHIFT_step``
+        """
 		self.d_shifts = []
 		self.data_shifts = []
 		self.shifts = []
@@ -246,6 +245,7 @@ class process_data:
 		length = self.t_max - self.t_min
 		endtime = starttime + length
 		decimate = int(round(self.max_samprate / self.samprate))
+
 		for SHIFT in range(self.grid.SHIFT_min, self.grid.SHIFT_max + 1, self.grid.SHIFT_step):
 			# data = deepcopy(self.data)
 			shift = SHIFT / self.max_samprate
@@ -256,42 +256,99 @@ class process_data:
 							   endtime + shift + 1)  # we add 1 s to be sure, that no index will point outside the range
 				st2.trim(starttime + shift - self.elemse_start_origin, endtime + shift + 1, pad=True,
 						 fill_value=0.)  # short records are not inverted, but they should by padded because of plotting
-				if self.invert_displacement:
-					st2.detrend('linear')
-					st2.integrate()
 				st2.decimate(decimate, no_filter=True)
 				stats = st2[0].stats
-				# stn = self.d.stations_index['_'.join([stats.network, stats.station, stats.location, stats.channel[0:2]])]
+				stats.location = ''
 				stn = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]
 				fmin = stn['fmin']
 				fmax = stn['fmax']
-				if stn['accelerograph']:
-					st2.integrate()
+
 				my_filter(st2, fmin, fmax)
-				st2.trim(starttime + shift,
-						 endtime + shift + 1)  # we add 1 s to be sure, that no index will point outside the range
+
+				# we add 1 s to be sure, that no index will point outside the range
+				st2.trim(starttime + shift, endtime + shift + 1)
 				data.append(st2)
 			self.data_shifts.append(data)
-			c = 0
+
 			d_shift = np.empty((self.components * self.npts_slice, 1))
+
+			comp_check_sum = 0
 			for r in range(self.d.nr):
+
+				comp_check = 0
 				for comp in range(3):
 					if self.d.stations[r][
 						{0: 'useZ', 1: 'useN', 2: 'useE'}[comp]]:  # this component has flag 'use in inversion'
 						weight = self.d.stations[r][{0: 'weightZ', 1: 'weightN', 2: 'weightE'}[comp]]
+
 						for i in range(self.npts_slice):
-							try:
-								d_shift[c * self.npts_slice + i] = data[r][comp].data[i] * weight
-							except:
-								self.log(
-									'Index out of range while generating shifted data vectors. Waveform file probably too short.',
-									printcopy=True)
-								print('values for debugging: ', r, comp, c, self.npts_slice, i, c * self.npts_slice + i,
-									  len(d_shift), len(data[r][comp].data), SHIFT)
-								raise Exception(
-									'Index out of range while generating shifted data vectors. Waveform file probably too short.')
-						c += 1
+							d_shift[comp_check_sum * self.npts_slice + i] = data[r][comp_check].data[i] * weight
+
+						comp_check += 1
+						comp_check_sum += 1
+
 			self.d_shifts.append(d_shift)
+
+	# def decimate_shift(self):
+	# 	"""
+	# 	Generate ``self.data_shifts`` where are multiple copies of ``self.data`` (needed for plotting).
+	# 	Decimate ``self.data_shifts`` to sampling rate for inversion ``self.samprate``.
+	# 	Filter ``self.data_shifts`` by :func:`my_filter`.
+	# 	Generate ``self.d_shifts`` where are multiple vectors :math:`d`, each of them shifted according to ``self.grid.SHIFT_min``, ``self.grid.SHIFT_max``, and ``self.grid.SHIFT_step``
+	# 	"""
+	# 	self.d_shifts = []
+	# 	self.data_shifts = []
+	# 	self.shifts = []
+	# 	starttime = self.d.event['t']  # + self.t_min
+	# 	length = self.t_max - self.t_min
+	# 	endtime = starttime + length
+	# 	decimate = int(round(self.max_samprate / self.samprate))
+	# 	for SHIFT in range(self.grid.SHIFT_min, self.grid.SHIFT_max + 1, self.grid.SHIFT_step):
+	# 		# data = deepcopy(self.data)
+	# 		shift = SHIFT / self.max_samprate
+	# 		self.shifts.append(shift)
+	# 		data = []
+	# 		for st in self.data:
+	# 			st2 = st.slice(starttime + shift - self.elemse_start_origin,
+	# 						   endtime + shift + 1)  # we add 1 s to be sure, that no index will point outside the range
+	# 			st2.trim(starttime + shift - self.elemse_start_origin, endtime + shift + 1, pad=True,
+	# 					 fill_value=0.)  # short records are not inverted, but they should by padded because of plotting
+	# 			if self.invert_displacement:
+	# 				st2.detrend('linear')
+	# 				st2.integrate()
+	# 			st2.decimate(decimate, no_filter=True)
+	# 			stats = st2[0].stats
+	# 			# stn = self.d.stations_index['_'.join([stats.network, stats.station, stats.location, stats.channel[0:2]])]
+	# 			stn = self.d.stations_index['_'.join([stats.network, stats.station, "", stats.channel[0:2]])]
+	# 			fmin = stn['fmin']
+	# 			fmax = stn['fmax']
+	# 			if stn['accelerograph']:
+	# 				st2.integrate()
+	# 			my_filter(st2, fmin, fmax) # TODO is this necessary?
+	# 			st2.trim(starttime + shift,
+	# 					 endtime + shift + 1)  # we add 1 s to be sure, that no index will point outside the range
+	# 			data.append(st2)
+	# 		self.data_shifts.append(data)
+	# 		c = 0
+	# 		d_shift = np.empty((self.components * self.npts_slice, 1))
+	# 		for r in range(self.d.nr):
+	# 			for comp in range(3):
+	# 				if self.d.stations[r][
+	# 					{0: 'useZ', 1: 'useN', 2: 'useE'}[comp]]:  # this component has flag 'use in inversion'
+	# 					weight = self.d.stations[r][{0: 'weightZ', 1: 'weightN', 2: 'weightE'}[comp]]
+	# 					for i in range(self.npts_slice):
+	# 						try:
+	# 							d_shift[c * self.npts_slice + i] = data[r][comp].data[i] * weight
+	# 						except:
+	# 							self.log(
+	# 								'Index out of range while generating shifted data vectors. Waveform file probably too short.',
+	# 								printcopy=True)
+	# 							print('values for debugging: ', r, comp, c, self.npts_slice, i, c * self.npts_slice + i,
+	# 								  len(d_shift), len(data[r][comp].data), SHIFT)
+	# 							raise Exception(
+	# 								'Index out of range while generating shifted data vectors. Waveform file probably too short.')
+	# 					c += 1
+	# 		self.d_shifts.append(d_shift)
 
 	def set_frequencies(self, fmax, fmin=0., wavelengths=5):
 		"""

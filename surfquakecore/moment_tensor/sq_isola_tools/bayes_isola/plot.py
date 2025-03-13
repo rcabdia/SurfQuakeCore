@@ -57,6 +57,13 @@ class plot:
 					  'seismo_sharey':None, 'spectra':None, 'noise':None, 'covariance_function':None,
 					  'covariance_matrix':None, 'maps':None, 'slices':None, 'maps_sum':None}
 
+		import matplotlib.pyplot as plt
+
+		# Save the current backend and rcParams
+		import matplotlib as mpl
+		original_backend = mpl.get_backend()
+		original_rcparams = mpl.rcParams.copy()
+
 		try:
 			if maps:
 				self.plot_maps()
@@ -134,3 +141,11 @@ class plot:
 				self.plot_covariance_function()
 		except:
 			print("Coudn't Plot Covariance Function")
+
+		# Restore the original backend and rcParams
+		mpl.use(original_backend)
+		mpl.rcParams.update(original_rcparams)
+
+		# Clear any lingering figures
+		plt.close('all')
+
