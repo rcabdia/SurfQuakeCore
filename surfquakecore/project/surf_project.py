@@ -106,6 +106,7 @@ class SurfProject:
     def save_project(self, path_file_to_storage: str) -> bool:
 
         if not self.project:
+            print('Aqui')
             return False
 
         if os.path.isdir(os.path.dirname(path_file_to_storage)):
@@ -308,24 +309,26 @@ class SurfProject:
         if not only_datafiles_list:
             self.project = project_filtered
             for key, value in self.project.items():
-                for j in value:
-                    self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
+                if value[0][0] is not None:
+                    for j in value:
+                        self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
         else:
             for key, value in project_filtered.items():
                 for j in value:
                     self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
 
         # clean possible empty lists
-        self.remove_empty_keys()
+        #self.remove_empty_keys()
 
-        if verbose:
-            info = self.get_project_basic_info()
+        #if verbose:
+        #    info = self.get_project_basic_info()
 
-            print('Networks: ', str(info["Networks"][0]))
-            print('Stations: ', str(info["Stations"][0]))
-            print('Channels: ', str(info["Channels"][0]))
-            print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
-                  info["Channels"][1], "Num Total Files: ", info["num_files"])
+        #    print('Networks: ', str(info["Networks"][0]))
+        #    print('Stations: ', str(info["Stations"][0]))
+        #    print('Channels: ', str(info["Channels"][0]))
+        #    print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
+        #          info["Channels"][1], "Num Total Files: ", info["num_files"])
+
 
     def _search(self, project: dict, event: list):
         res = {}
@@ -436,7 +439,10 @@ class SurfProject:
 
         else:
 
-            for file in data_files:
+            #for file in data_files:
+
+            for file in self.data_files:
+
                 pos_file = file[0]
                 st0 = file[1]
                 et0 = file[2]

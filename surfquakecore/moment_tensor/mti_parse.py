@@ -28,7 +28,6 @@ def load_mti_configuration(config_file: str) -> MomentTensorInversionConfig:
     Load moment tensor inversion configuration from a .ini file.
 
     .ini example:
-        >>> f"
             [ORIGIN]
             ORIGIN_DATE = 28/02/2022 02:07:59.433
             LATITUDE = 42.5414

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------
 # Filename: source_tools.py
-# Program: surfQuake & ISP
-# Date: January 2024
+# Program: surfQuake
+# Date: October 2024
 # Purpose: Source Spectra Results Manager
-# Author: Roberto Cabieces & Thiago C. Junqueira
-#  Email: rcabdia@roa.es
+# Author: Cristina Palacios Alonso
+#  Email: cpalacios@roa.es
 # --------------------------------------------------------------------
 
 
@@ -14,13 +14,12 @@ import pandas as pd
 import yaml
 
 class ReadSource:
-    def __init__(self, root_path_to_output: str):
+    def __init__(self, config_file: str):
         """
         The class methods are designed to scan the output of sourcespec
         root_path_to_output: Root path where sourcespec output is expected
         """
-        self.root_path_to_output = root_path_to_output
-        self.obsfiles = []
+        self.config_file = config_file
 
     def __is_yaml_file(self, file_path):
         _, extension = os.path.splitext(file_path)

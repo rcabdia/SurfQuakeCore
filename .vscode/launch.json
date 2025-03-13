@@ -1,0 +1,22 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["processing", "-p", "/home/sysop/Escritorio/geofisica/test_surfquake/test_cutwaveforms/test_cut",
+            "-o", "/home/sysop/Escritorio/geofisica/test_surfquake/test_cutwaveforms/output", "-e",
+            "/home/sysop/Escritorio/geofisica/repositorios/SurfQuakeCore/eventos.csv", "-i", 
+            "/home/sysop/Escritorio/geofisica/ISP/isp/Metadata/xml/metadata.xml"]
+        }
+    ]
+}
+
+
