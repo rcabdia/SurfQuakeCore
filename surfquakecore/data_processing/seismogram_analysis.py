@@ -917,22 +917,24 @@ class AnalysisParameters(BaseDataClass):
 
 class SeismogramData:
 
-    def __init__(self, file_path,  realtime = False, **kwargs):
-
+    #def __init__(self, file_path,  realtime = False, **kwargs):
+    def __init__(self, stream, inventory, realtime = False, **kwargs):
         #mas de un fichero
-
-        stream = kwargs.pop('stream', [])
+        self.inventory = inventory
+        _stream = kwargs.pop('stream', [])
 
         #self.config_file = config_file
         self.config_keys = None
         #self.output = output_path
 
-        if file_path:
-            self.st = read(file_path)
-            print(self.st)
+        #if file_path:
+        #    self.st = read(file_path)
+        #    print(self.st)
+        if stream:
+            self.st = stream
 
         if realtime:
-            self.__tracer = stream
+            self.__tracer = _stream
 
         else:
             gaps = self.st.get_gaps()
@@ -1060,12 +1062,12 @@ class SeismogramData:
             #        tr.stats.starttime = tr.stats.starttime + shifts[i]['time']
 
             if _config['name'] == 'remove_response':
-                inventory = read_inventory(_config['inventory'])
-                print(inventory)
+                #inventory = read_inventory(_config['inventory'])
+                #print(inventory)
                 if _config['units'] != "Wood Anderson":
                     # print("Deconvolving")
                     try:
-                        tr.remove_response(inventory=inventory, pre_filt=_config['pre_filt'],
+                        tr.remove_response(inventory=self.inventory, pre_filt=_config['pre_filt'],
                                            output=_config['units'], water_level=_config['water_level'])
                     except:
                         print("Coudn't deconvolve", tr.stats)
@@ -1073,8 +1075,8 @@ class SeismogramData:
 
                 elif _config['units'] == "Wood Anderson":
                     # print("Simulating Wood Anderson Seismograph")
-                    if inventory is not None:
-                        resp = inventory.get_response(tr.id, tr.stats.starttime)
+                    if self.inventory is not None:
+                        resp = self.inventory.get_response(tr.id, tr.stats.starttime)
 
                         resp = resp.response_stages[0]
                         paz_wa = {'sensitivity': 2800, 'zeros': [0j], 'gain': 1,

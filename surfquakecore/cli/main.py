@@ -859,7 +859,7 @@ def _processing():
 
     arg_parse.add_argument("-ch", "--channel", help="channel filter", type=str, required=False)
 
-    arg_parse.add_argument("-t", "--time", help="time in seconds. Cutting time mseed", type=int, required=False)
+    arg_parse.add_argument("-t", "--cut_time", help="time in seconds. Cutting time mseed", type=int, required=False)
 
     arg_parse.add_argument("-cs", "--cut_start_time", help="cut start time in seconds.  ", type=int, required=False)
 
@@ -886,35 +886,27 @@ def _processing():
 
     files = Analysis.filter_files(_files, parsed_args.net, parsed_args.station, parsed_args.channel,
                                   parsed_args.start_time, parsed_args.end_time)
+    
+    if len(files) > 0:
+        sd = Analysis(_files, parsed_args.output_folder, parsed_args.inventory_file,parsed_args.config_file, parsed_args.event_file)
+        
+        # Calculate start and end time
+        if parsed_args.cut_start_time is not None:
+            start = parsed_args.cut_start_time
 
-    if parsed_args.net is not None:
-        print('red')
-        _filter['net'] = parsed_args.net
-
-    if parsed_args.station is not None:
-        print('estacion')
-        _filter['station'] = parsed_args.station
-
-    if parsed_args.channel is not None:
-        print('canal')
-        _filter['channel'] = parsed_args.channel
-
-    if parsed_args.start_time is not None:
-        print('inicio')
-        _time['starttime'] = UTCDateTime(datetime.strptime(parsed_args.start_time, date_format))
-
-    if parsed_args.end_time is not None:
-        print('fin')
-        _time['endtime'] = UTCDateTime(datetime.strptime(parsed_args.end_time, date_format))
-
-    # 2.2. Net, station and channel filter
-    if len(_filter) > 0:
-        files.filter_project_keys(**_filter)
-    else:
-        files.filter_project_keys()
-
-    # 2.3. Time filter
-    result = files.filter_time(**_time)
+            if parsed_args.cut_end_time  is not None:
+                end = parsed_args.cut_end_time
+            else:
+                end = 300
+        elif parsed_args.cut_time is not None:
+            start = parsed_args.cut_time
+            end = parsed_args.cut_time
+        else:
+            start = 300
+            end = 300
+        
+        sd.run_analysis(start, end)
+    print('hola')
 
 
 

@@ -28,7 +28,7 @@ Analysis:
     noise_power: 0
   process_8:
     name: 'remove_response'
-    inventory: 'C:\Users\cripalalo\Documents\GitHub\test_surfquake\test_surfquake-main\inputs\metadata\inv_all.xml'
+    inventory: '/home/sysop/Escritorio/geofisica/ISP/isp/Metadata/xml/metadata.xml'
     water_level: 0
     units: 'Wood Anderson'
     pre_filt: [1,2,3,4]
