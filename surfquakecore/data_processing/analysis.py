@@ -615,11 +615,15 @@ class Check:
 
 class Analysis:
 
-    def __init__(self, files, output, inventory, config_file=None, event_file=None):
+    def __init__(self, files, output, inventory=None, config_file=None, event_file=None):
         print('CLASE ANALISIS')
         self.output = output
         self.files = files
-        self.inventory = read_inventory(inventory)
+
+        self.inventory = None
+
+        if inventory:
+            self.inventory = read_inventory(inventory)
 
         self.config_file = None
         self.event_file = None
@@ -852,7 +856,11 @@ class Analysis:
                         except:
                             print('Empty file')   
 
+    def rotate(self):
+        # 1. Project dataframe
+        df_project = self.project_table()
 
+        print(df_project)
 
     def project_table(self):
         df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel'])

@@ -91,7 +91,10 @@ def _create_actions():
             name="cutwaveform", run=_cutwaveform, description=f"Type {__entry_point_name} -h for help.\n"),
     
         "processing": _CliActions(
-            name="processing", run=_processing, description=f"Type {__entry_point_name} -h for help.\n")
+            name="processing", run=_processing, description=f"Type {__entry_point_name} -h for help.\n"),
+    
+        "rotate": _CliActions(
+            name="rotate", run=_rotate, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -958,6 +961,36 @@ def _processing():
         
         sd.run_analysis(start, end)
     print('hola')
+
+def _rotate():
+
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} rotate mseeds. ",
+                               description="rotate mseed command. Three components needed")
+
+    arg_parse.epilog = """
+        Overview:
+            Cut mseed and apply processing to the waveforms. You can perform either or both of these operations
+            Usage: surfquake rotate -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
+            -e [event_file] -n [net] -s [station] -ch [channel] -st [start_time] -et [end_time] -cs [cut_start_time]
+            -ce [cut_end_time] -t [cut_time]
+        """
+
+    arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
+                           required=True) 
+
+    arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here", 
+                           type=str, required=True)
+    
+    parsed_args = arg_parse.parse_args()
+
+    freeze_support()
+    sp = SurfProject(parsed_args.project_file)
+    _files = sp.load_project(parsed_args.project_file)
+    _files.filter_project_keys()
+
+    sd = Analysis(_files, parsed_args.output_folder)
+    sd.rotate()
+        
 
 
 
