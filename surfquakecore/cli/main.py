@@ -8,36 +8,26 @@
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
 
-
 import os
 import sys
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
-from datetime import datetime, timedelta
-from obspy import UTCDateTime, read_inventory, read
-from obspy.taup import TauPyModel
-from obspy.geodetics import gps2dist_azimuth, kilometer2degrees
+from datetime import datetime
+from obspy import UTCDateTime, read_inventory
 import pandas as pd
-import numpy as np
-import  math
 import matplotlib.pyplot as plt
 import matplotlib
-
-from pyasn1.type.useful import UTCTime
-
-from examples.mangage_project import project_file_path
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
 from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
-#from surfquakecore.real.real_core import RealCore
+from surfquakecore.real.real_core import RealCore
 from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
-from surfquakecore.data_processing.seismogram_analysis import SeismogramData
 from surfquakecore.data_processing.analysis import Analysis
 
 matplotlib.use('Qt5Agg')
@@ -766,7 +756,6 @@ def _cutwaveform():
     _filter = {}
 
 
-
     # 1. Get files
     freeze_support()
     #sp = SurfProject(parsed_args.file_path)
@@ -957,9 +946,6 @@ def _processing():
             end = 300
         
         sd.run_analysis(start, end)
-    print('hola')
-
-
 
 def find_stats(lists, name, stat):
     _value = [key for key, list in lists.items() if any(name in sublist for sublist in list)]
