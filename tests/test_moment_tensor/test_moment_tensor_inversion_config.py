@@ -1,10 +1,8 @@
 import os.path
 import unittest
 from datetime import datetime
-
 from surfquakecore.moment_tensor.mti_parse import load_mti_configuration
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig, StationConfig, InversionParameters
-
 from tests.test_resources.mti import test_resources_mti_path
 
 
