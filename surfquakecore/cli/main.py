@@ -40,7 +40,7 @@ from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
 from surfquakecore.data_processing.seismogram_analysis import SeismogramData
 from surfquakecore.data_processing.analysis import Analysis
 
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 plt.ion()
 
 # should be equal to [project.scripts]
