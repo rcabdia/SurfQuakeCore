@@ -810,68 +810,118 @@ class Analysis:
             channels = df_files['channel'].unique()
 
             for _station in stations:
-                for _channel in channels:
-                    files_filtered = df_files[(df_files['station'] == _station) & (df_files['channel'] == _channel)]
-                    inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
-                    print(files_filtered)
-
-                    st = Stream()
-
-                    for index, _file in files_filtered.iterrows():
-                        _st = read(_file['file'])
+                st_rotated = None
+                df_station_filtered = df_files[df_files['station'] == _station]
+                inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
+                merged = Stream()
+                if len(df_station_filtered) > 1 and not inventory_filtered.empty:
+                    for index, _station_filtered in df_station_filtered.iterrows():
+                        _st = read(_station_filtered['file'])
                         gaps = _st.get_gaps()
 
                         if len(gaps) > 0:
-                            _st.print_gaps()
+                                _st.print_gaps()
                         
-                        st += _st
+                        merged += _st
+                        start_rotate = max(tr.stats.starttime for tr in merged)
+                        end_rotate = min(tr.stats.endtime for tr in merged)
 
-                    st.merge(fill_value="interpolate")
+                        # Recortar todas las traces
+                        merged.trim(starttime=start_rotate, endtime=end_rotate, pad=True, fill_value=0)
+                    
+                    st_rotated = self.rotate_stream_to_GEAC(merged, self.inventory, lat, lon)
 
-                    model = TauPyModel("iasp91")
 
-                    distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory_filtered['latitude'].tolist()[0], inventory_filtered['longitude'].tolist()[0])
-                    distance_km = kilometer2degrees(distance_km/1000)
+                for _channel in channels:
+                    files_filtered = df_files[(df_files['station'] == _station) & (df_files['channel'] == _channel)]
+                    
+                    print(files_filtered)
 
-                # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
-                    arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km)
-                
-                
-                    p_time = arrivals[0].time
-                    s_time = None
+                    st = Stream()
+                    if not inventory_filtered.empty:
+                        if st_rotated is None:
+                            for index, _file in files_filtered.iterrows():
+                                _st = read(_file['file'])
+                                gaps = _st.get_gaps()
 
-            
-                    start_cut = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=start)
-                    end_cut = event["datetime"] + timedelta(seconds=p_time) + timedelta(seconds=end)
+                                if len(gaps) > 0:
+                                    _st.print_gaps()
+                            
+                                st += _st
 
-                    file = files_filtered["file"].tolist()[0].split("/")
-
-                    if end_cut is not None and start_cut is not None:
-                        st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
-
-                        st_rotated = self.rotate_stream_to_GEAC(st, self.inventory, lat, lon)
-                        
-                        if self.config_file:
-                            sd = SeismogramData(st_rotated, self.inventory)
-                            tr = sd.run_analysis(self.config_file)
+                            st.merge(fill_value="interpolate")
                         else:
-                            tr = st_rotated
-                        
-                        try:
-                        #if config -> tratar config
-                            tr.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+                            if _channel == 'HHZ':
+                                st = st_rotated.select(channel="HHZ")[0]
 
-                        except:
-                            print('Empty file')   
+                        model = TauPyModel("iasp91")
+
+                        distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory_filtered['latitude'].tolist()[0], inventory_filtered['longitude'].tolist()[0])
+                        distance_km = kilometer2degrees(distance_km/1000)
+
+                    # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
+                        arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km)
+                    
+                    
+                        p_time = arrivals[0].time
+                        s_time = None
+
+                
+                        start_cut = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=start)
+                        end_cut = event["datetime"] + timedelta(seconds=p_time) + timedelta(seconds=end)
+                        
+                        if not files_filtered.empty:
+                            file = files_filtered["file"].tolist()[0].split("/")
+
+                            if end_cut is not None and start_cut is not None:
+                                st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
+
+            if self.config_file:
+                sd = SeismogramData(st, self.inventory)
+                tr = sd.run_analysis(self.config_file)
+        
+            try:
+            #if config -> tratar config
+                tr.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+
+            except:
+                print('Empty file')   
 
     def rotate(self):
         # 1. Project dataframe
         df_project = self.project_table()
 
+
+        stations = df_files['station'].unique()
+        channels = df_files['channel'].unique()
+
+        for _station in stations:
+            st_rotated = None
+            df_station_filtered = df_files[df_files['station'] == _station]
+            inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
+            merged = Stream()
+            if len(df_station_filtered) > 1 and not inventory_filtered.empty:
+                for index, _station_filtered in df_station_filtered.iterrows():
+                    _st = read(_station_filtered['file'])
+                    gaps = _st.get_gaps()
+
+                    if len(gaps) > 0:
+                            _st.print_gaps()
+                    
+                    merged += _st
+                    start_rotate = max(tr.stats.starttime for tr in merged)
+                    end_rotate = min(tr.stats.endtime for tr in merged)
+
+                    # Recortar todas las traces
+                    merged.trim(starttime=start_rotate, endtime=end_rotate, pad=True, fill_value=0)
+                
+                st_rotated = self.rotate_stream_to_GEAC(merged, self.inventory, lat, lon)
+
+
         print(df_project)
 
     def project_table(self):
-        df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel'])
+        df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel', 'day'])
         _file = []
         _start = []
         _end = []

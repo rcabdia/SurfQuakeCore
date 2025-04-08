@@ -923,6 +923,8 @@ def _processing():
 
     arg_parse.add_argument("-et", "--end_time", help="end time for filter", type=str, required=False)
 
+    arg_parse.add_argument("-r", "--rotate", help="rotate mseed", action='store_true')
+    
     parsed_args = arg_parse.parse_args()
 
     # 1. Check if config or event files are not None
@@ -960,6 +962,12 @@ def _processing():
             end = 300
         
         sd.run_analysis(start, end)
+    
+    if parsed_args.rotate:
+        print('rotar')
+    else:
+        pass
+    
     print('hola')
 
 def _rotate():
