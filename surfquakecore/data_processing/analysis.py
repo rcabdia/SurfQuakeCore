@@ -808,28 +808,28 @@ class Analysis:
 
             stations = df_files['station'].unique()
             channels = df_files['channel'].unique()
-
+            st_trimed = []
             for _station in stations:
                 st_rotated = None
                 df_station_filtered = df_files[df_files['station'] == _station]
                 inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
-                merged = Stream()
-                if len(df_station_filtered) > 1 and not inventory_filtered.empty:
-                    for index, _station_filtered in df_station_filtered.iterrows():
-                        _st = read(_station_filtered['file'])
-                        gaps = _st.get_gaps()
+                #merged = Stream()
+                #if len(df_station_filtered) > 1 and not inventory_filtered.empty:
+                #    for index, _station_filtered in df_station_filtered.iterrows():
+                #        _st = read(_station_filtered['file'])
+                #        gaps = _st.get_gaps()
 
-                        if len(gaps) > 0:
-                                _st.print_gaps()
+                #        if len(gaps) > 0:
+                #                _st.print_gaps()
                         
-                        merged += _st
-                        start_rotate = max(tr.stats.starttime for tr in merged)
-                        end_rotate = min(tr.stats.endtime for tr in merged)
+                #        merged += _st
+                #        start_rotate = max(tr.stats.starttime for tr in merged)
+                #        end_rotate = min(tr.stats.endtime for tr in merged)
 
                         # Recortar todas las traces
-                        merged.trim(starttime=start_rotate, endtime=end_rotate, pad=True, fill_value=0)
+                #        merged.trim(starttime=start_rotate, endtime=end_rotate, pad=True, fill_value=0)
                     
-                    st_rotated = self.rotate_stream_to_GEAC(merged, self.inventory, lat, lon)
+                #    st_rotated = self.rotate_stream_to_GEAC(merged, self.inventory, lat, lon)
 
 
                 for _channel in channels:
@@ -839,21 +839,17 @@ class Analysis:
 
                     st = Stream()
                     if not inventory_filtered.empty:
-                        if st_rotated is None:
-                            for index, _file in files_filtered.iterrows():
-                                _st = read(_file['file'])
-                                gaps = _st.get_gaps()
+                        for index, _file in files_filtered.iterrows():
+                            _st = read(_file['file'])
+                            gaps = _st.get_gaps()
 
-                                if len(gaps) > 0:
-                                    _st.print_gaps()
-                            
-                                st += _st
+                            if len(gaps) > 0:
+                                _st.print_gaps()
+                        
+                            st += _st
 
-                            st.merge(fill_value="interpolate")
-                        else:
-                            if _channel == 'HHZ':
-                                st = st_rotated.select(channel="HHZ")[0]
-
+                        st.merge(fill_value="interpolate")
+                        
                         model = TauPyModel("iasp91")
 
                         distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory_filtered['latitude'].tolist()[0], inventory_filtered['longitude'].tolist()[0])
@@ -874,7 +870,7 @@ class Analysis:
                             file = files_filtered["file"].tolist()[0].split("/")
 
                             if end_cut is not None and start_cut is not None:
-                                st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
+                                st_trimed.append([files_filtered["file"],st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))])
 
             if self.config_file:
                 sd = SeismogramData(st, self.inventory)
