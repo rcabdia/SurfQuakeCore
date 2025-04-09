@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 dynamic = ["readme", "dependencies"]
 name = "surfquake"
-version = "0.0.8"
+version = "0.0.9"
 authors = [
   { name="Roberto Cabieces & Thiago Junqueira", email="rcabdia@roa.es"},
 ]
