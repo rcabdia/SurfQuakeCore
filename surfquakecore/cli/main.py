@@ -84,8 +84,8 @@ def main(argv: Optional[str] = None):
     if action := actions.get(input_action, None):
         action.run()
     else:
-        print(f"Invalid command {action}. Possible commands are: {', '.join(actions.keys())}\n"
-              f"{''.join([f'- {ac.description}' for ac in actions.values()])}")
+        print(f"- Possible surfquake commands are: {', '.join(actions.keys())}\n"
+              f"- Command documentation typing: surfquake command -h ")
 
 
 def _project():
@@ -665,9 +665,9 @@ def _processing():
 
     arg_parse.add_argument("-ce", "--cut_end_time", help="cut post-first arrival  in seconds", type=float, required=False)
 
-    arg_parse.add_argument("-st", "--start_time", help="start project time filter, format %Y-%m-%d %H:%M:%S", type=str, required=False)
+    arg_parse.add_argument("-st", "--start_time", help="start project time filter, format 2022-10-21 13:14:30", type=str, required=False)
 
-    arg_parse.add_argument("-et", "--end_time", help="end project time filter, format %Y-%m-%d %H:%M:%S", type=str, required=False)
+    arg_parse.add_argument("-et", "--end_time", help="end project time filter, format 2022-10-22 13:15:30", type=str, required=False)
 
     arg_parse.add_argument("-r", "--rotate", help="rotate seismograms to GAC", action='store_true')
     
