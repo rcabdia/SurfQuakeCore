@@ -516,8 +516,6 @@ class Check:
         _config_template = []
         _config_keys = []
 
-        print(config)
-
         if 'Analysis' in config:
             _config = config['Analysis']
             _config_keys = _config.keys()
@@ -616,7 +614,6 @@ class Check:
 class Analysis:
 
     def __init__(self, files, output, inventory=None, config_file=None, event_file=None):
-        print('CLASE ANALISIS')
         self.output = output
         self.files = files
 
@@ -691,12 +688,11 @@ class Analysis:
         sp.search_files()
         return sp.project
 
-    def run_analysis(self, start, end):
+    def run_analysis(self, start, end,rotate=False):
         # 1.- Check self.event_file is not None
         if self.event_file is not None:
             # 2.- Cut event files
-            print('Cut Event Files')
-            self.cut_files(start, end)
+            self.cut_files(start, end, rotate)
         elif self.config_file is not None:
             for i in range(len(self.files.data_files)):
                 st = read(self.files.data_files[i][0])
@@ -769,7 +765,7 @@ class Analysis:
         if not os.path.exists(name):
             os.makedirs(name)
 
-    def cut_files(self, start, end):
+    def cut_files(self, start, end, rotate=False):
         # 1. Panda dataframe with events
         df_events = pd.read_csv(self.event_file, sep=';')
         df_events['datetime'] = pd.to_datetime((df_events['date'] + ' ' + df_events['hour']), utc=True)
@@ -780,7 +776,6 @@ class Analysis:
         # 3. Invetory dataframe
         df_inventory = self.inventory_table()
 
-        print('Three dataframes')
         # 4. Ver cada evento. Devolv
         for index, event in df_events.iterrows():
             df_files = pd.DataFrame(columns=df_project.columns)
@@ -802,41 +797,21 @@ class Analysis:
             self.create_folder(event_folder)
     
             for index, file in df_project.iterrows():
-                print('hola')
                 if (file['start'] <= start_event and file['end'] >= start_event) or (file['start'] <= end_event and file['end'] >= end_event) or (file['start'] <= start_event and file['end'] >= end_event):
                     df_files = pd.concat([df_files, file.to_frame().T], ignore_index=True)
 
             stations = df_files['station'].unique()
             channels = df_files['channel'].unique()
+            df_files['file'] = df_files['file'].astype(str) 
             st_trimed = []
             for _station in stations:
                 st_rotated = None
                 df_station_filtered = df_files[df_files['station'] == _station]
                 inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
-                #merged = Stream()
-                #if len(df_station_filtered) > 1 and not inventory_filtered.empty:
-                #    for index, _station_filtered in df_station_filtered.iterrows():
-                #        _st = read(_station_filtered['file'])
-                #        gaps = _st.get_gaps()
-
-                #        if len(gaps) > 0:
-                #                _st.print_gaps()
-                        
-                #        merged += _st
-                #        start_rotate = max(tr.stats.starttime for tr in merged)
-                #        end_rotate = min(tr.stats.endtime for tr in merged)
-
-                        # Recortar todas las traces
-                #        merged.trim(starttime=start_rotate, endtime=end_rotate, pad=True, fill_value=0)
-                    
-                #    st_rotated = self.rotate_stream_to_GEAC(merged, self.inventory, lat, lon)
-
 
                 for _channel in channels:
                     files_filtered = df_files[(df_files['station'] == _station) & (df_files['channel'] == _channel)]
                     
-                    print(files_filtered)
-
                     st = Stream()
                     if not inventory_filtered.empty:
                         for index, _file in files_filtered.iterrows():
@@ -870,51 +845,107 @@ class Analysis:
                             file = files_filtered["file"].tolist()[0].split("/")
 
                             if end_cut is not None and start_cut is not None:
-                                st_trimed.append([files_filtered["file"],st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))])
+                                st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
 
-            if self.config_file:
-                sd = SeismogramData(st, self.inventory)
-                tr = sd.run_analysis(self.config_file)
+                            if self.config_file:
+                                sd = SeismogramData(st, self.inventory)
+                                tr = sd.run_analysis(self.config_file)
+                                st_trimed.append([files_filtered["file"].iloc[0],tr])
+                            else:
+                                st_trimed.append([files_filtered["file"].iloc[0],st.traces[0]])
+
+            df_files['trace'] = ''
+            df_files['component1'] = ''
+            df_files['component2'] = ''         
+
+            if rotate:
+                for i in range(len(st_trimed)):
+                    filtro = df_files['file'] == st_trimed[i][0]
+                    _index = df_files.index[filtro][0]
+                    df_files.at[_index, 'trace'] = st_trimed[i][1]
+
+                    _component = list(st_trimed[i][1].stats['channel'])
+
+                    df_files.at[_index, 'component1'] = _component[0]+_component[1]
+                    df_files.at[_index, 'component2'] = _component[2]
+
+                # Rotate
+                self.rotate(df_files, df_inventory, event_folder)
+            else:
+                for i in range(len(st_trimed)):
+                    try:
+                        tr = st_trimed[i][1]
+                        t1 = tr.stats.starttime
+                        base_name = f"{tr.id}.D.{t1.year}.{t1.julday}"
+                        path_output = os.path.join(event_folder, base_name)
+
+                        # Check if file exists and append a number if necessary
+                        counter = 1
+                        while os.path.exists(path_output):
+                            path_output = os.path.join(event_folder, f"{base_name}_{counter}")
+                            counter += 1
+
+                        print(f"{tr.id} - Writing processed data to {path_output}")
+                        tr.write(path_output, format="MSEED")
+
+                    except Exception as e:
+                        errors = True
+                        print(f"File cannot be written: Error: {e}")
+
+
         
-            try:
-            #if config -> tratar config
-                tr.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+             
 
-            except:
-                print('Empty file')   
-
-    def rotate(self):
+    def rotate(self, df_rotate, inventory, output):
         # 1. Project dataframe
-        df_project = self.project_table()
-
-
-        stations = df_files['station'].unique()
-        channels = df_files['channel'].unique()
+        stations = df_rotate['station'].unique()
+        component = df_rotate['component1'].unique()
+        ZNE = ['Z', 'N', 'E']
+        Z12 = ['Z', '1', '2']
+        ZXY = ['Z', 'X', 'Y']
+        #channels = df_files['channel'].unique()
 
         for _station in stations:
             st_rotated = None
-            df_station_filtered = df_files[df_files['station'] == _station]
-            inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
+            df_station_filtered = df_rotate[df_rotate['station'] == _station]
+            inventory_filtered = inventory[(inventory['station'] == _station)]
             merged = Stream()
-            if len(df_station_filtered) > 1 and not inventory_filtered.empty:
-                for index, _station_filtered in df_station_filtered.iterrows():
-                    _st = read(_station_filtered['file'])
-                    gaps = _st.get_gaps()
-
-                    if len(gaps) > 0:
-                            _st.print_gaps()
+            if len(df_station_filtered) > 1:             
+                for _component in component:
+                    df_component_filtered = df_station_filtered[df_station_filtered['component1'] == _component]
                     
-                    merged += _st
-                    start_rotate = max(tr.stats.starttime for tr in merged)
-                    end_rotate = min(tr.stats.endtime for tr in merged)
+                    if df_component_filtered['component2'].isin(ZNE).sum() == 3 or df_component_filtered['component2'].isin(Z12).sum() == 3 or df_component_filtered['component2'].isin(ZXY).sum() == 3:
+                        for index, _trace in df_component_filtered.iterrows():
+                            if _trace['trace'].stats.channel[-1] in ['1', 'Y']:
+                                _trace['trace'].stats.channel = _trace['trace'].stats.channel[0:2] + 'N'
+                                #_trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "N")
+                            elif _trace['trace'].stats.channel[-1] in ['2', 'X']:
+                                _trace['trace'].stats.channel = _trace['trace'].stats.channel[0:2] + 'E'
+                    
+                                #_trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "E")
+                            merged += _trace['trace']
 
-                    # Recortar todas las traces
-                    merged.trim(starttime=start_rotate, endtime=end_rotate, pad=True, fill_value=0)
-                
-                st_rotated = self.rotate_stream_to_GEAC(merged, self.inventory, lat, lon)
 
+                        st_rotated = self.rotate_stream_to_GEAC(merged,self.inventory, inventory_filtered['latitude'].iloc[0], inventory_filtered['longitude'].iloc[0])
+                        
+                        for j, tr in enumerate(st_rotated[0].traces):
+                            try:
+                                t1 = tr.stats.starttime
+                                base_name = f"{tr.id}.D.{t1.year}.{t1.julday}"
+                                path_output = os.path.join(output, base_name)
 
-        print(df_project)
+                                # Check if file exists and append a number if necessary
+                                counter = 1
+                                while os.path.exists(path_output):
+                                    path_output = os.path.join(output, f"{base_name}_{counter}")
+                                    counter += 1
+
+                                print(f"{tr.id} - Writing processed data to {path_output}")
+                                tr.write(path_output, format="MSEED")
+
+                            except Exception as e:
+                                errors = True
+                                print(f"File cannot be written: Error: {e}")
 
     def project_table(self):
         df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel', 'day'])
@@ -1064,34 +1095,3 @@ class Analysis:
             return rotated_streams
         else:
             return stream
-
-
-
-"""    for file in files.project:
-        print(file)
-        _net = files.project[file][0][1]['network']
-        _station = files.project[file][0][1]['station']
-
-        file_name.append(files.project[file][0][0])
-        net_inventory.append(files.project[file][0][1]['network'])
-        station_inventory.append(files.project[file][0][1]['station'])
-        datetime_inventory.append(files.project[file][0][1]['starttime'])
-
-        for network in inventory.networks:
-            if network.code == _net:
-                for station in network.stations:
-                    if station.code == _station:
-                        latitude_inventory.append(station.latitude)
-                        longitude_inventory.append(station.longitude)
-
-    df_inventory['file'] = file_name
-    df_inventory['net'] = net_inventory
-    df_inventory['station'] = station_inventory
-    df_inventory['datetime'] = datetime_inventory
-    df_inventory['latitude'] = latitude_inventory
-    df_inventory['longitude'] = longitude_inventory
-    """
-
-
-
-
