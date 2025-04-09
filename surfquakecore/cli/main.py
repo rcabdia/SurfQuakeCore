@@ -8,14 +8,12 @@
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
 
-
 import os
 import sys
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
-
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
@@ -708,18 +706,8 @@ def _processing():
         else:
             start = 300
             end = 300
-            sd.run_analysis(start, end, parsed_args.rotate)
-
-def find_stats(lists, name, stat):
-    _value = [key for key, list in lists.items() if any(name in sublist for sublist in list)]
-
-    if len(_value) > 0:
-        for i, sublist in enumerate(lists[_value[0]]):
-            if name in sublist:
-                _i = sublist.index(name)
-                return lists[_value[0]][_i][1][stat]
-    
-    return None
+            
+        sd.run_analysis(start, end, parsed_args.rotate)
 
 if __name__ == "__main__":
     freeze_support()

@@ -175,7 +175,7 @@ class SurfProject:
                 for file in files:
                     data_files.append(os.path.join(top_dir, file))
 
-        cpus = min(len(data_files), os.cpu_count())
+        cpus = max(1, min(len(data_files), os.cpu_count() or 1))
         with Pool(processes=cpus) as pool:
             partial_task = partial(self._parse_data_file, format=format, filter=filter, verbose=verbose)
             returned_list = pool.map(partial_task, data_files)

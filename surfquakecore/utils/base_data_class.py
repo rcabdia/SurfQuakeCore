@@ -12,4 +12,4 @@ class BaseDataClass:
 
     @classmethod
     def from_dict(cls, dto: dict):
-        return Cast(dto, NamedTuple)#cls)
+        return Cast(dto, cls)

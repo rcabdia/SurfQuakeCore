@@ -1105,30 +1105,3 @@ class SeismogramData:
         #tr.write(self.output + 'test1', 'mseed')
 
         return tr
-
-    def get_waveform_advanced(self, parameters, inventory=None, filter_error_callback=None, **kwargs):
-
-        start_time = kwargs.get("start_time", self.stats.StartTime)
-        end_time = kwargs.get("end_time", self.stats.EndTime)
-        trace_number = kwargs.get("trace_number", 0)
-        tr = self.tracer
-
-        tr.trim(starttime=start_time, endtime=end_time)
-
-        # Detrend
-        if parameters.rmean is not None:
-            if parameters.rmean in ['linear, simple', 'demean']:
-                tr.detrend(type=parameters.rmean)
-            elif parameters.rmean is 'polynomial':
-                tr.detrend(type=parameters.rmean, order=parameters.order)
-            elif parameters.rmean is 'spline':
-                tr.detrend(type=parameters.rmean, order=parameters.order, dspline=parameters.dspline)
-
-        # Taper
-
-        if parameters.taper is not None:
-            tr.taper(type=parameters.taper, max_percentage=0.5)
-
-
-
-        return tr

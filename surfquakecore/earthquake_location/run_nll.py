@@ -56,7 +56,7 @@ class NllManager:
             self.nll_config = nll_config
         else:
             raise ValueError(f"mti_config {nll_config} is not valid. It must be either a "
-                             f" valid real_config.ini file or a NLLConfig instance.")
+                             f" valid nll_config.ini file or a NLLConfig instance.")
 
     def find_files(self, base, pattern):
         """
