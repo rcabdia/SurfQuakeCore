@@ -628,14 +628,14 @@ def _buildmticonfig():
 
 def _processing():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
-                               description="processing waveforms command")
+                               description="Processing waveforms command")
 
     arg_parse.epilog = """
         Overview:
-            Cut mseed and apply processing to the waveforms. You can perform either or both of these operations
+            Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
             Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
             -e [event_file] -n [net] -s [station] -ch [channel] -st [start_time] -et [end_time] -cs [cut_start_time]
-            -ce [cut_end_time] -t [cut_time]
+            -ce [cut_end_time] -t [cut_time] -r [rotate_seismograms_to_GAC]
         """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
@@ -653,23 +653,23 @@ def _processing():
     arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str, 
                            required=False)
 
-    arg_parse.add_argument("-n", "--net", help="net filter", type=str, required=False)
+    arg_parse.add_argument("-n", "--net", help="project net filter", type=str, required=False)
 
-    arg_parse.add_argument("-s", "--station", help="station filter", type=str, required=False)
+    arg_parse.add_argument("-s", "--station", help="project station filter", type=str, required=False)
 
-    arg_parse.add_argument("-ch", "--channel", help="channel filter", type=str, required=False)
+    arg_parse.add_argument("-ch", "--channel", help="project channel filter", type=str, required=False)
 
-    arg_parse.add_argument("-t", "--cut_time", help="time in seconds. Cutting time mseed", type=int, required=False)
+    arg_parse.add_argument("-t", "--cut_time", help="pre & post first arrival in seconds (symmetric). ", type=float, required=False)
 
-    arg_parse.add_argument("-cs", "--cut_start_time", help="cut start time in seconds.  ", type=int, required=False)
+    arg_parse.add_argument("-cs", "--cut_start_time", help="cut pre-first arrival  in seconds", type=float, required=False)
 
-    arg_parse.add_argument("-ce", "--cut_end_time", help="cut end time in seconds", type=int, required=False)
+    arg_parse.add_argument("-ce", "--cut_end_time", help="cut post-first arrival  in seconds", type=float, required=False)
 
-    arg_parse.add_argument("-st", "--start_time", help="start time for filter", type=str, required=False)
+    arg_parse.add_argument("-st", "--start_time", help="start project time filter, format %Y-%m-%d %H:%M:%S", type=str, required=False)
 
-    arg_parse.add_argument("-et", "--end_time", help="end time for filter", type=str, required=False)
+    arg_parse.add_argument("-et", "--end_time", help="end project time filter, format %Y-%m-%d %H:%M:%S", type=str, required=False)
 
-    arg_parse.add_argument("-r", "--rotate", help="rotate mseed", action='store_true')
+    arg_parse.add_argument("-r", "--rotate", help="rotate seismograms to GAC", action='store_true')
     
     parsed_args = arg_parse.parse_args()
 
@@ -680,7 +680,6 @@ def _processing():
     # 2. Read and filter project
     _filter = {}
     _time = {}
-    date_format = "%Y-%m-%d %H:%M:%S"
 
     freeze_support()
     sp = SurfProject(parsed_args.project_file)
