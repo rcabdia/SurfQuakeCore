@@ -516,8 +516,6 @@ class Check:
         _config_template = []
         _config_keys = []
 
-        print(config)
-
         if 'Analysis' in config:
             _config = config['Analysis']
             _config_keys = _config.keys()
@@ -615,11 +613,14 @@ class Check:
 
 class Analysis:
 
-    def __init__(self, files, output, inventory, config_file=None, event_file=None):
-        print('CLASE ANALISIS')
+    def __init__(self, files, output, inventory=None, config_file=None, event_file=None):
         self.output = output
         self.files = files
-        self.inventory = read_inventory(inventory)
+
+        self.inventory = None
+
+        if inventory:
+            self.inventory = read_inventory(inventory)
 
         self.config_file = None
         self.event_file = None
@@ -687,17 +688,17 @@ class Analysis:
         sp.search_files()
         return sp.project
 
-    def run_analysis(self, start, end):
+    def run_analysis(self, start, end,rotate=False):
         # 1.- Check self.event_file is not None
         if self.event_file is not None:
             # 2.- Cut event files
-            print('Cut Event Files')
-            self.cut_files(start, end)
-
-        #for i in range(len(self.files)):
-        #    sd = SeismogramData(self.files[i])
-        #    tr = sd.run_analysis(self.config_file)
-        #    tr.write(os.path.join(self.output, tr.id), 'mseed')
+            self.cut_files(start, end, rotate)
+        elif self.config_file is not None:
+            for i in range(len(self.files.data_files)):
+                st = read(self.files.data_files[i][0])
+                sd = SeismogramData(st, self.inventory)
+                tr = sd.run_analysis(self.config_file)
+                tr.write(os.path.join(self.output, tr.id), 'mseed')
 
     def run_cut_waveforms(self, project, events, inventories, deltastart, deltaend):
         model = TauPyModel("iasp91")
@@ -746,8 +747,9 @@ class Analysis:
                         st = read(inventory["file"])
                         st.trim(UTCDateTime(start), UTCDateTime(end))
 
+                        st_rotated = self.rotate_stream_to_GEAC(st, self.inventory, lat, lon)
                         if self.config_file:
-                            sd = SeismogramData(st)
+                            sd = SeismogramData(st_rotated, self.inventory)
                             tr = sd.run_analysis(self.config_file)
                         else:
                             tr = st
@@ -763,7 +765,7 @@ class Analysis:
         if not os.path.exists(name):
             os.makedirs(name)
 
-    def cut_files(self, start, end):
+    def cut_files(self, start, end, rotate=False):
         # 1. Panda dataframe with events
         df_events = pd.read_csv(self.event_file, sep=';')
         df_events['datetime'] = pd.to_datetime((df_events['date'] + ' ' + df_events['hour']), utc=True)
@@ -774,7 +776,6 @@ class Analysis:
         # 3. Invetory dataframe
         df_inventory = self.inventory_table()
 
-        print('Three dataframes')
         # 4. Ver cada evento. Devolv
         for index, event in df_events.iterrows():
             df_files = pd.DataFrame(columns=df_project.columns)
@@ -787,75 +788,167 @@ class Analysis:
             end_event = event['datetime'] + timedelta(seconds=end)
             
             # Crear carpeta
-            event_folder = os.path.join(self.output, id)
+            _id = id.split(" ")
+            _id[1] = _id[1].split(":")
+            _id[1] = ''.join(_id[1])
+
+            event_folder = os.path.join(self.output, _id[0]+"_"+_id[1])
 
             self.create_folder(event_folder)
     
             for index, file in df_project.iterrows():
-                print('hola')
                 if (file['start'] <= start_event and file['end'] >= start_event) or (file['start'] <= end_event and file['end'] >= end_event) or (file['start'] <= start_event and file['end'] >= end_event):
                     df_files = pd.concat([df_files, file.to_frame().T], ignore_index=True)
 
             stations = df_files['station'].unique()
             channels = df_files['channel'].unique()
-
+            df_files['file'] = df_files['file'].astype(str) 
+            st_trimed = []
             for _station in stations:
+                st_rotated = None
+                df_station_filtered = df_files[df_files['station'] == _station]
+                inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
+
                 for _channel in channels:
                     files_filtered = df_files[(df_files['station'] == _station) & (df_files['channel'] == _channel)]
-                    inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
-                    print(files_filtered)
-
+                    
                     st = Stream()
+                    if not inventory_filtered.empty:
+                        for index, _file in files_filtered.iterrows():
+                            _st = read(_file['file'])
+                            gaps = _st.get_gaps()
 
-                    for index, _file in files_filtered.iterrows():
-                        _st = read(_file['file'])
-                        gaps = _st.get_gaps()
-
-                        if len(gaps) > 0:
-                            _st.print_gaps()
+                            if len(gaps) > 0:
+                                _st.print_gaps()
                         
-                        st += _st
+                            st += _st
 
-                    st.merge(fill_value="interpolate")
+                        st.merge(fill_value="interpolate")
+                        
+                        model = TauPyModel("iasp91")
 
-                    model = TauPyModel("iasp91")
+                        distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory_filtered['latitude'].tolist()[0], inventory_filtered['longitude'].tolist()[0])
+                        distance_km = kilometer2degrees(distance_km/1000)
 
-                    distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory_filtered['latitude'].tolist()[0], inventory_filtered['longitude'].tolist()[0])
-                    distance_km = kilometer2degrees(distance_km/1000)
+                    # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
+                        arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km)
+                    
+                    
+                        p_time = arrivals[0].time
+                        s_time = None
 
-                # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
-                    arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km)
                 
-                
-                    p_time = arrivals[0].time
-                    s_time = None
-
-            
-                    start_cut = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=start)
-                    end_cut = event["datetime"] + timedelta(seconds=p_time) + timedelta(seconds=end)
-
-                    file = files_filtered["file"].tolist()[0].split("/")
-
-                    if end_cut is not None and start_cut is not None:
-                        st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
+                        start_cut = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=start)
+                        end_cut = event["datetime"] + timedelta(seconds=p_time) + timedelta(seconds=end)
                         
-                        if self.config_file:
-                            sd = SeismogramData(st, self.inventory)
-                            tr = sd.run_analysis(self.config_file)
-                        else:
-                            tr = st
+                        if not files_filtered.empty:
+                            file = files_filtered["file"].tolist()[0].split("/")
+
+                            if end_cut is not None and start_cut is not None:
+                                st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
+
+                            if self.config_file:
+                                sd = SeismogramData(st, self.inventory)
+                                tr = sd.run_analysis(self.config_file)
+                                st_trimed.append([files_filtered["file"].iloc[0],tr])
+                            else:
+                                st_trimed.append([files_filtered["file"].iloc[0],st.traces[0]])
+
+            df_files['trace'] = ''
+            df_files['component1'] = ''
+            df_files['component2'] = ''         
+
+            if rotate:
+                for i in range(len(st_trimed)):
+                    filtro = df_files['file'] == st_trimed[i][0]
+                    _index = df_files.index[filtro][0]
+                    df_files.at[_index, 'trace'] = st_trimed[i][1]
+
+                    _component = list(st_trimed[i][1].stats['channel'])
+
+                    df_files.at[_index, 'component1'] = _component[0]+_component[1]
+                    df_files.at[_index, 'component2'] = _component[2]
+
+                # Rotate
+                self.rotate(df_files, df_inventory, event_folder)
+            else:
+                for i in range(len(st_trimed)):
+                    try:
+                        tr = st_trimed[i][1]
+                        t1 = tr.stats.starttime
+                        base_name = f"{tr.id}.D.{t1.year}.{t1.julday}"
+                        path_output = os.path.join(event_folder, base_name)
+
+                        # Check if file exists and append a number if necessary
+                        counter = 1
+                        while os.path.exists(path_output):
+                            path_output = os.path.join(event_folder, f"{base_name}_{counter}")
+                            counter += 1
+
+                        print(f"{tr.id} - Writing processed data to {path_output}")
+                        tr.write(path_output, format="MSEED")
+
+                    except Exception as e:
+                        errors = True
+                        print(f"File cannot be written: Error: {e}")
+
+
+        
+             
+
+    def rotate(self, df_rotate, inventory, output):
+        # 1. Project dataframe
+        stations = df_rotate['station'].unique()
+        component = df_rotate['component1'].unique()
+        ZNE = ['Z', 'N', 'E']
+        Z12 = ['Z', '1', '2']
+        ZXY = ['Z', 'X', 'Y']
+        #channels = df_files['channel'].unique()
+
+        for _station in stations:
+            st_rotated = None
+            df_station_filtered = df_rotate[df_rotate['station'] == _station]
+            inventory_filtered = inventory[(inventory['station'] == _station)]
+            merged = Stream()
+            if len(df_station_filtered) > 1:             
+                for _component in component:
+                    df_component_filtered = df_station_filtered[df_station_filtered['component1'] == _component]
+                    
+                    if df_component_filtered['component2'].isin(ZNE).sum() == 3 or df_component_filtered['component2'].isin(Z12).sum() == 3 or df_component_filtered['component2'].isin(ZXY).sum() == 3:
+                        for index, _trace in df_component_filtered.iterrows():
+                            if _trace['trace'].stats.channel[-1] in ['1', 'Y']:
+                                _trace['trace'].stats.channel = _trace['trace'].stats.channel[0:2] + 'N'
+                                #_trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "N")
+                            elif _trace['trace'].stats.channel[-1] in ['2', 'X']:
+                                _trace['trace'].stats.channel = _trace['trace'].stats.channel[0:2] + 'E'
+                    
+                                #_trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "E")
+                            merged += _trace['trace']
+
+
+                        st_rotated = self.rotate_stream_to_GEAC(merged,self.inventory, inventory_filtered['latitude'].iloc[0], inventory_filtered['longitude'].iloc[0])
                         
-                        try:
-                        #if config -> tratar config
-                            tr.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+                        for j, tr in enumerate(st_rotated[0].traces):
+                            try:
+                                t1 = tr.stats.starttime
+                                base_name = f"{tr.id}.D.{t1.year}.{t1.julday}"
+                                path_output = os.path.join(output, base_name)
 
-                        except:
-                            print('Empty file')   
+                                # Check if file exists and append a number if necessary
+                                counter = 1
+                                while os.path.exists(path_output):
+                                    path_output = os.path.join(output, f"{base_name}_{counter}")
+                                    counter += 1
 
+                                print(f"{tr.id} - Writing processed data to {path_output}")
+                                tr.write(path_output, format="MSEED")
 
+                            except Exception as e:
+                                errors = True
+                                print(f"File cannot be written: Error: {e}")
 
     def project_table(self):
-        df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel'])
+        df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel', 'day'])
         _file = []
         _start = []
         _end = []
@@ -912,33 +1005,93 @@ class Analysis:
         df_inventory['longitude'] = longitude_inventory
 
         return df_inventory
+    
+    def rotate_stream_to_GEAC(self, stream, inventory, epicenter_lat, epicenter_lon):
+        """
+        Rotates an ObsPy Stream to Great Circle Arc Coordinates (GEAC) using an inventory.
+        Includes the vertical component ("Z") in the output.
 
+        Args:
+            stream (Stream): The ObsPy Stream object containing the traces.
+            inventory (Inventory): ObsPy Inventory containing station metadata.
+            epicenter_lat (float): Latitude of the epicenter.
+            epicenter_lon (float): Longitude of the epicenter.
 
-"""    for file in files.project:
-        print(file)
-        _net = files.project[file][0][1]['network']
-        _station = files.project[file][0][1]['station']
+        Returns:
+            list: A list of ObsPy Stream objects, each corresponding to a station with rotated components.
+        """
+        #inventory = read_inventory(inventory)
 
-        file_name.append(files.project[file][0][0])
-        net_inventory.append(files.project[file][0][1]['network'])
-        station_inventory.append(files.project[file][0][1]['station'])
-        datetime_inventory.append(files.project[file][0][1]['starttime'])
+        # Step 1: Group traces by station
+        station_dict = {}
+        for trace in stream:
+            station_id = trace.stats.network + "." + trace.stats.station
+            if station_id not in station_dict:
+                station_dict[station_id] = []
+            station_dict[station_id].append(trace)
 
-        for network in inventory.networks:
-            if network.code == _net:
-                for station in network.stations:
-                    if station.code == _station:
-                        latitude_inventory.append(station.latitude)
-                        longitude_inventory.append(station.longitude)
+        rotated_streams = []
 
-    df_inventory['file'] = file_name
-    df_inventory['net'] = net_inventory
-    df_inventory['station'] = station_inventory
-    df_inventory['datetime'] = datetime_inventory
-    df_inventory['latitude'] = latitude_inventory
-    df_inventory['longitude'] = longitude_inventory
-    """
+        # Step 2: Process each station
+        for station_id, traces in station_dict.items():
+            # Extract components
+            components = {tr.stats.channel[-1]: tr for tr in traces}  # {'E': Trace, 'N': Trace, 'Z': Trace}
 
+            if 'N' not in components or 'E' not in components:
+                print(f"Skipping station {station_id}: Missing N or E component.")
+                continue
 
+            tr_n = components['N']
+            tr_e = components['E']
+            tr_z = components.get('Z', None)  # Z may not exist, handle it safely
 
+            # Step 3: Check sampling rate and sample count
+            if tr_n.stats.sampling_rate != tr_e.stats.sampling_rate:
+                print(f"Skipping station {station_id}: Sampling rates do not match.")
+                continue
+            if len(tr_n.data) != len(tr_e.data):
+                print(f"Skipping station {station_id}: Number of samples do not match.")
+                continue
+            if tr_z and (tr_n.stats.sampling_rate != tr_z.stats.sampling_rate or len(tr_n.data) != len(tr_z.data)):
+                print(f"Skipping station {station_id}: Z component sampling rate or samples do not match.")
+                continue
 
+            # Step 4: Get station coordinates from inventory
+            try:
+                network_code, station_code = station_id.split(".")
+                station = inventory.select(network=network_code, station=station_code)[0][0]
+                station_lat, station_lon = station.latitude, station.longitude
+            except Exception as e:
+                print(f"Skipping station {station_id}: Station not found in inventory. ({e})")
+                continue
+
+            # Step 5: Compute back azimuth
+            _, baz, _ = gps2dist_azimuth(epicenter_lat, epicenter_lon, station_lat, station_lon)
+
+            # Step 6: Rotate to GEAC (Radial & Transverse)
+            theta = np.deg2rad(baz)
+            data_r = tr_n.data * np.cos(theta) + tr_e.data * np.sin(theta)
+            data_t = -tr_n.data * np.sin(theta) + tr_e.data * np.cos(theta)
+
+            # Step 7: Create new rotated traces
+            tr_r = tr_n.copy()
+            tr_r.data = data_r
+            tr_r.stats.channel = tr_r.stats.channel[:-1] + 'R'  # Rename to Radial
+
+            tr_t = tr_e.copy()
+            tr_t.data = data_t
+            tr_t.stats.channel = tr_t.stats.channel[:-1] + 'T'  # Rename to Transverse
+
+            # Step 8: Store in new stream
+            rotated_traces = [tr_r, tr_t]
+
+            # Include Z component if available
+            if tr_z:
+                rotated_traces.append(tr_z.copy())  # Copy Z component as is
+
+            rotated_streams.append(Stream(traces=rotated_traces))
+        
+        if len(rotated_streams) > 0:
+            return rotated_streams
+        else:
+            return stream

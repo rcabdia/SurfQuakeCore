@@ -1,21 +1,12 @@
-from operator import truediv
-
-from obspy import read, Stream, read_inventory
-from tensorflow.python.ops.random_ops import parameterized_truncated_normal
+from obspy import Stream
 import os
 import copy
 import scipy, numpy as np
 import math
 import pywt
-
 from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
-from surfquakecore.utils.obspy_utils import ObspyUtil, Filters
-from dataclasses import dataclass, field
-from datetime import datetime
 from surfquakecore.utils import BaseDataClass
 from surfquakecore.data_processing.source_tools import ReadSource
-from multiprocessing import freeze_support
-from surfquakecore.project.surf_project import SurfProject
 
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_white_noise', 'whitening', 'remove_spikes',
@@ -916,20 +907,12 @@ class AnalysisParameters(BaseDataClass):
                              f"AnalysisConfig")
 
 class SeismogramData:
-
-    #def __init__(self, file_path,  realtime = False, **kwargs):
     def __init__(self, stream, inventory, realtime = False, **kwargs):
-        #mas de un fichero
         self.inventory = inventory
         _stream = kwargs.pop('stream', [])
 
-        #self.config_file = config_file
         self.config_keys = None
-        #self.output = output_path
 
-        #if file_path:
-        #    self.st = read(file_path)
-        #    print(self.st)
         if stream:
             self.st = stream
 
