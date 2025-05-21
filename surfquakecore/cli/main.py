@@ -670,6 +670,9 @@ def _processing():
     arg_parse.add_argument("-et", "--end_time", help="end project time filter, format 2022-10-22 13:15:30", type=str, required=False)
 
     arg_parse.add_argument("-r", "--rotate", help="rotate seismograms to GAC", action='store_true')
+
+    arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
+                           action="store_true")
     
     parsed_args = arg_parse.parse_args()
 
@@ -706,7 +709,7 @@ def _processing():
             start = 300
             end = 300
             
-        sd.run_analysis(start, end, parsed_args.rotate)
+        sd.run_analysis(start, end, parsed_args.rotate, plot=parsed_args.plots)
 
 if __name__ == "__main__":
     freeze_support()

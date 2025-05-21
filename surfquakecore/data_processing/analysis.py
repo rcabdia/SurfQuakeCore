@@ -9,6 +9,7 @@ from surfquakecore.data_processing.source_tools import ReadSource
 from multiprocessing import freeze_support
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.data_processing.seismogram_analysis import SeismogramData
+from surfquakecore.seismoplot.plot import PlotProj
 
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_white_noise', 'whitening', 'remove_spikes',
@@ -605,8 +606,9 @@ class Analysis:
     def __init__(self, files, output, inventory=None, config_file=None, event_file=None):
         self.output = output
         self.files = files
-
+        self._exist_folder = False
         self.inventory = None
+        self.all_traces = []
 
         if inventory:
             self.inventory = read_inventory(inventory)
@@ -677,17 +679,32 @@ class Analysis:
         sp.search_files()
         return sp.project
 
-    def run_analysis(self, start, end,rotate=False):
+    def run_analysis(self, start, end, rotate=False, plot=False):
+        traces = []
+
         # 1.- Check self.event_file is not None
         if self.event_file is not None:
-            # 2.- Cut event files
+
+        # 2.- Cut event files
             self.cut_files(start, end, rotate)
+            traces = self.all_traces
+
         elif self.config_file is not None:
             for i in range(len(self.files.data_files)):
                 st = read(self.files.data_files[i][0])
                 sd = SeismogramData(st, self.inventory)
                 tr = sd.run_analysis(self.config_file)
-                tr.write(os.path.join(self.output, tr.id), 'mseed')
+                traces.append(tr)
+                if os.path.isdir(self.output):
+                    tr.write(os.path.join(self.output, tr.id), 'mseed')
+                else:
+                    print("No writting traces to the hard drive")
+
+        if plot:
+            plotter = PlotProj(traces, metadata=self.inventory)
+            plotter.plot(traces_per_fig=6, sort_by='distance')
+
+
 
     def run_cut_waveforms(self, project, events, inventories, deltastart, deltaend):
         model = TauPyModel("iasp91")
@@ -752,10 +769,13 @@ class Analysis:
     
     def create_folder(self, name):
         if not os.path.exists(name):
-            os.makedirs(name)
+            print("The output folder does not exists")
+            self._exist_folder = False
+            #os.makedirs(name)
 
     def cut_files(self, start, end, rotate=False):
         # 1. Panda dataframe with events
+        model = TauPyModel("iasp91")
         df_events = pd.read_csv(self.event_file, sep=';')
         df_events['datetime'] = pd.to_datetime((df_events['date'] + ' ' + df_events['hour']), utc=True)
         
@@ -814,7 +834,7 @@ class Analysis:
 
                         st.merge(fill_value="interpolate")
                         
-                        model = TauPyModel("iasp91")
+
 
                         distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory_filtered['latitude'].tolist()[0], inventory_filtered['longitude'].tolist()[0])
                         distance_km = kilometer2degrees(distance_km/1000)
@@ -874,16 +894,19 @@ class Analysis:
                             path_output = os.path.join(event_folder, f"{base_name}_{counter}")
                             counter += 1
 
-                        print(f"{tr.id} - Writing processed data to {path_output}")
-                        tr.write(path_output, format="MSEED")
+                        if self._exist_folder:
+                            print(f"{tr.id} - Writing processed data to {path_output}")
+                            tr.write(path_output, format="MSEED")
+                        else:
+                            pass
+
+                        if len(tr.data)>0:
+                            self.all_traces.append(tr)
 
                     except Exception as e:
                         errors = True
                         print(f"File cannot be written: Error: {e}")
 
-
-        
-             
 
     def rotate(self, df_rotate, inventory, output):
         # 1. Project dataframe
@@ -928,9 +951,13 @@ class Analysis:
                                 while os.path.exists(path_output):
                                     path_output = os.path.join(output, f"{base_name}_{counter}")
                                     counter += 1
-
-                                print(f"{tr.id} - Writing processed data to {path_output}")
-                                tr.write(path_output, format="MSEED")
+                                if self._exist_folder:
+                                    print(f"{tr.id} - Writing processed data to {path_output}")
+                                    tr.write(path_output, format="MSEED")
+                                else:
+                                    pass
+                                if len(tr.data)>0:
+                                    self.all_traces.append(tr)
 
                             except Exception as e:
                                 errors = True
