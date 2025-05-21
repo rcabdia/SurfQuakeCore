@@ -13,10 +13,11 @@ import matplotlib.pyplot as plt
 from obspy.core.trace import Trace
 from obspy.core.inventory import Inventory
 from obspy.geodetics import gps2dist_azimuth
-import matplotlib
+import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
-matplotlib.use("TkAgg")
+
+mplt.use("TkAgg")
 # More Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:
