@@ -702,7 +702,7 @@ class Analysis:
 
         if plot:
             plotter = PlotProj(traces, metadata=self.inventory)
-            plotter.plot(traces_per_fig=6, sort_by='distance')
+            plotter.plot(traces_per_fig=4, sort_by='distance')
 
 
 
