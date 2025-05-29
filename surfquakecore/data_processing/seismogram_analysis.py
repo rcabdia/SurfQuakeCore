@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from obspy import Stream
 import os
 import copy
@@ -979,10 +980,13 @@ class SeismogramData:
         else:
             return [decimator_factor, check]
 
+
     def run_analysis(self, config, **kwargs):
 
         """
-        This method should be to loop over config files and run the inversion.
+        This method loop over config dictionary.
+        config dictionary contain the primary key with the processing step and the parameters or that key processing
+
         Previously it is needed to load the project and metadata.
 
         Args:

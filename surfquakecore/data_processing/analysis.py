@@ -1,3 +1,4 @@
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from obspy import read, Stream, read_inventory, UTCDateTime
 from obspy.taup import TauPyModel
 from obspy.geodetics import gps2dist_azimuth, kilometer2degrees
@@ -679,7 +680,25 @@ class Analysis:
         sp.search_files()
         return sp.project
 
-    def run_analysis(self, start, end, rotate=False, plot=False):
+    def process_trace(self, file_path, config_file, inventory, output_dir):
+
+        try:
+            st = read(file_path)
+            sd = SeismogramData(st, inventory)
+            tr = sd.run_analysis(config_file)
+
+            # Optional: Write to disk if output directory exists
+            if os.path.isdir(output_dir):
+                tr.write(os.path.join(output_dir, tr.id), 'mseed')
+            else:
+                print(f"Output dir doesn't exist. Not writing {tr.id}")
+
+            return tr
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
+            return None
+
+    def run_processing(self, start, end, rotate=False, plot=False):
         traces = []
 
         # 1.- Check self.event_file is not None
@@ -690,11 +709,22 @@ class Analysis:
             traces = self.all_traces
 
         elif self.config_file is not None:
-            for i in range(len(self.files.data_files)):
-                st = read(self.files.data_files[i][0])
-                sd = SeismogramData(st, self.inventory)
-                tr = sd.run_analysis(self.config_file)
-                traces.append(tr)
+            with ProcessPoolExecutor() as executor:
+                futures = [
+                    executor.submit(
+                        self.process_trace,
+                        self.files.data_files[i][0],
+                        self.config_file,
+                        self.inventory,
+                        self.output
+                    )
+                    for i in range(len(self.files.data_files))
+                ]
+
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result is not None:
+                        traces.append(result)
                 if os.path.isdir(self.output):
                     tr.write(os.path.join(self.output, tr.id), 'mseed')
                 else:
@@ -773,6 +803,55 @@ class Analysis:
             self._exist_folder = False
             #os.makedirs(name)
 
+    def process_station(self, _station, df_files, df_inventory, event, lat, lon, depth, model, start, end, config_file,
+                        inventory):
+        from obspy import Stream, read, UTCDateTime
+        from obspy.taup import TauPyModel
+        import numpy as np
+        from datetime import timedelta
+
+        st_trimed_local = []
+        channels = df_files['channel'].unique()
+        df_station_filtered = df_files[df_files['station'] == _station]
+        inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
+
+        for _channel in channels:
+            files_filtered = df_files[(df_files['station'] == _station) & (df_files['channel'] == _channel)]
+            st = Stream()
+
+            if not inventory_filtered.empty:
+                for _, _file in files_filtered.iterrows():
+                    _st = read(_file['file'])
+                    gaps = _st.get_gaps()
+                    if len(gaps) > 0:
+                        _st.print_gaps()
+                    st += _st
+
+                st.merge(fill_value="interpolate")
+
+                distance_km, _, _ = gps2dist_azimuth(lat, lon,
+                                                     inventory_filtered['latitude'].tolist()[0],
+                                                     inventory_filtered['longitude'].tolist()[0])
+                distance_km = kilometer2degrees(distance_km / 1000)
+
+                arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km)
+                p_time = arrivals[0].time
+
+                start_cut = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=start)
+                end_cut = event["datetime"] + timedelta(seconds=p_time) + timedelta(seconds=end)
+
+                if not files_filtered.empty:
+                    if end_cut is not None and start_cut is not None:
+                        st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
+
+                    if config_file:
+                        sd = SeismogramData(st, inventory)
+                        tr = sd.run_analysis(config_file)
+                        st_trimed_local.append([files_filtered["file"].iloc[0], tr])
+                    else:
+                        st_trimed_local.append([files_filtered["file"].iloc[0], st.traces[0]])
+        return st_trimed_local
+
     def cut_files(self, start, end, rotate=False):
         # 1. Panda dataframe with events
         model = TauPyModel("iasp91")
@@ -806,62 +885,28 @@ class Analysis:
             self.create_folder(event_folder)
     
             for index, file in df_project.iterrows():
-                if (file['start'] <= start_event and file['end'] >= start_event) or (file['start'] <= end_event and file['end'] >= end_event) or (file['start'] <= start_event and file['end'] >= end_event):
+                if (file['start'] <= start_event and file['end'] >= start_event) or \
+                        (file['start'] <= end_event and file['end'] >= end_event) or \
+                        (file['start'] <= start_event and file['end'] >= end_event):
                     df_files = pd.concat([df_files, file.to_frame().T], ignore_index=True)
 
             stations = df_files['station'].unique()
             channels = df_files['channel'].unique()
             df_files['file'] = df_files['file'].astype(str) 
             st_trimed = []
-            for _station in stations:
-                st_rotated = None
-                df_station_filtered = df_files[df_files['station'] == _station]
-                inventory_filtered = df_inventory[(df_inventory['station'] == _station)]
 
-                for _channel in channels:
-                    files_filtered = df_files[(df_files['station'] == _station) & (df_files['channel'] == _channel)]
-                    
-                    st = Stream()
-                    if not inventory_filtered.empty:
-                        for index, _file in files_filtered.iterrows():
-                            _st = read(_file['file'])
-                            gaps = _st.get_gaps()
+            with ProcessPoolExecutor() as executor:
+                futures = [
+                    executor.submit(self.process_station, _station, df_files, df_inventory, event, lat, lon, depth,
+                                    model, start, end, self.config_file, self.inventory)
+                    for _station in stations
+                ]
 
-                            if len(gaps) > 0:
-                                _st.print_gaps()
-                        
-                            st += _st
-
-                        st.merge(fill_value="interpolate")
-                        
-
-
-                        distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory_filtered['latitude'].tolist()[0], inventory_filtered['longitude'].tolist()[0])
-                        distance_km = kilometer2degrees(distance_km/1000)
-
-                    # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
-                        arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km)
-                    
-                    
-                        p_time = arrivals[0].time
-                        s_time = None
-
-                
-                        start_cut = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=start)
-                        end_cut = event["datetime"] + timedelta(seconds=p_time) + timedelta(seconds=end)
-                        
-                        if not files_filtered.empty:
-                            file = files_filtered["file"].tolist()[0].split("/")
-
-                            if end_cut is not None and start_cut is not None:
-                                st.trim(UTCDateTime(start_cut), UTCDateTime(end_cut))
-
-                            if self.config_file:
-                                sd = SeismogramData(st, self.inventory)
-                                tr = sd.run_analysis(self.config_file)
-                                st_trimed.append([files_filtered["file"].iloc[0],tr])
-                            else:
-                                st_trimed.append([files_filtered["file"].iloc[0],st.traces[0]])
+                for future in as_completed(futures):
+                    try:
+                        st_trimed.extend(future.result())
+                    except Exception as e:
+                        print(f"Error processing station: {e}")
 
             df_files['trace'] = ''
             df_files['component1'] = ''

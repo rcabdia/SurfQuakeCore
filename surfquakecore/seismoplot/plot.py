@@ -8,6 +8,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & Cristina Palacios
 # Email: rcabdia@roa.es
 """
+import platform
 from typing import List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 from obspy.core.trace import Trace
@@ -17,7 +18,14 @@ import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 
-mplt.use("TkAgg")
+# Choose best backend before importing pyplot
+if platform.system() == 'Darwin':  # macOS
+    mplt.use("MacOSX")
+elif platform.system() == 'Linux':
+    mplt.use("TkAgg")  # or "Agg" for headless servers
+# Windows could be added if needed
+# elif platform.system() == 'Windows':
+#     mplt.use("TkAgg")
 # More Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:

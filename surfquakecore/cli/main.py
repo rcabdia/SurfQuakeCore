@@ -709,7 +709,7 @@ def _processing():
             start = 300
             end = 300
             
-        sd.run_analysis(start, end, parsed_args.rotate, plot=parsed_args.plots)
+        sd.run_processing(start, end, parsed_args.rotate, plot=parsed_args.plots)
 
 if __name__ == "__main__":
     freeze_support()
