@@ -635,7 +635,7 @@ def _processing():
             Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
             Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
             -e [event_file] -n [net] -s [station] -ch [channel] -st [start_time] -et [end_time] -cs [cut_start_time]
-            -ce [cut_end_time] -t [cut_time] -r [rotate_seismograms_to_GAC]
+            -ce [cut_end_time] -t [cut_time] -r [rotate_seismograms_to_GAC] -l [if interactive plot seismograms]
         """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
