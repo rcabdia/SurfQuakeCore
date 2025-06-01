@@ -1,5 +1,5 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from obspy import read, Stream, read_inventory, UTCDateTime
+from obspy import read_inventory
 from obspy.taup import TauPyModel
 from obspy.geodetics import gps2dist_azimuth, kilometer2degrees
 import os
@@ -11,6 +11,8 @@ from multiprocessing import freeze_support
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.data_processing.seismogram_analysis import SeismogramData
 from surfquakecore.seismoplot.plot import PlotProj
+from obspy import Stream, read, UTCDateTime
+
 
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_white_noise', 'whitening', 'remove_spikes',
@@ -604,7 +606,7 @@ class Check:
 
 class Analysis:
 
-    def __init__(self, files, output, inventory=None, config_file=None, event_file=None):
+    def __init__(self, files, output=None, inventory=None, config_file=None, event_file=None):
         self.output = output
         self.files = files
         self._exist_folder = False
@@ -619,7 +621,13 @@ class Analysis:
 
         if config_file is not None:
             self.config_file = self.load_analysis_configuration(config_file)
-        
+
+        if self.output is not None:
+            if os.path.isdir(self.output):
+                print("Output Directory: ", self.output)
+            else:
+                print("Traces will be process and might be plot: ", self.output)
+                self.output = None
 
         if event_file is not None:
             self.event_file = event_file        
@@ -688,12 +696,13 @@ class Analysis:
             tr = sd.run_analysis(config_file)
 
             # Optional: Write to disk if output directory exists
-            if os.path.isdir(output_dir):
+            if output_dir is not None:
                 tr.write(os.path.join(output_dir, tr.id), 'mseed')
             else:
-                print(f"Output dir doesn't exist. Not writing {tr.id}")
+                pass
 
             return tr
+
         except Exception as e:
             print(f"Error processing {file_path}: {e}")
             return None
@@ -701,10 +710,10 @@ class Analysis:
     def run_processing(self, start, end, rotate=False, plot=False):
         traces = []
 
-        # 1.- Check self.event_file is not None
-        if self.event_file is not None:
+        # 1. Check self.event_file is not None
+        if self.event_file is not None and self.inventory is not None:
 
-        # 2.- Cut event files
+        # 2. Cut event files
             self.cut_files(start, end, rotate)
             traces = self.all_traces
 
@@ -725,14 +734,11 @@ class Analysis:
                     result = future.result()
                     if result is not None:
                         traces.append(result)
-                if os.path.isdir(self.output):
-                    tr.write(os.path.join(self.output, tr.id), 'mseed')
-                else:
-                    print("No writting traces to the hard drive")
+
 
         if plot:
             plotter = PlotProj(traces, metadata=self.inventory)
-            plotter.plot(traces_per_fig=4, sort_by='distance')
+            plotter.plot(traces_per_fig=5, sort_by='distance')
 
 
 
@@ -805,10 +811,7 @@ class Analysis:
 
     def process_station(self, _station, df_files, df_inventory, event, lat, lon, depth, model, start, end, config_file,
                         inventory):
-        from obspy import Stream, read, UTCDateTime
-        from obspy.taup import TauPyModel
-        import numpy as np
-        from datetime import timedelta
+
 
         st_trimed_local = []
         channels = df_files['channel'].unique()

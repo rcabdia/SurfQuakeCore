@@ -245,15 +245,9 @@ def check_remove_response(config):
                          f"AnalysisConfig")
 
 def check_differentiate(config):
-    _config_keys = config.keys()
 
-    if 'diff' in _config_keys:
-        if isinstance(config['diff'], bool):
-            return True
-        else:
-            raise ValueError(f"DIFFERENTIATE: config {config} is not valid. It must be a valid .yaml file for "
-                             f"AnalysisConfig."
-                             f"Wrong type for diff. Must be bool")
+    if 'method' in config.keys():
+        return True
 
     else:
         raise ValueError(f"DIFFERENTIATE:config {config} is not valid. It must be a valid .yaml file for "

@@ -642,10 +642,10 @@ def _processing():
                            required=True) 
 
     arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here", 
-                           type=str, required=True)
+                           type=str, required=False)
     
     arg_parse.add_argument("-i", "--inventory_file", help="metadata file. xml extension", type=str, 
-                           required=True)
+                           required=False)
     
     arg_parse.add_argument("-c", "--config_file", help="absolute path to config file", type=str,
                            required=False),
@@ -692,7 +692,8 @@ def _processing():
                                   parsed_args.start_time, parsed_args.end_time)
     
     if len(files) > 0:
-        sd = Analysis(_files, parsed_args.output_folder, parsed_args.inventory_file,parsed_args.config_file, parsed_args.event_file)
+        sd = Analysis(_files, parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
+                      parsed_args.event_file)
         
         # Calculate start and end time
         if parsed_args.cut_start_time is not None:
