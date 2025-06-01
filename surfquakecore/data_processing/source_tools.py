@@ -57,7 +57,7 @@ class ReadSource:
                     pass
 
     def read_file(self, file_path):
-        return  self.__read_yaml_file(file_path)
+        return self.__read_yaml_file(file_path)
 
     def generate_source_summary(self):
 

@@ -1,4 +1,6 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+import yaml
 from obspy import read_inventory
 from obspy.taup import TauPyModel
 from obspy.geodetics import gps2dist_azimuth, kilometer2degrees
@@ -251,19 +253,12 @@ class Check:
 
     def check_differentiate(self, config):
         _config_keys = config.keys()
-
-        if 'diff' in _config_keys:
-            if isinstance(config['diff'], bool):
-                return True
-            else:
-                raise ValueError(f"DIFFERENTIATE: config {config} is not valid. It must be a valid .yaml file for "
-                                 f"AnalysisConfig."
-                                 f"Wrong type for diff. Must be bool")
-
+        if 'method' in _config_keys:
+            return True
         else:
             raise ValueError(f"DIFFERENTIATE:config {config} is not valid. It must be a valid .yaml file for "
-                             f"AnalysisConfig."
-                             f"diff parameter is required.")
+                                 f"AnalysisConfig."
+                                 f"diff parameter is required.")
 
     def check_wiener_filter(self, config):
         _config_keys = config.keys()
@@ -677,10 +672,15 @@ class Analysis:
             return project.filter_time()
 
     def load_analysis_configuration(self, config_file: str):
-        rs = ReadSource(config_file)
-        config = rs.read_file(config_file)
+        with open(config_file, 'r') as file:
+            try:
+                yaml_data = yaml.safe_load(file)
+                print(os.path.basename(file.name))
+            except:
+                print("Conflictive file at ", os.path.basename(file.name))
+                yaml_data = None
         chk = Check()
-        return chk.parse_configuration_file(config)
+        return chk.parse_configuration_file(yaml_data)
 
     def get_project_files(self, project_path):
         freeze_support()
