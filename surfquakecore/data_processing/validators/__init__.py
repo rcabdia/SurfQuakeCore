@@ -7,7 +7,7 @@ from .shift import validate_shift
 from .remove_response import validate_remove_response
 from .differentiate import validate_differentiate
 from .wiener_filter import validate_wiener_filter
-from .add_white_noise import validate_add_white_noise
+from .add_noise import validate_add_white_noise
 from .whitening import validate_whitening
 from .remove_spikes import validate_remove_spikes
 from .time_normalization import validate_time_normalization
@@ -26,7 +26,7 @@ CHECK_DISPATCH = {
     'remove_response': validate_remove_response,
     'differentiate': validate_differentiate,
     'wiener_filter': validate_wiener_filter,
-    'add_white_noise': validate_add_white_noise,
+    'add_noise': validate_add_white_noise,
     'whitening': validate_whitening,
     'remove_spikes': validate_remove_spikes,
     'time_normalization': validate_time_normalization,

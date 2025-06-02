@@ -3,5 +3,5 @@ from surfquakecore.data_processing.validators.utils import require_keys, optiona
 def validate_normalize(config):
     require_keys(config, ['norm'])
     if config['norm'] is not None:
-        optional_type(config, 'norm', float)
+        optional_type(config, 'norm', (float, bool))  # <- pass a tuple of accepted types
     return True

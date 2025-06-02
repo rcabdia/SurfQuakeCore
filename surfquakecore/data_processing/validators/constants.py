@@ -4,7 +4,7 @@
 constants
 """
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
-                 'shift', 'remove_response', 'add_white_noise', 'whitening', 'remove_spikes',
+                 'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
@@ -18,14 +18,14 @@ WAVELET_METHODS = ['db2','db4','db6','db8','db10','db12','db14','db16','db18','d
                    'coif10', 'coif12', 'coif14', 'coif16', 'bior1.1', 'bior1.3', 'bior1.5', 'bior2.2', 'bior2.4',
                    'bior2.6', 'bior2.8', 'bior3.3', 'bior3.5', 'bior3.7', 'bior3.9', 'bior4.4', 'bior5.5', 'bior6.8']
 
-INTEGRATE_METHODS = ['cumtrapz', 'spline']
+INTEGRATE_METHODS = ['cumtrapz', 'spline', 'spectral']
 
-FILTER_METHODS = ['bandpass', 'bandstop', 'lowpass', 'highpass', 'lowpass_cheby_2', 'lowpass_fir', 'remez_fir']
+FILTER_METHODS = ['bandpass', 'bandstop', 'lowpass', 'highpass', 'cheby1', 'cheby2', 'elliptic', 'bessel']
 
 TIME_METHODS = ['1bit', 'clipping', 'clipping_iteration','time_normalization']
 
 FILL_GAP_METHODS = ['latest', 'interpolate']
 
-SMOOTHING_METHODS = ['mean', 'gaussian', 'tkeo']
+SMOOTHING_METHODS = ['mean', 'gaussian', 'adaptive', 'tkeo']
 
 TAPER_SIDE = ['both', 'left', 'right']

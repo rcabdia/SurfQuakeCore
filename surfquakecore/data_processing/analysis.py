@@ -42,6 +42,38 @@ class Analysis:
         if event_file is not None:
             self.event_file = event_file        
 
+    def run_processing(self, start, end, rotate=False, plot=False):
+        traces = []
+
+        # 1. Check self.event_file is not None
+        if self.event_file is not None and self.inventory is not None:
+
+        # 2. Cut event files
+            self.cut_files(start, end, rotate)
+            traces = self.all_traces
+
+        elif self.config_file is not None:
+            with ProcessPoolExecutor() as executor:
+                futures = [
+                    executor.submit(
+                        self.process_trace,
+                        self.files.data_files[i][0],
+                        self.config_file,
+                        self.inventory,
+                        self.output
+                    )
+                    for i in range(len(self.files.data_files))
+                ]
+
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result is not None:
+                        traces.append(result)
+
+
+        if plot:
+            plotter = PlotProj(traces, metadata=self.inventory)
+            plotter.plot(traces_per_fig=5, sort_by='distance')
     @staticmethod
     def filter_files(project, net=None, station=None, channel=None, starttime=None, endtime=None):
         filter = {}
@@ -121,40 +153,6 @@ class Analysis:
         except Exception as e:
             print(f"Error processing {file_path}: {e}")
             return None
-
-    def run_processing(self, start, end, rotate=False, plot=False):
-        traces = []
-
-        # 1. Check self.event_file is not None
-        if self.event_file is not None and self.inventory is not None:
-
-        # 2. Cut event files
-            self.cut_files(start, end, rotate)
-            traces = self.all_traces
-
-        elif self.config_file is not None:
-            with ProcessPoolExecutor() as executor:
-                futures = [
-                    executor.submit(
-                        self.process_trace,
-                        self.files.data_files[i][0],
-                        self.config_file,
-                        self.inventory,
-                        self.output
-                    )
-                    for i in range(len(self.files.data_files))
-                ]
-
-                for future in as_completed(futures):
-                    result = future.result()
-                    if result is not None:
-                        traces.append(result)
-
-
-        if plot:
-            plotter = PlotProj(traces, metadata=self.inventory)
-            plotter.plot(traces_per_fig=5, sort_by='distance')
-
 
 
     def run_cut_waveforms(self, project, events, inventories, deltastart, deltaend):
