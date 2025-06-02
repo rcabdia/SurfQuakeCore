@@ -1,0 +1,16 @@
+def require_keys(config, required_keys):
+    missing = [key for key in required_keys if key not in config]
+    if missing:
+        raise ValueError(f"Missing required keys: {missing}")
+
+def require_type(config, key, expected_type):
+    if not isinstance(config[key], expected_type):
+        raise ValueError(
+            f"Key '{key}' must be of type {expected_type.__name__}, got {type(config[key]).__name__}"
+        )
+
+def optional_type(config, key, expected_type):
+    if key in config and not isinstance(config[key], expected_type):
+        raise ValueError(
+            f"Optional key '{key}' must be of type {expected_type.__name__}, got {type(config[key]).__name__}"
+        )
