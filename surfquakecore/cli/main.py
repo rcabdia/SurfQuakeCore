@@ -639,7 +639,7 @@ def _processing():
         """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
-                           required=True) 
+                           required=True)
 
     arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here", 
                            type=str, required=False)

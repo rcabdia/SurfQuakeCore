@@ -7,7 +7,6 @@ config_parser
 from surfquakecore.data_processing.validators.constants import ANALYSIS_KEYS
 from surfquakecore.data_processing.validators import validate_step
 
-# TODO REMAINING REMOVE RESPONSE AND REMOVE SPIKES
 
 def parse_configuration_file(config):
     """
@@ -69,6 +68,9 @@ def parse_configuration_file(config):
             parsed_config.append(parse_resample(step_config))
         elif name == 'wiener_filter':
             parsed_config.append(parse_wiener_filter(step_config))
+        elif name == 'remove_response':
+            parsed_config.append(parse_remove_response(step_config))
+
 
         else:
             parsed_config.append(step_config)
@@ -215,6 +217,25 @@ def parse_filter(config):
 
     return target
 
+def parse_remove_response(config):
+    """
+    Parse and remove_response configuration into standard template.
+
+    Args:
+        config (dict): User-provided remove_response configuration.
+
+    Returns:
+        dict: remove_response configuration suitable for processing.
+    """
+    template = {
+        'name': 'remove_response',
+        'pre_filt': [0.01, 0.02, 40, 42],
+        'water_level': 90,
+        'units': 'VEL'}
+
+    template.update(config)
+    return template
+
 def parse_dwt(config):
     """
     Parse whitening configuration and set defaults if not provided.
@@ -298,7 +319,8 @@ def parse_remove_spikes(config):
     """
     template = {
         'name': 'remove_spikes',
-        'n': 3
+        'window_size': 5,
+        'sigma': 3
     }
     template.update(config)
     return template

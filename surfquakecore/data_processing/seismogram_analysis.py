@@ -2,8 +2,8 @@ from obspy import Stream
 import numpy as np
 from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
-    wiener_filter, add_frequency_domain_noise, whiten, hampel, normalize, wavelet_denoise, safe_downsample, smoothing
-
+    wiener_filter, add_frequency_domain_noise, whiten, normalize, wavelet_denoise, safe_downsample, smoothing
+from surfquakecore.cython_module.hampel import hampel
 
 class SeismogramData:
     def __init__(self, stream, inventory, realtime=False, **kwargs):
@@ -61,7 +61,7 @@ class SeismogramData:
 
         start_time = kwargs.get("start_time", self.stats.StartTime)
         end_time = kwargs.get("end_time", self.stats.EndTime)
-        # trace_number = kwargs.get("trace_number", 0)
+        trace_number = kwargs.get("trace_number", 0)
         tr = self.tracer
 
         tr.trim(starttime=start_time, endtime=end_time)
@@ -109,17 +109,13 @@ class SeismogramData:
                 tr = wiener_filter(tr, time_window=_config['time_window'],
                                    noise_power=_config['noise_power'])
 
-            if _config['name'] == 'shift':
-                shifts = _config['time_shifts']
-                shifts = shifts.split(",")
-                for i in range(0, len(shifts) - 1):
-                    tr.stats.starttime = tr.stats.starttime + shifts[i]
+            # if _config['name'] == 'shift':
+            #     shifts = _config['time_shifts']
+            #     for i in range(0, len(shifts)-1):
+            #         tr.stats.starttime = tr.stats.starttime + shifts[i]
 
             if _config['name'] == 'remove_response':
-                # inventory = read_inventory(_config['inventory'])
-                # print(inventory)
                 if _config['units'] != "Wood Anderson":
-                    # print("Deconvolving")
                     try:
                         tr.remove_response(inventory=self.inventory, pre_filt=_config['pre_filt'],
                                            output=_config['units'], water_level=_config['water_level'])
@@ -153,8 +149,10 @@ class SeismogramData:
                 tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
 
             if _config['name'] == 'remove_spikes':
-                # TODO: NEED to be added the CYTHON OPTION FROM ISP
-                tr = hampel(tr, _config['window_size'], _config['n'])
+
+                filtered, outliers, medians, mads, thresholds = (
+                    hampel(tr.data, _config['window_size'] * tr.stats.sampling_rate, _config['sigma']))
+                tr.data = filtered
 
             if _config['name'] == 'time_normalization':
                 if 'norm_win' in _config.keys():

@@ -16,21 +16,25 @@ from surfquakecore.data_processing.parser.config_parser import parse_configurati
 
 class Analysis:
 
-    def __init__(self, files, output=None, inventory=None, config_file=None, event_file=None):
+    def __init__(self, files, output=None, inventory_file=None, config_file=None, event_file=None):
         self.output = output
         self.files = files
         self._exist_folder = False
         self.inventory = None
         self.all_traces = []
 
-        if inventory:
-            self.inventory = read_inventory(inventory)
+        if inventory_file:
+            try:
+                self.inventory = read_inventory(inventory_file)
+                print(self.inventory)
+            except:
+                print("Warning NO VALID inventory file: ", inventory_file)
 
-        self.config_file = None
-        self.event_file = None
+        self.config = None
+        self.events = None
 
         if config_file is not None:
-            self.config_file = self.load_analysis_configuration(config_file)
+            self.config = self.load_analysis_configuration(config_file)
 
         if self.output is not None:
             if os.path.isdir(self.output):
@@ -40,25 +44,25 @@ class Analysis:
                 self.output = None
 
         if event_file is not None:
-            self.event_file = event_file        
+            self.events = event_file
 
     def run_processing(self, start, end, rotate=False, plot=False):
         traces = []
 
         # 1. Check self.event_file is not None
-        if self.event_file is not None and self.inventory is not None:
+        if self.events is not None and self.inventory is not None:
 
         # 2. Cut event files
             self.cut_files(start, end, rotate)
             traces = self.all_traces
 
-        elif self.config_file is not None:
+        elif self.config is not None:
             with ProcessPoolExecutor() as executor:
                 futures = [
                     executor.submit(
                         self.process_trace,
                         self.files.data_files[i][0],
-                        self.config_file,
+                        self.config,
                         self.inventory,
                         self.output
                     )
@@ -70,6 +74,19 @@ class Analysis:
                     if result is not None:
                         traces.append(result)
 
+
+        # check if shifts are requested
+        shift_dict = next((item for item in self.config if item.get('name') == 'shift'), None)
+        if shift_dict:
+            try:
+                for i in range(len(traces)-1):
+
+                    original = traces[i].stats.starttime
+                    traces[i].stats.starttime = original + shift_dict['time_shifts'][i]
+                    print(original, traces[i].stats.starttime, shift_dict['time_shifts'][i])
+                # Now `traces` is updated in-place
+            except Exception as e:
+                print(f"Error applying time shifts: {e}")
 
         if plot:
             plotter = PlotProj(traces, metadata=self.inventory)
@@ -203,9 +220,9 @@ class Analysis:
                         st.trim(UTCDateTime(start), UTCDateTime(end))
 
                         st_rotated = self.rotate_stream_to_GEAC(st, self.inventory, lat, lon)
-                        if self.config_file:
+                        if self.config:
                             sd = SeismogramData(st_rotated, self.inventory)
-                            tr = sd.run_analysis(self.config_file)
+                            tr = sd.run_analysis(self.config)
                         else:
                             tr = st
                       
@@ -271,7 +288,7 @@ class Analysis:
     def cut_files(self, start, end, rotate=False):
         # 1. Panda dataframe with events
         model = TauPyModel("iasp91")
-        df_events = pd.read_csv(self.event_file, sep=';')
+        df_events = pd.read_csv(self.events, sep=';')
         df_events['datetime'] = pd.to_datetime((df_events['date'] + ' ' + df_events['hour']), utc=True)
         
         # 2. Project dataframe
@@ -316,7 +333,7 @@ class Analysis:
             with ProcessPoolExecutor() as executor:
                 futures = [
                     executor.submit(self.process_station, _station, df_files, df_inventory, event, lat, lon, depth,
-                                    model, start, end, self.config_file, self.inventory)
+                                    model, start, end, self.config, self.inventory)
                     for _station in stations
                 ]
 
