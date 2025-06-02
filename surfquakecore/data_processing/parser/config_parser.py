@@ -7,7 +7,7 @@ config_parser
 from surfquakecore.data_processing.validators.constants import ANALYSIS_KEYS
 from surfquakecore.data_processing.validators import validate_step
 
-
+# TODO REMAINING REMOVE RESPONSE AND REMOVE SPIKES
 
 def parse_configuration_file(config):
     """
@@ -49,6 +49,8 @@ def parse_configuration_file(config):
             parsed_config.append(parse_filter(step_config))
         elif name == 'whitening':
             parsed_config.append(parse_whitening(step_config))
+        elif name == 'time_normalization':
+            parsed_config.append(parse_time_normalization(step_config))
         elif name == 'dwt':
             parsed_config.append(parse_dwt(step_config))
         elif name == 'remove_spikes':
@@ -61,6 +63,12 @@ def parse_configuration_file(config):
             parsed_config.append(parse_integrate(step_config))
         elif name == 'smoothing':
             parsed_config.append(parse_smoothing(step_config))
+        elif name == 'fill_gaps':
+            parsed_config.append(parse_fill_gaps(step_config))
+        elif name == 'resample':
+            parsed_config.append(parse_resample(step_config))
+        elif name == 'wiener_filter':
+            parsed_config.append(parse_wiener_filter(step_config))
 
         else:
             parsed_config.append(step_config)
@@ -135,11 +143,49 @@ def parse_smoothing(config):
         'method': 'gaussian',
         'time_window': 5,
         'FWHM': 0.05}
-    
+
     template.update(config)
 
     return template
 
+def parse_fill_gaps(config):
+    """
+            Parse fill_gaps configuration and fill in defaults where necessary.
+
+            Args:
+                config (dict): User-provided fill_gaps configuration.
+
+            Returns:
+                dict: Completed fill_gaps configuration.
+            """
+
+    template = {
+        'name': 'fill_gaps',
+        'method': 'latest'}
+
+    template.update(config)
+
+    return template
+
+def parse_resample(config):
+    """
+            Parse resample configuration and fill in defaults where necessary.
+
+            Args:
+                config (dict): User-provided resample configuration.
+
+            Returns:
+                dict: Completed resample configuration.
+            """
+
+    template = {
+        'name': 'resample',
+        'sampling_rate': 10,
+        'pre_filter': True}
+
+    template.update(config)
+
+    return template
 
 def parse_filter(config):
     """
@@ -272,6 +318,43 @@ def parse_add_noise(config):
         'name': 'add_noise',
         'noise_type': 'white',
         'SNR_dB': 1}
+
+    template.update(config)
+    return template
+
+def parse_time_normalization(config):
+    """
+        Parse time_normalization configuration, filling default for missing fields.
+
+        Args:
+            config (dict): User-provided time_normalization configuration.
+
+        Returns:
+            dict: time_normalization configuration.
+    """
+
+    template = {
+        'name': 'time_normalization',
+        'method': '1bit'}
+
+    template.update(config)
+    return template
+
+def parse_wiener_filter(config):
+    """
+        Parse wiener_filter configuration, filling default for missing fields.
+
+        Args:
+            config (dict): User-provided wiener_filter configuration.
+
+        Returns:
+            dict: wiener_filter configuration.
+    """
+
+    template = {
+        'name': 'wiener_filter',
+        'time_window': 1.0,
+        'noise_power': 0}
 
     template.update(config)
     return template

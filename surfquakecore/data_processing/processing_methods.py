@@ -401,7 +401,7 @@ def __hampel_aux(input_series, window_size, size, n_sigmas):
     return new_series
 
 
-def normalize(tr, clip_factor=6, clip_weight=10, norm_win=None, norm_method="1bit"):
+def normalize(tr, clip_factor=6, clip_weight=10, norm_win=10, norm_method="1bit"):
     if norm_method == 'clipping':
         lim = clip_factor * np.std(tr.data)
         tr.data[tr.data > lim] = lim

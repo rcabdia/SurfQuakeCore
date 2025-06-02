@@ -157,16 +157,19 @@ class SeismogramData:
                 tr = hampel(tr, _config['window_size'], _config['n'])
 
             if _config['name'] == 'time_normalization':
-                tr = normalize(tr, norm_win=_config['norm_win'], norm_method=_config['method'])
+                if 'norm_win' in _config.keys():
+                    tr = normalize(tr, norm_win=_config['norm_win'], norm_method=_config['method'])
+                else:
+                    tr = normalize(tr, norm_method=_config['method'])
 
             if _config['name'] == 'wavelet_denoise':
                 tr = wavelet_denoise(tr, dwt=_config['dwt'], threshold=_config['threshold'])
 
             if _config['name'] == 'resample':
-                if tr.sats.sampling_rate < _config['sampling_rate']:
+                if tr.stats.sampling_rate < _config['sampling_rate']:
                     tr.resample(sampling_rate=_config['sampling_rate'], window='hanning',
                                 no_filter=_config['pre_filter'])
-                elif tr.sats.sampling_rate > _config['sampling_rate']:
+                elif tr.stats.sampling_rate > _config['sampling_rate']:
                     tr = safe_downsample(tr, _config['sampling_rate'], pre_filter=_config['pre_filter'])
                 else:
                     pass

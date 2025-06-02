@@ -22,7 +22,7 @@ INTEGRATE_METHODS = ['cumtrapz', 'spline', 'spectral']
 
 FILTER_METHODS = ['bandpass', 'bandstop', 'lowpass', 'highpass', 'cheby1', 'cheby2', 'elliptic', 'bessel']
 
-TIME_METHODS = ['1bit', 'clipping', 'clipping_iteration','time_normalization']
+TIME_METHODS = ['1bit', 'clipping', 'clipping iteration','time normalization']
 
 FILL_GAP_METHODS = ['latest', 'interpolate']
 
