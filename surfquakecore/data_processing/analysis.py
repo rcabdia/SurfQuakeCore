@@ -14,6 +14,7 @@ from surfquakecore.seismoplot.plot import PlotProj
 from obspy import Stream, read, UTCDateTime
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
 
+
 class Analysis:
 
     def __init__(self, files, output=None, inventory_file=None, config_file=None, event_file=None):
@@ -46,15 +47,18 @@ class Analysis:
         if event_file is not None:
             self.events = event_file
 
-    def run_processing(self, start, end, rotate=False, plot=False):
+    def run_processing(self, start, end, plot=False):
         traces = []
 
         # 1. Check self.event_file is not None
         if self.events is not None and self.inventory is not None:
 
-        # 2. Cut event files
+            # 2. Cut event files & Check if Rotate
+            rotate = next((item for item in self.config if item.get('name') == 'rotate'), None)
             self.cut_files(start, end, rotate)
-            traces = self.all_traces
+
+            if len(self.all_traces) > 0:
+                traces = self.all_traces
 
         elif self.config is not None:
             with ProcessPoolExecutor() as executor:
@@ -74,13 +78,11 @@ class Analysis:
                     if result is not None:
                         traces.append(result)
 
-
-        # check if shifts are requested
+        # Check if shifts are requested
         shift_dict = next((item for item in self.config if item.get('name') == 'shift'), None)
         if shift_dict:
             try:
-                for i in range(len(traces)-1):
-
+                for i in range(len(traces) - 1):
                     original = traces[i].stats.starttime
                     traces[i].stats.starttime = original + shift_dict['time_shifts'][i]
                     print(original, traces[i].stats.starttime, shift_dict['time_shifts'][i])
@@ -88,9 +90,10 @@ class Analysis:
             except Exception as e:
                 print(f"Error applying time shifts: {e}")
 
-        if plot:
+        if plot and len(traces)>0:
             plotter = PlotProj(traces, metadata=self.inventory)
             plotter.plot(traces_per_fig=5, sort_by='distance')
+
     @staticmethod
     def filter_files(project, net=None, station=None, channel=None, starttime=None, endtime=None):
         filter = {}
@@ -100,7 +103,7 @@ class Analysis:
         # Filter net
         if net is not None:
             filter['net'] = net
-        
+
         # Filter station
         if station is not None:
             filter['station'] = station
@@ -114,16 +117,16 @@ class Analysis:
             try:
                 time['startime'] = UTCDateTime(datetime.strptime(starttime, date_format))
             except ValueError:
-                raise ValueError(f"Error: start time '{starttime}' does not hace the correct format ({date_format}).")    
+                raise ValueError(f"Error: start time '{starttime}' does not hace the correct format ({date_format}).")
 
-        # Filter end time
+                # Filter end time
         if endtime is not None:
             try:
                 time['endtime'] = UTCDateTime(datetime.strptime(endtime, date_format))
             except ValueError:
-                raise ValueError(f"Error: end time '{endtime}' does not hace the correct format ({date_format}).")  
+                raise ValueError(f"Error: end time '{endtime}' does not hace the correct format ({date_format}).")
 
-        # Apply filter
+                # Apply filter
         if len(filter) > 0:
             project.filter_project_keys(**filter)
         else:
@@ -171,7 +174,6 @@ class Analysis:
             print(f"Error processing {file_path}: {e}")
             return None
 
-
     def run_cut_waveforms(self, project, events, inventories, deltastart, deltaend):
         model = TauPyModel("iasp91")
         distance_event = []
@@ -182,7 +184,7 @@ class Analysis:
             lon = event['longitude']
             depth = event['depth']
             event_time = event['datetime']
-            
+
             # Crear carpeta
             event_folder = os.path.join(self.output, id)
 
@@ -190,26 +192,27 @@ class Analysis:
 
             for index, inventory in inventories.iterrows():
                 distance_km, _, _ = gps2dist_azimuth(lat, lon, inventory['latitude'], inventory['longitude'])
-                distance_km = kilometer2degrees(distance_km/1000)
+                distance_km = kilometer2degrees(distance_km / 1000)
 
                 # Calcular los tiempos de arribo para cada onda (P y S) para cada distancia
-                arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km, phase_list=["P", "S"])
-                
+                arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km,
+                                                  phase_list=["P", "S"])
+
                 if len(arrivals) == 0:
-                   arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km, phase_list=["p", "s"])
-                 
-                
+                    arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_km,
+                                                      phase_list=["p", "s"])
+
                 p_time = None
                 s_time = None
 
                 if len(arrivals) > 0:
-                # Guardamos los tiempos de las ondas P y S
+                    # Guardamos los tiempos de las ondas P y S
                     for arrival in arrivals:
                         if (arrival.name == 'P' or arrival.name == 'p') and p_time is None:
                             p_time = arrival.time
                         elif (arrival.name == 'S' or arrival.name == 's') and s_time is None:
                             s_time = arrival.time
-            
+
                     start = event["datetime"] + timedelta(seconds=p_time) - timedelta(seconds=deltastart)
                     end = event["datetime"] + timedelta(seconds=s_time) + timedelta(seconds=deltaend)
 
@@ -225,23 +228,22 @@ class Analysis:
                             tr = sd.run_analysis(self.config)
                         else:
                             tr = st
-                      
+
                         try:
-                            #if config -> tratar config
-                            #st.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
-                            tr.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+                            # if config -> tratar config
+                            # st.write(os.path.join(event_folder, file[len(file)-1]), 'mseed')
+                            tr.write(os.path.join(event_folder, file[len(file) - 1]), 'mseed')
                         except:
-                            print('Empty file')                        
-    
+                            print('Empty file')
+
     def create_folder(self, name):
         if not os.path.exists(name):
             print("The output folder does not exists")
             self._exist_folder = False
-            #os.makedirs(name)
+            # os.makedirs(name)
 
     def process_station(self, _station, df_files, df_inventory, event, lat, lon, depth, model, start, end, config_file,
                         inventory):
-
 
         st_trimed_local = []
         channels = df_files['channel'].unique()
@@ -290,10 +292,10 @@ class Analysis:
         model = TauPyModel("iasp91")
         df_events = pd.read_csv(self.events, sep=';')
         df_events['datetime'] = pd.to_datetime((df_events['date'] + ' ' + df_events['hour']), utc=True)
-        
+
         # 2. Project dataframe
         df_project = self.project_table()
-        
+
         # 3. Invetory dataframe
         df_inventory = self.inventory_table()
 
@@ -307,18 +309,18 @@ class Analysis:
             event_time = event['datetime']
             start_event = event['datetime'] - timedelta(seconds=start)
             end_event = event['datetime'] + timedelta(seconds=end)
-            
+
             # Crear carpeta
             _id = id.split(" ")
             _id[1] = _id[1].split(":")
             _id[1] = ''.join(_id[1])
 
             if self.output is not None:
-                event_folder = os.path.join(self.output, _id[0]+"_"+_id[1])
+                event_folder = os.path.join(self.output, _id[0] + "_" + _id[1])
                 self.create_folder(event_folder)
             else:
                 event_folder = None
-    
+
             for index, file in df_project.iterrows():
                 if (file['start'] <= start_event and file['end'] >= start_event) or \
                         (file['start'] <= end_event and file['end'] >= end_event) or \
@@ -327,7 +329,7 @@ class Analysis:
 
             stations = df_files['station'].unique()
             channels = df_files['channel'].unique()
-            df_files['file'] = df_files['file'].astype(str) 
+            df_files['file'] = df_files['file'].astype(str)
             st_trimed = []
 
             with ProcessPoolExecutor() as executor:
@@ -345,7 +347,7 @@ class Analysis:
 
             df_files['trace'] = ''
             df_files['component1'] = ''
-            df_files['component2'] = ''         
+            df_files['component2'] = ''
 
             if rotate:
                 for i in range(len(st_trimed)):
@@ -355,7 +357,7 @@ class Analysis:
 
                     _component = list(st_trimed[i][1].stats['channel'])
 
-                    df_files.at[_index, 'component1'] = _component[0]+_component[1]
+                    df_files.at[_index, 'component1'] = _component[0] + _component[1]
                     df_files.at[_index, 'component2'] = _component[2]
 
                 # Rotate
@@ -380,13 +382,12 @@ class Analysis:
                         else:
                             pass
 
-                        if len(tr.data)>0:
+                        if len(tr.data) > 0:
                             self.all_traces.append(tr)
 
                     except Exception as e:
                         errors = True
                         print(f"File cannot be written: Error: {e}")
-
 
     def rotate(self, df_rotate, inventory, output):
         # 1. Project dataframe
@@ -395,31 +396,33 @@ class Analysis:
         ZNE = ['Z', 'N', 'E']
         Z12 = ['Z', '1', '2']
         ZXY = ['Z', 'X', 'Y']
-        #channels = df_files['channel'].unique()
+        # channels = df_files['channel'].unique()
 
         for _station in stations:
             st_rotated = None
             df_station_filtered = df_rotate[df_rotate['station'] == _station]
             inventory_filtered = inventory[(inventory['station'] == _station)]
             merged = Stream()
-            if len(df_station_filtered) > 1:             
+            if len(df_station_filtered) > 1:
                 for _component in component:
                     df_component_filtered = df_station_filtered[df_station_filtered['component1'] == _component]
-                    
-                    if df_component_filtered['component2'].isin(ZNE).sum() == 3 or df_component_filtered['component2'].isin(Z12).sum() == 3 or df_component_filtered['component2'].isin(ZXY).sum() == 3:
+
+                    if df_component_filtered['component2'].isin(ZNE).sum() == 3 or df_component_filtered[
+                        'component2'].isin(Z12).sum() == 3 or df_component_filtered['component2'].isin(ZXY).sum() == 3:
                         for index, _trace in df_component_filtered.iterrows():
                             if _trace['trace'].stats.channel[-1] in ['1', 'Y']:
                                 _trace['trace'].stats.channel = _trace['trace'].stats.channel[0:2] + 'N'
-                                #_trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "N")
+                                # _trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "N")
                             elif _trace['trace'].stats.channel[-1] in ['2', 'X']:
                                 _trace['trace'].stats.channel = _trace['trace'].stats.channel[0:2] + 'E'
-                    
-                                #_trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "E")
+
+                                # _trace['trace'].stats.channel.replace(_trace['trace'].stats.channel[-1], "E")
                             merged += _trace['trace']
 
+                        st_rotated = self.rotate_stream_to_GEAC(merged, self.inventory,
+                                                                inventory_filtered['latitude'].iloc[0],
+                                                                inventory_filtered['longitude'].iloc[0])
 
-                        st_rotated = self.rotate_stream_to_GEAC(merged,self.inventory, inventory_filtered['latitude'].iloc[0], inventory_filtered['longitude'].iloc[0])
-                        
                         for j, tr in enumerate(st_rotated[0].traces):
                             try:
                                 t1 = tr.stats.starttime
@@ -437,7 +440,7 @@ class Analysis:
                                         tr.write(path_output, format="MSEED")
                                     else:
                                         pass
-                                if len(tr.data)>0:
+                                if len(tr.data) > 0:
                                     self.all_traces.append(tr)
 
                             except Exception as e:
@@ -460,7 +463,7 @@ class Analysis:
             _net.append(self.find_stats(self.files.project, project_files[0], 'network'))
             _station.append(self.find_stats(self.files.project, project_files[0], 'station'))
             _channel.append(self.find_stats(self.files.project, project_files[0], 'channel'))
-    
+
         df_project['file'] = _file
         df_project['start'] = _start
         df_project['end'] = _end
@@ -479,9 +482,9 @@ class Analysis:
                 if name in sublist:
                     _i = sublist.index(name)
                     return lists[_value[0]][_i][1][stat]
-    
+
         return None
-        
+
     def inventory_table(self):
         df_inventory = pd.DataFrame(columns=['net', 'station', 'latitude', 'longitude'])
         net_inventory = []
@@ -502,7 +505,7 @@ class Analysis:
         df_inventory['longitude'] = longitude_inventory
 
         return df_inventory
-    
+
     def rotate_stream_to_GEAC(self, stream, inventory, epicenter_lat, epicenter_lon):
         """
         Rotates an ObsPy Stream to Great Circle Arc Coordinates (GEAC) using an inventory.
@@ -517,7 +520,7 @@ class Analysis:
         Returns:
             list: A list of ObsPy Stream objects, each corresponding to a station with rotated components.
         """
-        #inventory = read_inventory(inventory)
+        # inventory = read_inventory(inventory)
 
         # Step 1: Group traces by station
         station_dict = {}
@@ -587,7 +590,7 @@ class Analysis:
                 rotated_traces.append(tr_z.copy())  # Copy Z component as is
 
             rotated_streams.append(Stream(traces=rotated_traces))
-        
+
         if len(rotated_streams) > 0:
             return rotated_streams
         else:

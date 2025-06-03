@@ -15,6 +15,7 @@ from .wavelet_denoise import validate_wavelet_denoise
 from .resample import validate_resample
 from .fill_gaps import validate_fill_gaps
 from .smoothing import validate_smoothing
+from .rotate import validate_rotate
 
 CHECK_DISPATCH = {
     'rmean': validate_rmean,
@@ -34,6 +35,7 @@ CHECK_DISPATCH = {
     'resample': validate_resample,
     'fill_gaps': validate_fill_gaps,
     'smoothing': validate_smoothing,
+    'rotate': validate_rotate
 }
 
 def validate_step(step_type, config):

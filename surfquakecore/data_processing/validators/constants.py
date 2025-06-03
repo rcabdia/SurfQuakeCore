@@ -5,9 +5,11 @@ constants
 """
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
-                 'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing']
+                 'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
+
+ROTATE_METHODS = ['GAC', 'RT', 'LQT']
 
 TAPER_METHODS = ['cosine', 'barthann', 'bartlett', 'blackman', 'blackmanharris', 'bohman', 'boxcar', 'chebwin',
                  'flattop', 'gaussian', 'general_gaussian', 'hamming', 'hann', 'kaiser', 'nuttall', 'parzen', 'slepian',

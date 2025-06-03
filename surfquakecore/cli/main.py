@@ -635,7 +635,7 @@ def _processing():
             Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
             Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
             -e [event_file] -n [net] -s [station] -ch [channel] -st [start_time] -et [end_time] -cs [cut_start_time]
-            -ce [cut_end_time] -t [cut_time] -r [rotate_seismograms_to_GAC] -l [if interactive plot seismograms]
+            -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms]
         """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
@@ -668,8 +668,6 @@ def _processing():
     arg_parse.add_argument("-st", "--start_time", help="start project time filter, format 2022-10-21 13:14:30", type=str, required=False)
 
     arg_parse.add_argument("-et", "--end_time", help="end project time filter, format 2022-10-22 13:15:30", type=str, required=False)
-
-    arg_parse.add_argument("-r", "--rotate", help="rotate seismograms to GAC", action='store_true')
 
     arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
                            action="store_true")
@@ -710,7 +708,7 @@ def _processing():
             start = 300
             end = 300
             
-        sd.run_processing(start, end, parsed_args.rotate, plot=parsed_args.plots)
+        sd.run_processing(start, end, plot=parsed_args.plots)
 
 if __name__ == "__main__":
     freeze_support()
