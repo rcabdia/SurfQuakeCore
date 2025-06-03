@@ -13,13 +13,15 @@ from surfquakecore.data_processing.seismogram_analysis import SeismogramData
 from surfquakecore.seismoplot.plot import PlotProj
 from obspy import Stream, read, UTCDateTime
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
-
+from typing import Union, List, Optional
 
 class Analysis:
 
-    def __init__(self, files, output=None, inventory_file=None, config_file=None, event_file=None):
+    def __init__(self, output: Optional[str] = None,
+                 inventory_file: Optional[str] = None, config_file: Optional[str] = None,
+                 event_file: Optional[str] = None):
+
         self.output = output
-        self.files = files
         self._exist_folder = False
         self.inventory = None
         self.all_traces = []
@@ -32,7 +34,7 @@ class Analysis:
                 print("Warning NO VALID inventory file: ", inventory_file)
 
         self.config = None
-        self.events = None
+        self.df_events = None
 
         if config_file is not None:
             self.config = self.load_analysis_configuration(config_file)
@@ -45,17 +47,27 @@ class Analysis:
                 self.output = None
 
         if event_file is not None:
-            self.events = event_file
+            try:
+                self.df_events = pd.read_csv(event_file, sep=';')
+            except:
+                print("Cannot import event csv files")
 
-    def run_processing(self, start, end, plot=False):
+    def run_processing_loop(self, start, end, project: Union[SurfProject, List[SurfProject]], plot=False):
+        if isinstance(project, List):
+            for proj in project:
+                self._run_processing(start, end, proj, plot=plot)
+
+        else:
+            self._run_processing(start, end, project, plot=plot)
+    def _run_processing(self, start, end, project: Union[SurfProject, List[SurfProject]], plot=False):
         traces = []
 
         # 1. Check self.event_file is not None
-        if self.events is not None and self.inventory is not None:
+        if self.df_events is not None and self.inventory is not None:
 
             # 2. Cut event files & Check if Rotate
             rotate = next((item for item in self.config if item.get('name') == 'rotate'), None)
-            self.cut_files(start, end, rotate)
+            self.cut_files(start, end, project, rotate)
 
             if len(self.all_traces) > 0:
                 traces = self.all_traces
@@ -65,12 +77,12 @@ class Analysis:
                 futures = [
                     executor.submit(
                         self.process_trace,
-                        self.files.data_files[i][0],
+                        project.data_files[i][0],
                         self.config,
                         self.inventory,
                         self.output
                     )
-                    for i in range(len(self.files.data_files))
+                    for i in range(len(project.data_files))
                 ]
 
                 for future in as_completed(futures):
@@ -287,20 +299,19 @@ class Analysis:
                         st_trimed_local.append([files_filtered["file"].iloc[0], st.traces[0]])
         return st_trimed_local
 
-    def cut_files(self, start, end, rotate=False):
+    def cut_files(self, start, end, project, rotate=False):
         # 1. Panda dataframe with events
         model = TauPyModel("iasp91")
-        df_events = pd.read_csv(self.events, sep=';')
-        df_events['datetime'] = pd.to_datetime((df_events['date'] + ' ' + df_events['hour']), utc=True)
+        self.df_events['datetime'] = pd.to_datetime((self.df_events['date'] + ' ' + self.df_events['hour']), utc=True)
 
         # 2. Project dataframe
-        df_project = self.project_table()
+        df_project = self.project_table(project)
 
         # 3. Invetory dataframe
         df_inventory = self.inventory_table()
 
         # 4. Ver cada evento. Devolv
-        for index, event in df_events.iterrows():
+        for index, event in self.df_events.iterrows():
             df_files = pd.DataFrame(columns=df_project.columns)
             id = event['datetime'].strftime("%Y-%m-%d %H:%M:%S")
             lat = event['latitude']
@@ -447,7 +458,7 @@ class Analysis:
                                 errors = True
                                 print(f"File cannot be written: Error: {e}")
 
-    def project_table(self):
+    def project_table(self, project):
         df_project = pd.DataFrame(columns=['file', 'start', 'end', 'net', 'station', 'channel', 'day'])
         _file = []
         _start = []
@@ -456,13 +467,13 @@ class Analysis:
         _station = []
         _channel = []
 
-        for project_files in self.files.data_files:
+        for project_files in project.data_files:
             _file.append(project_files[0])
             _start.append(project_files[1])
             _end.append(project_files[2])
-            _net.append(self.find_stats(self.files.project, project_files[0], 'network'))
-            _station.append(self.find_stats(self.files.project, project_files[0], 'station'))
-            _channel.append(self.find_stats(self.files.project, project_files[0], 'channel'))
+            _net.append(self.find_stats(project.project, project_files[0], 'network'))
+            _station.append(self.find_stats(project.project, project_files[0], 'station'))
+            _channel.append(self.find_stats(project.project, project_files[0], 'channel'))
 
         df_project['file'] = _file
         df_project['start'] = _start

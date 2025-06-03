@@ -36,6 +36,7 @@ class _CliActions:
     run: callable
     description: str = ""
 
+
 def _create_actions():
     _actions = {
         "project": _CliActions(
@@ -172,7 +173,6 @@ def _pick():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.f)
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
 
@@ -291,7 +291,6 @@ def _locate():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-
     nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
 
     if parsed_args.generate_grid:
@@ -359,7 +358,6 @@ def _source():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
-
 
     # load_project #
     sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.project_file_path)
@@ -626,7 +624,10 @@ def _buildmticonfig():
                            mag_min=float(parsed_args.mag_min),
                            mag_max=float(parsed_args.mag_max))
 
+
 def _processing():
+    freeze_support()
+
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
                                description="Processing waveforms command")
 
@@ -641,16 +642,16 @@ def _processing():
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
                            required=True)
 
-    arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here", 
+    arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here",
                            type=str, required=False)
-    
-    arg_parse.add_argument("-i", "--inventory_file", help="metadata file. xml extension", type=str, 
+
+    arg_parse.add_argument("-i", "--inventory_file", help="metadata file. xml extension", type=str,
                            required=False)
-    
+
     arg_parse.add_argument("-c", "--config_file", help="absolute path to config file", type=str,
                            required=False),
 
-    arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str, 
+    arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str,
                            required=False)
 
     arg_parse.add_argument("-n", "--net", help="project net filter", type=str, required=False)
@@ -659,55 +660,63 @@ def _processing():
 
     arg_parse.add_argument("-ch", "--channel", help="project channel filter", type=str, required=False)
 
-    arg_parse.add_argument("-t", "--cut_time", help="pre & post first arrival in seconds (symmetric). ", type=float, required=False)
+    arg_parse.add_argument("-t", "--cut_time", help="pre & post first arrival in seconds (symmetric). ", type=float,
+                           required=False)
 
-    arg_parse.add_argument("-cs", "--cut_start_time", help="cut pre-first arrival  in seconds", type=float, required=False)
+    arg_parse.add_argument("-cs", "--cut_start_time", help="cut pre-first arrival  in seconds", type=float,
+                           required=False)
 
-    arg_parse.add_argument("-ce", "--cut_end_time", help="cut post-first arrival  in seconds", type=float, required=False)
+    arg_parse.add_argument("-ce", "--cut_end_time", help="cut post-first arrival  in seconds", type=float,
+                           required=False)
 
-    arg_parse.add_argument("-st", "--start_time", help="start project time filter, format 2022-10-21 13:14:30", type=str, required=False)
+    arg_parse.add_argument("-st", "--start_time", help="start project time filter, format 2022-10-21 13:14:30",
+                           type=str, required=False)
 
-    arg_parse.add_argument("-et", "--end_time", help="end project time filter, format 2022-10-22 13:15:30", type=str, required=False)
+    arg_parse.add_argument("-et", "--end_time", help="end project time filter, format 2022-10-22 13:15:30", type=str,
+                           required=False)
 
     arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
                            action="store_true")
-    
+
     parsed_args = arg_parse.parse_args()
 
     # 1. Check if config or event files are not None
     if parsed_args.config_file is None and parsed_args.event_file is None:
         raise ValueError("Error: the command will do nothing. config_file and/or event_file are required")
 
+    # Calculate start and end time
+    if parsed_args.cut_start_time is not None:
+        start = parsed_args.cut_start_time
+        end = parsed_args.cut_end_time if parsed_args.cut_end_time is not None else 300
+    elif parsed_args.cut_time is not None:
+        start = end = parsed_args.cut_time
+    else:
+        start = end = 300
+
     # 2. Read and filter project
-    _filter = {}
-    _time = {}
 
-    freeze_support()
-    _files = SurfProject.load_project(parsed_args.project_file)
+    project = SurfProject.load_project(parsed_args.project_file)
 
-    files = Analysis.filter_files(_files, parsed_args.net, parsed_args.station, parsed_args.channel,
-                                  parsed_args.start_time, parsed_args.end_time)
-    
-    if len(files) > 0:
-        sd = Analysis(_files, parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                      parsed_args.event_file)
-        
-        # Calculate start and end time
-        if parsed_args.cut_start_time is not None:
-            start = parsed_args.cut_start_time
+    Analysis.filter_files(project, parsed_args.net, parsed_args.station, parsed_args.channel,
+                          parsed_args.start_time, parsed_args.end_time)
 
-            if parsed_args.cut_end_time  is not None:
-                end = parsed_args.cut_end_time
-            else:
-                end = 300
-        elif parsed_args.cut_time is not None:
-            start = parsed_args.cut_time
-            end = parsed_args.cut_time
-        else:
-            start = 300
-            end = 300
-            
-        sd.run_processing(start, end, plot=parsed_args.plots)
+    sd = Analysis(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
+                  parsed_args.event_file)
+
+    # 3. Execute the process
+    if sd.df_events is not None:
+        if len(sd.df_events) <= 75:
+            sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
+        elif len(sd.df_events) > 75:
+            project = project.split_by_time_spans(span_seconds=86400, verbose=True)
+            sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
+
+    if sd.df_events is None and len(project) > 100:
+        project = project.split_by_time_spans(span_seconds=86400, verbose=True)
+        sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
+    elif sd.df_events is None and len(project) <= 100:
+        sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
+
 
 if __name__ == "__main__":
     freeze_support()

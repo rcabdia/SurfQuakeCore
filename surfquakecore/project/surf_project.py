@@ -19,13 +19,22 @@ import re
 from obspy import read, UTCDateTime
 import copy
 
+
 def _generate_subproject_for_time_window(args):
     time_window, serialized_self = args
     start, end = time_window
     self = pickle.loads(serialized_self)
 
     self.filter_project_time(starttime=start, endtime=end)
+
+    # Populate data_files in your custom format
+    self.data_files = []
+    for key, value in self.project.items():
+        for item in value:
+            self.data_files.append([item[0], item[1].starttime, item[1].endtime])
+
     return self if len(self.project) > 0 else None
+
 
 class SurfProject:
 
@@ -556,68 +565,78 @@ class SurfProject:
         # Use dictionary comprehension to filter out keys with empty lists
         self.project = {key: value for key, value in self.project.items() if value}
 
-    def split_by_time_spans(self, span_seconds=86400, verbose=False, save=False,
-                            output_dir=None, prefix="subproject",
-                            min_date=None, max_date=None) -> List["SurfProject"]:
+    def split_by_time_spans(self,
+                            span_seconds: int = 86400,
+                            verbose: bool = False,
+                            save: bool = False,
+                            output_dir: str = None,
+                            prefix: str = "subproject",
+                            min_date: str = None,
+                            max_date: str = None,
+                            event_file: str = None,
+                            event_window_seconds: int = 3600) -> List["SurfProject"]:
         """
-        Splits the current project into time-based subprojects.
+        Splits the current project by fixed time spans or event origin times.
 
         Args:
-            span_seconds (int): Length of each time window in seconds (default=86400).
-            verbose (bool): Print detailed info for each subproject.
-            save (bool): If True, saves subprojects as pickle files.
-            output_dir (str): Where to save the subprojects if save=True.
-            prefix (str): Filename prefix for saved files.
-            min_date (str | UTCDateTime): Optional minimum start date.
-            max_date (str | UTCDateTime): Optional maximum end date.
+            span_seconds (int): Fixed-length time window (ignored if event_file is used).
+            verbose (bool): Print detailed output.
+            save (bool): Save subprojects to disk.
+            output_dir (str): Where to save the files.
+            prefix (str): Prefix for saved filenames.
+            min_date (str): Optional lower bound (format 'YYYY-MM-DD HH:MM:SS').
+            max_date (str): Optional upper bound.
+            event_file (str): Optional path to event file.
+            event_window_seconds (int): Duration after event origin time (default 3600s).
 
         Returns:
-            List[SurfProject]: List of time-sliced SurfProject instances.
+            List[SurfProject]: List of time-filtered subprojects.
         """
-        from obspy import UTCDateTime
-        from datetime import datetime
-        import os
-        import pickle
-        from multiprocessing import Pool, cpu_count
+        import csv
 
-        # Parse optional min/max
+        def parse_event_file(path):
+            event_windows = []
+            with open(path, "r") as f:
+                reader = csv.DictReader(f, delimiter=";")
+                for row in reader:
+                    date_str = row["date"].strip()
+                    hour_str = row["hour"].strip()
+                    try:
+                        dt = datetime.strptime(f"{date_str} {hour_str}", "%Y-%m-%d %H:%M:%S.%f")
+                    except ValueError:
+                        dt = datetime.strptime(f"{date_str} {hour_str}", "%Y-%m-%d %H:%M:%S")
+                    origin = UTCDateTime(dt)
+                    event_windows.append((origin, origin + event_window_seconds))
+            return event_windows
+
+
+        # Get project bounds
         date_format = "%Y-%m-%d %H:%M:%S"
         info = self.get_project_basic_info()
+        global_start = UTCDateTime(datetime.strptime(info["Start"], date_format))
+        global_end = UTCDateTime(datetime.strptime(info["End"], date_format))
 
-        # Align project start to 00:00:00 of day
-        global_start = datetime.strptime(info["Start"], date_format)
-        global_start = UTCDateTime(datetime(global_start.year, global_start.month, global_start.day))
-        global_end = UTCDateTime(info["End"])
-
-        if isinstance(min_date, str):
-            start = UTCDateTime(datetime.strptime(min_date, date_format))
-        elif isinstance(min_date, UTCDateTime):
-            start = min_date
-        else:
-            start = global_start
-
-        if isinstance(max_date, str):
-            end = UTCDateTime(datetime.strptime(max_date, date_format))
-        elif isinstance(max_date, UTCDateTime):
-            end = max_date
-        else:
-            end = global_end
+        start = UTCDateTime(min_date) if min_date else global_start
+        end = UTCDateTime(max_date) if max_date else global_end
 
         if start >= end:
-            raise ValueError("min_date must be earlier than max_date.")
+            raise ValueError("min_date must be earlier than max_date")
 
-        # Create time windows
-        time_windows = []
-        current = start
-        while current < end:
-            time_windows.append((current, current + span_seconds))
-            current += span_seconds
+        # Get time windows
+        if event_file:
+            time_windows = parse_event_file(event_file)
+            time_windows = [(s, e) for s, e in time_windows if s >= start and e <= end]
+        else:
+            time_windows = []
+            current = start
+            while current < end:
+                time_windows.append((current, current + span_seconds))
+                current += span_seconds
 
-        # Serialize once
+        # Parallel processing
         serialized_self = pickle.dumps(self)
-        args = [(window, serialized_self) for window in time_windows]
+        args = [(tw, serialized_self) for tw in time_windows]
 
-        # Run in parallel
         with Pool(processes=min(cpu_count(), len(time_windows))) as pool:
             results = pool.map(_generate_subproject_for_time_window, args)
 
@@ -633,8 +652,8 @@ class SurfProject:
 
                 if save and output_dir:
                     os.makedirs(output_dir, exist_ok=True)
-                    filename = f"{prefix}_{i}.pkl"
-                    sp.save_project(os.path.join(output_dir, filename))
+                    fname = f"{prefix}_{i}.pkl"
+                    sp.save_project(os.path.join(output_dir, fname))
 
         return subprojects
 
