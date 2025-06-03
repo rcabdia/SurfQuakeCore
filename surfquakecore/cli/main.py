@@ -683,8 +683,7 @@ def _processing():
     _time = {}
 
     freeze_support()
-    sp = SurfProject(parsed_args.project_file)
-    _files = sp.load_project(parsed_args.project_file)
+    _files = SurfProject.load_project(parsed_args.project_file)
 
     files = Analysis.filter_files(_files, parsed_args.net, parsed_args.station, parsed_args.channel,
                                   parsed_args.start_time, parsed_args.end_time)

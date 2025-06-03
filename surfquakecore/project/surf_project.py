@@ -11,7 +11,7 @@
 
 import pickle
 from datetime import datetime
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 import os
 from functools import partial
 from typing import Tuple, List, Union
@@ -19,6 +19,13 @@ import re
 from obspy import read, UTCDateTime
 import copy
 
+def _generate_subproject_for_time_window(args):
+    time_window, serialized_self = args
+    start, end = time_window
+    self = pickle.loads(serialized_self)
+
+    self.filter_project_time(starttime=start, endtime=end)
+    return self if len(self.project) > 0 else None
 
 class SurfProject:
 
@@ -98,6 +105,16 @@ class SurfProject:
 
     def copy(self):
         return copy.copy(self)
+
+    def __deepcopy__(self, memo):
+        # Deep copy: all referenced objects are copied as well
+        new_instance = self.__class__(copy.deepcopy(self.root_path, memo))
+        for key, value in vars(self).items():
+            setattr(new_instance, key, copy.deepcopy(value, memo))
+        return new_instance
+
+    def deepcopy(self):
+        return copy.deepcopy(self)
 
     @staticmethod
     def load_project(path_to_project_file: str):
@@ -539,6 +556,87 @@ class SurfProject:
         # Use dictionary comprehension to filter out keys with empty lists
         self.project = {key: value for key, value in self.project.items() if value}
 
+    def split_by_time_spans(self, span_seconds=86400, verbose=False, save=False,
+                            output_dir=None, prefix="subproject",
+                            min_date=None, max_date=None) -> List["SurfProject"]:
+        """
+        Splits the current project into time-based subprojects.
+
+        Args:
+            span_seconds (int): Length of each time window in seconds (default=86400).
+            verbose (bool): Print detailed info for each subproject.
+            save (bool): If True, saves subprojects as pickle files.
+            output_dir (str): Where to save the subprojects if save=True.
+            prefix (str): Filename prefix for saved files.
+            min_date (str | UTCDateTime): Optional minimum start date.
+            max_date (str | UTCDateTime): Optional maximum end date.
+
+        Returns:
+            List[SurfProject]: List of time-sliced SurfProject instances.
+        """
+        from obspy import UTCDateTime
+        from datetime import datetime
+        import os
+        import pickle
+        from multiprocessing import Pool, cpu_count
+
+        # Parse optional min/max
+        date_format = "%Y-%m-%d %H:%M:%S"
+        info = self.get_project_basic_info()
+
+        # Align project start to 00:00:00 of day
+        global_start = datetime.strptime(info["Start"], date_format)
+        global_start = UTCDateTime(datetime(global_start.year, global_start.month, global_start.day))
+        global_end = UTCDateTime(info["End"])
+
+        if isinstance(min_date, str):
+            start = UTCDateTime(datetime.strptime(min_date, date_format))
+        elif isinstance(min_date, UTCDateTime):
+            start = min_date
+        else:
+            start = global_start
+
+        if isinstance(max_date, str):
+            end = UTCDateTime(datetime.strptime(max_date, date_format))
+        elif isinstance(max_date, UTCDateTime):
+            end = max_date
+        else:
+            end = global_end
+
+        if start >= end:
+            raise ValueError("min_date must be earlier than max_date.")
+
+        # Create time windows
+        time_windows = []
+        current = start
+        while current < end:
+            time_windows.append((current, current + span_seconds))
+            current += span_seconds
+
+        # Serialize once
+        serialized_self = pickle.dumps(self)
+        args = [(window, serialized_self) for window in time_windows]
+
+        # Run in parallel
+        with Pool(processes=min(cpu_count(), len(time_windows))) as pool:
+            results = pool.map(_generate_subproject_for_time_window, args)
+
+        subprojects = []
+        for i, sp in enumerate(results):
+            if sp is not None:
+                subprojects.append(sp)
+
+                if verbose:
+                    subinfo = sp.get_project_basic_info()
+                    print(f"[{i}] {time_windows[i][0]} → {time_windows[i][1]} | "
+                          f"{subinfo['num_files']} files | {subinfo['Stations'][1]} stations")
+
+                if save and output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                    filename = f"{prefix}_{i}.pkl"
+                    sp.save_project(os.path.join(output_dir, filename))
+
+        return subprojects
 
 class ProjectSaveFailed(Exception):
     def __init__(self, message="Error saving project"):
