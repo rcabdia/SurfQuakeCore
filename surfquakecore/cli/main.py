@@ -708,7 +708,7 @@ def _processing():
         if len(sd.df_events) <= 75:
             sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
         elif len(sd.df_events) > 75:
-            project = project.split_by_time_spans(span_seconds=86400, verbose=True)
+            project = project.split_by_time_spans(span_seconds=2*86400, verbose=True)
             sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
 
     if sd.df_events is None and len(project) > 100:
