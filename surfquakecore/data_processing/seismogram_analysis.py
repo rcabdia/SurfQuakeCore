@@ -10,10 +10,10 @@ class SeismogramData:
 
         self.inventory = inventory
         self.config_keys = None
-        fil_gaps = kwargs.pop("fill_gaps", True)
+        fill_gaps = kwargs.pop("fill_gaps", True)
         self.st = st
 
-        if fil_gaps:
+        if fill_gaps:
             gaps = self.st.get_gaps()
 
             if len(gaps) > 0:

@@ -8,7 +8,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & Cristina Palacios
 # Email: rcabdia@roa.es
 """
-
+import os
 import platform
 from typing import List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
@@ -18,146 +18,157 @@ from obspy.geodetics import gps2dist_azimuth
 import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
-
+# Choose best backend before importing pyplot,
+# more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:
-    def __init__(self,
-                 stream,
-                 metadata: Optional[Union[dict, Inventory]] = None,
-                 epicenter: Optional[Tuple[float, float]] = None):
+    def __init__(self, stream,
+                 plot_config: Optional[dict] = None):
         """
         Parameters
         ----------
-        trace_list : List[Trace]
-            List of ObsPy Trace objects.
-        metadata : dict or Inventory, optional
-            Metadata with station coordinates.
-        epicenter : tuple of (latitude, longitude), optional
-            Coordinates of the event epicenter.
+        stream : Stream or list of Traces
+        plot_config : dict, optional
+            Dictionary of plotting preferences.
         """
-        self.trace_list = stream
-        self.metadata = metadata
-        self.epicenter = epicenter
-        self._dist_az_cache = {}
-        self.picks = {}  # {trace_id: [pick_times]}
+        self.trace_list = list(stream)
+
+        # Default plotting configuration
+        self.plot_config = {
+            "traces_per_fig": 6,
+            "sort_by": "distance",  # options: distance, backazimuth, None
+            "vspace": 0.0,
+            "title_fontsize": 9,
+            "show_legend": True,
+            "autosave": False,
+            "save_folder": "./plots"
+        }
+
+        # Override defaults with user config if provided
+        if plot_config:
+            self.plot_config.update(plot_config)
+
+        self.picks = {}
         self.current_pick = None
-        self.pick_lines = {}  # Reference to vertical pick lines
+        self.pick_lines = {}
         self.fig = None
         self.axs = None
-        self.pick_type = "P"  # default pick type
+        self.pick_type = "P"
 
-    def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
+    # def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
+    #     """
+    #     Retrieve station coordinates from metadata.
+    #     """
+    #     if self.metadata is None:
+    #         return None
+    #
+    #     network = trace.stats.network
+    #     station = trace.stats.station
+    #
+    #     if isinstance(self.metadata, Inventory):
+    #         try:
+    #             coords = self.metadata.get_coordinates(f"{network}.{station}")
+    #             return coords['latitude'], coords['longitude']
+    #         except Exception:
+    #             return None
+    #     elif isinstance(self.metadata, dict):
+    #         return self.metadata.get(f"{network}.{station}")
+    #
+    #     return None
+
+    # def _compute_distance_azimuth(self, trace: Trace) -> Tuple[float, float]:
+    #     """
+    #     Prefer distance and backazimuth from trace header if available.
+    #     """
+    #     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
+    #         try:
+    #             dist, az, baz = trace.stats.geodetic['geodetic']
+    #             return dist, baz
+    #         except Exception:
+    #             pass  # fallback below
+    #
+    #     # Fallback: compute from station coordinates and epicenter
+    #     if trace.id in self._dist_az_cache:
+    #         return self._dist_az_cache[trace.id]
+    #
+    #     coords = self._get_station_coords(trace)
+    #     if coords is None or self.epicenter is None:
+    #         return float('inf'), float('inf')
+    #
+    #     epi_lat, epi_lon = self.epicenter
+    #     sta_lat, sta_lon = coords
+    #     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
+    #     dist_km = dist_m / 1000.0
+    #
+    #     self._dist_az_cache[trace.id] = (dist_km, baz)
+    #     return dist_km, baz
+
+    def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
-        Retrieve station coordinates from metadata.
+        Returns distance (km) and back-azimuth from trace header.
         """
-        if self.metadata is None:
-            return None
-
-        network = trace.stats.network
-        station = trace.stats.station
-
-        if isinstance(self.metadata, Inventory):
-            try:
-                coords = self.metadata.get_coordinates(f"{network}.{station}")
-                return coords['latitude'], coords['longitude']
-            except Exception:
-                return None
-        elif isinstance(self.metadata, dict):
-            return self.metadata.get(f"{network}.{station}")
-
-        return None
-
-    def _compute_distance_azimuth(self, trace: Trace) -> Tuple[float, float]:
-        """
-        Calculate distance (in km) and back-azimuth from epicenter to station.
-        """
-        if trace.id in self._dist_az_cache:
-            return self._dist_az_cache[trace.id]
-
-        coords = self._get_station_coords(trace)
-        if coords is None or self.epicenter is None:
+        try:
+            dist, az, baz = trace.stats.geodetic['geodetic']
+            return dist, baz
+        except Exception:
             return float('inf'), float('inf')
 
-        epi_lat, epi_lon = self.epicenter
-        sta_lat, sta_lon = coords
-        dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
-        dist_km = dist_m / 1000.0
-
-        self._dist_az_cache[trace.id] = (dist_km, baz)
-        return dist_km, baz
-
-    def plot(self, traces_per_fig: int = None, sort_by: Optional[str] = None, vspace: float = 0.0):
-
-        # Choose best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
-        if platform.system() == 'Darwin':  # macOS
+    def plot(self):
+        if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         elif platform.system() == 'Linux':
-            mplt.use("TkAgg")  # or "Agg" for headless servers
-        # Windows could be added if needed
-        # elif platform.system() == 'Windows':
-        #     mplt.use("TkAgg")
+            mplt.use("TkAgg")
+        cfg = self.plot_config
+        traces = self.trace_list
 
-        """
-        Plot the traces with a specified number of subplots per figure.
-
-        Parameters
-        ----------
-        traces_per_fig : int, optional
-            Number of traces (subplots) per figure.
-        sort_by : str, optional
-            Options: 'distance', 'backazimuth', or None.
-        """
-
-        traces = list(self.trace_list)  # Ensure it's a true list
-
-        if sort_by == 'distance':
-            traces.sort(key=lambda tr: self._compute_distance_azimuth(tr)[0])
-        elif sort_by == 'backazimuth':
-            traces.sort(key=lambda tr: self._compute_distance_azimuth(tr)[1])
+        if cfg["sort_by"] == 'distance':
+            traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
+        elif cfg["sort_by"] == 'backazimuth':
+            traces.sort(key=lambda tr: self._get_geodetic_info(tr)[1])
 
         n_traces = len(traces)
         if n_traces == 0:
             print("No traces to plot.")
             return
 
-        if traces_per_fig is None:
-            traces_per_fig = n_traces
+        traces_per_fig = cfg["traces_per_fig"]
 
         for i in range(0, n_traces, traces_per_fig):
             sub_traces = traces[i:i + traces_per_fig]
-            n_subplots = len(sub_traces)
-            self.fig, self.axs = plt.subplots(n_subplots, 1, figsize=(10, 2 * n_subplots), sharex=True, gridspec_kw={'hspace': vspace})
-            self._setup_pick_interaction()
-            if n_subplots == 1:
+            self.fig, self.axs = plt.subplots(
+                len(sub_traces), 1,
+                figsize=(10, 2 * len(sub_traces)),
+                sharex=True,
+                gridspec_kw={'hspace': cfg["vspace"]}
+            )
+            if len(sub_traces) == 1:
                 self.axs = [self.axs]
 
-            # Reset for each figure
-            figure_starttimes = []
-            figure_endtimes = []
+            self._setup_pick_interaction()
 
             for ax, tr in zip(self.axs, sub_traces):
-                # Convert times to matplotlib float format
                 t = tr.times("matplotlib")
-                figure_starttimes.append(t[0])
-                figure_endtimes.append(t[-1])
-                formatter = mdt.DateFormatter('%H:%M:%S')
-                ax.xaxis.set_major_formatter(formatter)
-                dist, baz = self._compute_distance_azimuth(tr)
+                dist, baz = self._get_geodetic_info(tr)
                 ax.plot(t, tr.data, linewidth=0.75,
                         label=f"{tr.id} | Dist: {dist:.1f} km | Baz: {baz:.1f}°")
-                ax.set_title(str(tr.stats.starttime), fontsize=9)
-                ax.legend()
+                ax.set_title(str(tr.stats.starttime), fontsize=cfg["title_fontsize"])
+                if cfg["show_legend"]:
+                    ax.legend()
 
-            # Set limits for all axes in this figure
-            auto_start = min(figure_starttimes)
-            auto_end = max(figure_endtimes)
+            auto_start = min(tr.times("matplotlib")[0] for tr in sub_traces)
+            auto_end = max(tr.times("matplotlib")[-1] for tr in sub_traces)
             for ax in self.axs:
                 ax.set_xlim(auto_start, auto_end)
 
-            plt.tight_layout()
-            plt.ion()
-            plt.show(block=True)
-            #plt.pause(5.0)
+            if cfg["autosave"]:
+                os.makedirs(cfg["save_folder"], exist_ok=True)
+                fig_path = os.path.join(cfg["save_folder"], f"waveform_plot_{i // traces_per_fig + 1}.png")
+                plt.savefig(fig_path, dpi=150)
+                print(f"[INFO] Plot saved to {fig_path}")
+            else:
+                plt.ion()
+                plt.tight_layout()
+                plt.show(block=True)
 
     def _setup_pick_interaction(self):
         """Set up double-click mouse event and key press events."""

@@ -14,7 +14,6 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
-
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
@@ -638,7 +637,8 @@ def _processing_cut():
                 Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
                 Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
                 -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
-                -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms]
+                -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms] 
+                --plot_config [Path to optional plotting configuration file (.yaml)]
             """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
@@ -673,6 +673,8 @@ def _processing_cut():
 
     arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
                            action="store_true")
+
+    arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)", type=str)
 
     parsed_args = arg_parse.parse_args()
 

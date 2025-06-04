@@ -14,22 +14,20 @@ from obspy.taup import TauPyModel
 import os
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
 from typing import Optional, List
-
 from surfquakecore.data_processing.seismogram_analysis import SeismogramData
 from surfquakecore.project.surf_project import SurfProject
 from multiprocessing import Pool, cpu_count
 from obspy.geodetics import gps2dist_azimuth
 from obspy import read
 from obspy.core.stream import Stream, Trace
-
 from surfquakecore.seismoplot.plot import PlotProj
-
+from collections import defaultdict
 
 class AnalysisEvents:
 
     def __init__(self, output: Optional[str] = None,
                  inventory_file: Optional[str] = None, config_file: Optional[str] = None,
-                 surf_projects: List[SurfProject] = None):
+                 surf_projects: List[SurfProject] = None, plot_config_file: Optional[str]= None):
 
         self.model = TauPyModel("iasp91")
         self.output = output
@@ -58,6 +56,14 @@ class AnalysisEvents:
                 print("Traces will be process and might be plot: ", self.output)
                 self.output = None
 
+        self.plot_config = None
+        if plot_config_file is not None and os.path.exists(plot_config_file):
+            with open(plot_config_file, 'r') as f:
+                try:
+                    self.plot_config = yaml.safe_load(f).get("plotting", {})
+                except Exception as e:
+                    print(f"[WARNING] Plot config not loaded: {e}")
+
     def load_analysis_configuration(self, config_file: str):
         with open(config_file, 'r') as file:
             try:
@@ -69,10 +75,21 @@ class AnalysisEvents:
 
         return parse_configuration_file(yaml_data)
 
-    def _process_trace_cut(self, args):
-        trace_path, stats, event, model, cut_start, cut_end, inventory, set_header_func = args
+    def _process_station_traces(self, args):
+        file_group, event, model, cut_start, cut_end, inventory, set_header_func = args
         try:
-            net, sta, loc, cha = stats.network, stats.station, stats.location, stats.channel
+            # Read & merge all files for this station
+            st = Stream()
+            for trace_path, _ in file_group:
+                st += read(trace_path)
+            st.merge(method=1, fill_value='interpolate')
+
+            if len(st) == 0:
+                return []
+
+            # Extract station info from first trace
+            stats = file_group[0][1]
+            net, sta = stats.network, stats.station
             origin = event["origin_time"]
             lat, lon, depth = event["latitude"], event["longitude"], event["depth"]
 
@@ -89,27 +106,26 @@ class AnalysisEvents:
             first_arrival = origin + arrivals[0].time
             t1 = first_arrival - cut_start
             t2 = first_arrival + cut_end
-
-            st = read(trace_path)
             st.trim(starttime=t1, endtime=t2)
 
-            if len(st) > 0:
-                sd = SeismogramData(st, inventory, fill_gaps=True)
-                if self.config is not None:
+            if len(st) == 0:
+                return []
+
+
+            traces = []
+            for tr in st:
+                if self.config:
+                    sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
                     tr = sd.run_analysis(self.config)
-                else:
-                    tr = st[0]
-
                 tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
-                                         otime=origin, lat=lat, lon=lon, depth=depth)
+                                     otime=origin, lat=lat, lon=lon, depth=depth)
+                traces.append(tr)
 
-                return tr
-            else:
-                return None
+            return traces
 
         except Exception as e:
-            print(f"[WARNING] Failed to process trace {trace_path}: {e}")
-            return None
+            print(f"[WARNING] Station group failed: {e}")
+            return []
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True):
         if self.surf_projects is None:
@@ -124,43 +140,68 @@ class AnalysisEvents:
 
             print(f"[INFO] Cutting traces for event {i} at {event['origin_time']}")
 
-            # Build args for parallel trace processing
+            # ---- Group trace files by station code ----
+            station_files = defaultdict(list)
+            for trace_list in project.project.values():
+                for trace_path, stats in trace_list:
+                    station_key = f"{stats.network}.{stats.station}"
+                    station_files[station_key].append((trace_path, stats))
+
+            # ---- Create parallel tasks ----
             tasks = []
-            for key, trace_list in project.project.items():
-                for trace_entry in trace_list:
-                    tasks.append((
-                        trace_entry[0],  # path
-                        trace_entry[1],  # stats
-                        event,
-                        self.model,
-                        cut_start,
-                        cut_end,
-                        self.inventory,
-                        self._set_header
-                    ))
+            for station_key, file_group in station_files.items():
+                tasks.append((
+                    file_group,  # all files for one station
+                    event,
+                    self.model,
+                    cut_start,
+                    cut_end,
+                    self.inventory,
+                    self._set_header
+                ))
 
+            # ---- Multiprocessing ----
             with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                results = pool.map(self._process_trace_cut, tasks)
+                results = pool.map(self._process_station_traces, tasks)
 
-            # Combine valid streams
-            full_stream = self._clean_traces(results)
-            #self.all_traces.extend(full_stream) #TOO_MUCH MEMORY
-
+            # Flatten list of list of traces
+            all_traces = [tr for sublist in results for tr in sublist if tr is not None]
+            full_stream = self._clean_traces(all_traces)
             print(f"[INFO] Subproject {i}: {len(full_stream)} traces kept")
 
-            # Optional: save
-            if self.output:
-                folder = os.path.join(self.output, f"event_{i}")
-                os.makedirs(folder, exist_ok=True)
-                for tr in full_stream:
-                    t1 = tr.stats.starttime
-                    base = f"{tr.id}.D.{t1.year}.{t1.julday}"
-                    path = os.path.join(folder, base)
-                    tr.write(path, format="MSEED")
-
+            # ---- Optional Plot ----
             if plot and len(full_stream) > 0:
-                plotter = PlotProj(full_stream, metadata=self.inventory)
-                plotter.plot(traces_per_fig=3, sort_by=None)
+                PlotProj(full_stream, plot_config=self.plot_config).plot()
+
+            # ---- Optional Save ----
+            if self.output:
+                self._write_files(full_stream)
+
+    def _write_files(self, full_stream):
+        errors = False
+        for j, tr in enumerate(full_stream):
+            try:
+                t1 = tr.stats.starttime
+                base_name = f"{tr.id}.D.{t1.year}.{t1.julday}"
+                path_output = os.path.join(self.output, base_name)
+
+                # Check if file exists and append a number if necessary
+                counter = 1
+                while os.path.exists(path_output):
+                    path_output = os.path.join(self.output, f"{base_name}_{counter}")
+                    counter += 1
+
+                print(f"{tr.id} - Writing processed data to {path_output}")
+                tr.write(path_output, format="H5")
+
+            except Exception as e:
+                errors = True
+                print(f"File cannot be written: {self.output}, Error: {e}")
+
+            if errors:
+                print("Writting Complete with Errors, check output", self.output)
+            else:
+                print("Writting Complete, check output", self.output)
 
     def _set_header(self, tr, distance_km, BAZ, AZ, otime, lat, lon, depth):
         tr.stats['geodetic'] = {'otime': otime, 'geodetic': [distance_km, AZ, BAZ], 'event': [lat, lon, depth]}
