@@ -19,23 +19,29 @@ from obspy import read, UTCDateTime
 import copy
 
 
+# def _generate_subproject_for_time_window(args):
+#     time_window, serialized_self, metadata = args
+#     start, end = time_window
+#     self = pickle.loads(serialized_self)
+#
+#     self.filter_project_time(starttime=start, endtime=end)
+#
+#     self.data_files = []
+#     for key, value in self.project.items():
+#         for item in value:
+#             self.data_files.append([item[0], item[1].starttime, item[1].endtime])
+#
+#     if metadata:
+#         self._event_metadata = metadata
+#
+#     return self if len(self.project) > 0 else None
+
 def _generate_subproject_for_time_window(args):
-    time_window, serialized_self, metadata = args
-    start, end = time_window
-    self = pickle.loads(serialized_self)
-
-    self.filter_project_time(starttime=start, endtime=end)
-
-    self.data_files = []
-    for key, value in self.project.items():
-        for item in value:
-            self.data_files.append([item[0], item[1].starttime, item[1].endtime])
-
-    if metadata:
-        self._event_metadata = metadata
-
-    return self if len(self.project) > 0 else None
-
+    (start, end), serialized_project, events = args
+    project = pickle.loads(serialized_project)
+    sub = project.extract_subproject_between(start, end)
+    setattr(sub, "_events_metadata", events or [])
+    return sub
 
 class SurfProject:
 
@@ -587,6 +593,28 @@ class SurfProject:
         print(f"Saved {len(subprojects)} subprojects to {path}")
         return os.path.isfile(path)
 
+    def _clone_project_with_subset(self, selected_project_dict: dict):
+        """
+        Internal method to clone a SurfProject with a reduced set of files.
+
+        Args:
+            selected_project_dict (dict): Dict with same structure as self.project but
+                                          filtered to only include desired keys and traces.
+
+        Returns:
+            SurfProject: A new SurfProject with the filtered data.
+        """
+        new_project = SurfProject()
+
+        # Deepcopy necessary attributes
+        new_project.metadata = copy.deepcopy(self.metadata) if hasattr(self, "metadata") else {}
+        new_project.settings = copy.deepcopy(self.settings) if hasattr(self, "settings") else {}
+
+        # Include only selected files
+        new_project.project = selected_project_dict
+
+        return new_project
+
     def split_by_time_spans(self,
                             span_seconds: int = 86400,
                             verbose: bool = False,
@@ -594,7 +622,8 @@ class SurfProject:
                             min_date: str = None,
                             max_date: str = None,
                             event_file: str = None,
-                            event_window_seconds: int = 3600) -> List["SurfProject"]:
+                            event_window_seconds: int = 3600,
+                            file_selection_mode: str = 'strict') -> List["SurfProject"]:
         """
         Splits the project by fixed spans or event times. Can attach event metadata.
 
@@ -606,12 +635,13 @@ class SurfProject:
             max_date (str): Optional max datetime string.
             event_file (str): CSV with events.
             event_window_seconds (int): Window after event origin.
-
+            file_selection_mode (str): 'loose' includes all files touching the window (default),
+                                       'strict' picks the longest-overlapping one per key.
         Returns:
             List[SurfProject]
         """
         import csv
-
+        TOLERANCE = 60  # seconds for loose matching
 
         def parse_event_file(path):
             events = []
@@ -622,7 +652,6 @@ class SurfProject:
                         dt = datetime.strptime(f"{row['date']} {row['hour']}", "%Y-%m-%d %H:%M:%S.%f")
                     except ValueError:
                         dt = datetime.strptime(f"{row['date']} {row['hour']}", "%Y-%m-%d %H:%M:%S")
-
                     events.append({
                         "origin_time": UTCDateTime(dt),
                         "latitude": float(row["latitude"]),
@@ -641,7 +670,6 @@ class SurfProject:
         start = UTCDateTime(min_date) if min_date else global_start
         end = UTCDateTime(max_date) if max_date else global_end
 
-        # Build time windows
         time_windows = []
         metadata_list = []
 
@@ -655,11 +683,39 @@ class SurfProject:
         else:
             current = start
             while current < end:
-                time_windows.append((current, current + span_seconds))
-                metadata_list.append(None)
+                window_start = current
+                window_end = current + span_seconds
+                matched_files = {}
+
+                for key, trace_list in self.project.items():
+                    if file_selection_mode == 'loose':
+                        for trace_path, stats in trace_list:
+                            # Allow overlap with tolerance
+                            if stats.starttime < window_end + TOLERANCE and stats.endtime > window_start - TOLERANCE:
+                                if key not in matched_files:
+                                    matched_files[key] = []
+                                matched_files[key].append((trace_path, stats))
+
+                    elif file_selection_mode == 'strict':
+                        best_file = None
+                        best_overlap = 0
+                        for trace_path, stats in trace_list:
+                            overlap_start = max(stats.starttime, window_start)
+                            overlap_end = min(stats.endtime, window_end)
+                            overlap = (overlap_end - overlap_start) if overlap_end > overlap_start else 0
+                            if overlap > best_overlap:
+                                best_overlap = overlap
+                                best_file = (trace_path, stats)
+                        if best_file:
+                            matched_files[key] = [best_file]
+
+                if matched_files:
+                    clone = self._clone_project_with_subset(matched_files)
+                    time_windows.append((window_start, window_end))
+                    metadata_list.append(None)
                 current += span_seconds
 
-        # Parallel build
+        # Build subprojects
         serialized_self = pickle.dumps(self)
         args = list(zip(time_windows, [serialized_self] * len(time_windows), metadata_list))
 
@@ -679,6 +735,100 @@ class SurfProject:
             self.save_subprojects_list(save_path, subprojects)
 
         return subprojects
+
+    # def split_by_time_spans(self,
+    #                         span_seconds: int = 86400,
+    #                         verbose: bool = False,
+    #                         save_path: str = None,
+    #                         min_date: str = None,
+    #                         max_date: str = None,
+    #                         event_file: str = None,
+    #                         event_window_seconds: int = 3600) -> List["SurfProject"]:
+    #     """
+    #     Splits the project by fixed spans or event times. Can attach event metadata.
+    #
+    #     Args:
+    #         span_seconds (int): Time window (ignored if event_file provided).
+    #         verbose (bool): Print details per subproject.
+    #         save_path (str): If set, saves the list of subprojects as a single pickle file.
+    #         min_date (str): Optional min datetime string.
+    #         max_date (str): Optional max datetime string.
+    #         event_file (str): CSV with events.
+    #         event_window_seconds (int): Window after event origin.
+    #
+    #     Returns:
+    #         List[SurfProject]
+    #     """
+    #     import csv
+    #
+    #
+    #     def parse_event_file(path):
+    #         events = []
+    #         with open(path, "r") as f:
+    #             reader = csv.DictReader(f, delimiter=";")
+    #             for row in reader:
+    #                 try:
+    #                     dt = datetime.strptime(f"{row['date']} {row['hour']}", "%Y-%m-%d %H:%M:%S.%f")
+    #                 except ValueError:
+    #                     dt = datetime.strptime(f"{row['date']} {row['hour']}", "%Y-%m-%d %H:%M:%S")
+    #
+    #                 events.append({
+    #                     "origin_time": UTCDateTime(dt),
+    #                     "latitude": float(row["latitude"]),
+    #                     "longitude": float(row["longitude"]),
+    #                     "depth": float(row["depth"]),
+    #                     "magnitude": float(row["magnitude"])
+    #                 })
+    #         return events
+    #
+    #     # Project time bounds
+    #     info = self.get_project_basic_info()
+    #     date_format = "%Y-%m-%d %H:%M:%S"
+    #     global_start = UTCDateTime(datetime.strptime(info["Start"], date_format))
+    #     global_end = UTCDateTime(datetime.strptime(info["End"], date_format))
+    #
+    #     start = UTCDateTime(min_date) if min_date else global_start
+    #     end = UTCDateTime(max_date) if max_date else global_end
+    #
+    #     # Build time windows
+    #     time_windows = []
+    #     metadata_list = []
+    #
+    #     if event_file:
+    #         events = parse_event_file(event_file)
+    #         for event in events:
+    #             origin = event["origin_time"]
+    #             if start <= origin <= end:
+    #                 time_windows.append((origin, origin + event_window_seconds))
+    #                 metadata_list.append(event)
+    #     else:
+    #         current = start
+    #         while current < end:
+    #             time_windows.append((current, current + span_seconds))
+    #             metadata_list.append(None)
+    #             current += span_seconds
+    #
+    #     # Parallel build
+    #     serialized_self = pickle.dumps(self)
+    #     args = list(zip(time_windows, [serialized_self] * len(time_windows), metadata_list))
+    #
+    #     with Pool(processes=min(cpu_count(), len(time_windows))) as pool:
+    #         results = pool.map(_generate_subproject_for_time_window, args)
+    #
+    #     subprojects = [sp for sp in results if sp is not None]
+    #
+    #     if verbose:
+    #         for i, sp in enumerate(subprojects):
+    #             meta = getattr(sp, "_event_metadata", {})
+    #             print(f"[{i}] {time_windows[i][0]} → {time_windows[i][1]} | "
+    #                   f"{sp.get_project_basic_info()['num_files']} files | "
+    #                   f"Event: {meta.get('origin_time', 'span')}")
+    #
+    #     if save_path:
+    #         self.save_subprojects_list(save_path, subprojects)
+    #
+    #     return subprojects
+
 
 
 class ProjectSaveFailed(Exception):

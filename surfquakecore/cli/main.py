@@ -663,8 +663,8 @@ def _processing_cut():
 
     arg_parse.add_argument("-ch", "--channel", help="project channel filter", type=str, required=False)
 
-    arg_parse.add_argument("-t", "--cut_time", help="pre & post first arrival in seconds (symmetric). ", type=float,
-                           required=False)
+    arg_parse.add_argument("-t", "--cut_time", help="pre & post first arrival in seconds (symmetric). ",
+                           type=float, required=False)
 
     arg_parse.add_argument("-cs", "--cut_start_time", help="cut pre-first arrival  in seconds", type=float,
                            required=False)
@@ -675,7 +675,11 @@ def _processing_cut():
     arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
                            action="store_true")
 
-    arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)", type=str)
+    arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)",
+                           type=str)
+
+    arg_parse.add_argument("--post_script", help="Path to Python script to apply to each event stream",
+                           type=str)
 
     parsed_args = arg_parse.parse_args()
 
