@@ -76,7 +76,7 @@ class AnalysisEvents:
         return parse_configuration_file(yaml_data)
 
     def _process_station_traces(self, args):
-        file_group, event, model, cut_start, cut_end, inventory, set_header_func = args
+        file_group, event, model, cut_start, cut_end, inventory, set_header_func, additional_processing = args
         try:
             # Read & merge all files for this station
             st = Stream()
@@ -111,7 +111,6 @@ class AnalysisEvents:
             if len(st) == 0:
                 return []
 
-
             traces = []
             for tr in st:
                 if self.config:
@@ -121,6 +120,17 @@ class AnalysisEvents:
                                      otime=origin, lat=lat, lon=lon, depth=depth)
                 traces.append(tr)
 
+            # In this point we can go ahead with rotate  if  needed
+            if len(additional_processing["rotate"]) > 0:
+                # TODO, WE CAN INCLUDE LATER MORE METHOD LIKE LQT
+                st_rotate = Stream(traces)
+                st_rotate.rotate(method='NE->RT', back_azimuth=baz)
+
+                # Back to list of traces
+                traces = []
+                for tr in st:
+                    traces.append(tr)
+
             return traces
 
         except Exception as e:
@@ -128,6 +138,19 @@ class AnalysisEvents:
             return []
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True):
+        additional_processing = {"rotate": {}, "shift": {}}
+        rotate = {}
+        shift = {}
+        # Check if Rotate & Shift
+        if self.config:
+            rotate = next((item for item in self.config if item.get('name') == 'rotate'), None)
+            shift = next((item for item in self.config if item.get('name') == 'shift'), None)
+
+        if rotate:
+            additional_processing["rotate"] = rotate
+        if shift:
+            additional_processing["shift"] = shift
+
         if self.surf_projects is None:
             print("No projects to process.")
             return
@@ -157,16 +180,22 @@ class AnalysisEvents:
                     cut_start,
                     cut_end,
                     self.inventory,
-                    self._set_header
+                    self._set_header,
+                    additional_processing
                 ))
 
             # ---- Multiprocessing ----
             with Pool(processes=min(cpu_count(), len(tasks))) as pool:
                 results = pool.map(self._process_station_traces, tasks)
 
-            # Flatten list of list of traces
+            # Flatten lists of list of traces
             all_traces = [tr for sublist in results for tr in sublist if tr is not None]
             full_stream = self._clean_traces(all_traces)
+
+            # let's apply shift
+            if shift:
+                full_stream = self._shift(additional_processing, full_stream)
+
             print(f"[INFO] Subproject {i}: {len(full_stream)} traces kept")
 
             # ---- Optional Plot ----
@@ -216,3 +245,85 @@ class AnalysisEvents:
             if isinstance(tr, Trace) and len(tr.data) > 0:
                 stream.append(tr)
         return stream
+
+    def run_waveform_analysis(self, plot: bool = False):
+        if self.surf_projects is None:
+            print("No subprojects to process.")
+            return
+
+        for i, project in enumerate(self.surf_projects):
+            print(f"[INFO] Processing subproject {i} (daily stream)")
+
+            # Group by station
+            station_files = defaultdict(list)
+            for trace_list in project.project.values():
+                for trace_path, stats in trace_list:
+                    key = f"{stats.network}.{stats.station}"
+                    station_files[key].append((trace_path, stats))
+
+            tasks = []
+            for _, file_group in station_files.items():
+                tasks.append((
+                    file_group,
+                    None,  # No event metadata used
+                    None,  # No TauPyModel needed
+                    0, 0,  # No cut window
+                    self.inventory,
+                    self._set_header  # Still tags geodetic but without origin time
+                ))
+
+            with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                results = pool.map(self._process_station_analysis, tasks)
+
+            all_traces = [tr for group in results for tr in group if tr is not None]
+            full_stream = self._clean_traces(all_traces)
+            print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
+
+            if plot and len(full_stream) > 0:
+                PlotProj(full_stream, plot_config=self.plot_config).plot()
+
+            if self.output:
+                self._write_files(full_stream)
+
+    def _process_station_analysis(self, args):
+        file_group, _, _, _, _, inventory, set_header_func = args
+        try:
+            st = Stream()
+            for trace_path, _ in file_group:
+                st += read(trace_path)
+            st.merge(method=1, fill_value='interpolate')
+
+            if len(st) == 0:
+                return []
+
+            # Metadata from first trace
+            stats = file_group[0][1]
+            net, sta = stats.network, stats.station
+
+            traces = []
+            for tr in st:
+                if self.config:
+                    sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
+                    tr = sd.run_analysis(self.config)
+
+                tr = set_header_func(tr, distance_km=-1, BAZ=-1, AZ=-1,
+                                     otime=None, lat=None, lon=None, depth=None)
+                traces.append(tr)
+
+            return traces
+
+        except Exception as e:
+            print(f"[WARNING] Failed station processing: {e}")
+            return []
+
+    def _shift(self, additional_processing, full_stream):
+        try:
+            for i, tr in enumerate(full_stream):
+                tr[i].stats.starttime = tr[i].stats.starttime + additional_processing["shift"][i]
+                # print(original, additional_processing["shift"][i].stats.starttime,
+                # additional_processing["shift"]['time_shifts'][i])
+
+            # Now `traces` is updated in-place
+        except Exception as e:
+            print(f"Error applying time shifts: {e}")
+        return full_stream

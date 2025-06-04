@@ -610,12 +610,8 @@ class SurfProject:
         Returns:
             List[SurfProject]
         """
-        from obspy import UTCDateTime
-        from datetime import datetime
-        import os
         import csv
-        import pickle
-        from multiprocessing import Pool, cpu_count
+
 
         def parse_event_file(path):
             events = []

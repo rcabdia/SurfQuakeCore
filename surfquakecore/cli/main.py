@@ -12,6 +12,7 @@ import os
 import sys
 from argparse import ArgumentParser
 from dataclasses import dataclass
+from datetime import datetime
 from multiprocessing import freeze_support
 from typing import Optional
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
@@ -714,6 +715,78 @@ def _processing_cut():
     sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file, sp_sub_projects)
     sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
 
+def _processing_daily():
+
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
+                               description="Processing waveforms command")
+    arg_parse.epilog = """
+                Overview:
+                    Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
+                    Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
+                    -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
+                    -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms] 
+                    --plot_config [Path to optional plotting configuration file (.yaml)]
+                """
+    arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
+    arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
+    arg_parse.add_argument("-i", "--inventory_file", required=True, help="Station XML metadata")
+    arg_parse.add_argument("-c", "--config_file", help="YAML config for processing")
+    arg_parse.add_argument("-l", "--plot", action="store_true", help="Enable plotting")
+    arg_parse.add_argument("--plot_config", help="YAML file for plot customization")
+    arg_parse.add_argument("--span_seconds", type=int, default=86400, help="Time span to split subprojects (in seconds)")
+
+    # Filter arguments
+    arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
+    arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
+    arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+
+    args = arg_parse.parse_args()
+
+    # --- Load project ---
+    sp = SurfProject.load_project(args.project_file)
+
+    # --- Apply key filters ---
+    filters = {}
+    if args.net:
+        filters["net"] = args.net
+    if args.station:
+        filters["station"] = args.station
+    if args.channel:
+        filters["channel"] = args.channel
+    if filters:
+        print(f"[INFO] Filtering project by: {filters}")
+        sp.filter_project_keys(**filters)
+
+    # --- Apply time filters ---
+    min_date, max_date = None, None
+    try:
+        if args.min_date:
+            min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
+        if args.max_date:
+            max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
+        if min_date or max_date:
+            print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
+            sp.filter_by_timerange(min_date=min_date, max_date=max_date)
+    except ValueError as ve:
+        print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+        raise ve
+
+    # --- Split into subprojects ---
+    print(f"[INFO] Splitting into subprojects every {args.span_seconds} seconds")
+    subprojects = sp.split_by_time_spans(span_seconds=args.span_seconds, min_date=args.min_date, max_date=args.max_date,
+                                         verbose=True)
+
+    # --- Run processing workflow ---
+    ae = AnalysisEvents(
+        output=args.output_folder,
+        inventory_file=args.inventory_file,
+        config_file=args.config_file,
+        surf_projects=subprojects,
+        plot_config_file=args.plot_config
+    )
+    ae.run_waveform_analysis(plot=args.plot)
 
 if __name__ == "__main__":
     freeze_support()
