@@ -6,25 +6,23 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
 from surfquakecore.cython_module.hampel import hampel
 
 class SeismogramData:
-    def __init__(self, stream, inventory, realtime=False, **kwargs):
+    def __init__(self, st, inventory=None, **kwargs):
+
         self.inventory = inventory
-        _stream = kwargs.pop('stream', [])
-
         self.config_keys = None
+        fil_gaps = kwargs.pop("fill_gaps", True)
+        self.st = st
 
-        if stream:
-            self.st = stream
-
-        if realtime:
-            self.__tracer = _stream
-
-        else:
+        if fil_gaps:
             gaps = self.st.get_gaps()
 
             if len(gaps) > 0:
                 self.st.print_gaps()
                 self.st.merge(fill_value="interpolate")
-
+                self.__tracer = self.st[0]
+            else:
+                self.__tracer = self.st[0]
+        else:
             self.__tracer = self.st[0]
 
         self.stats = TracerStatsAnalysis.from_dict(self.tracer.stats)

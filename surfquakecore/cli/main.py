@@ -14,6 +14,8 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
+
+from surfquakecore.data_processing.analysis_events import AnalysisEvents
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
@@ -66,8 +68,8 @@ def _create_actions():
         "buildmticonfig": _CliActions(
             name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n"),
 
-        "processing": _CliActions(
-            name="processing", run=_processing, description=f"Type {__entry_point_name} -h for help.\n")
+        "processing_cut": _CliActions(
+            name="processing_cut", run=_processing_cut, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -625,19 +627,19 @@ def _buildmticonfig():
                            mag_max=float(parsed_args.mag_max))
 
 
-def _processing():
-    freeze_support()
+
+def _processing_cut():
 
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
                                description="Processing waveforms command")
 
     arg_parse.epilog = """
-        Overview:
-            Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
-            Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
-            -e [event_file] -n [net] -s [station] -ch [channel] -st [start_time] -et [end_time] -cs [cut_start_time]
-            -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms]
-        """
+            Overview:
+                Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
+                Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
+                -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
+                -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms]
+            """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
                            required=True)
@@ -646,13 +648,13 @@ def _processing():
                            type=str, required=False)
 
     arg_parse.add_argument("-i", "--inventory_file", help="metadata file. xml extension", type=str,
-                           required=False)
+                           required=True)
 
     arg_parse.add_argument("-c", "--config_file", help="absolute path to config file", type=str,
                            required=False),
 
     arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str,
-                           required=False)
+                           required=True)
 
     arg_parse.add_argument("-n", "--net", help="project net filter", type=str, required=False)
 
@@ -667,12 +669,6 @@ def _processing():
                            required=False)
 
     arg_parse.add_argument("-ce", "--cut_end_time", help="cut post-first arrival  in seconds", type=float,
-                           required=False)
-
-    arg_parse.add_argument("-st", "--start_time", help="start project time filter, format 2022-10-21 13:14:30",
-                           type=str, required=False)
-
-    arg_parse.add_argument("-et", "--end_time", help="end project time filter, format 2022-10-22 13:15:30", type=str,
                            required=False)
 
     arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
@@ -694,28 +690,27 @@ def _processing():
         start = end = 300
 
     # 2. Read and filter project
+    filter = {}
 
-    project = SurfProject.load_project(parsed_args.project_file)
+    # Filter net
+    if parsed_args.net is not None:
+        filter['net'] = parsed_args.net
 
-    Analysis.filter_files(project, parsed_args.net, parsed_args.station, parsed_args.channel,
-                          parsed_args.start_time, parsed_args.end_time)
+    # Filter station
+    if parsed_args.station is not None:
+        filter['station'] = parsed_args.station
 
-    sd = Analysis(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                  parsed_args.event_file)
+    # Filter channel
+    if parsed_args.channel is not None:
+        filter['channel'] = parsed_args.channel
 
-    # 3. Execute the process
-    if sd.df_events is not None:
-        if len(sd.df_events) <= 75:
-            sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
-        elif len(sd.df_events) > 75:
-            project = project.split_by_time_spans(span_seconds=2*86400, verbose=True)
-            sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
+    sp = SurfProject.load_project(parsed_args.project_file)
+    if len(filter) > 0:
+        sp.filter_project_keys(**filter)
 
-    if sd.df_events is None and len(project) > 100:
-        project = project.split_by_time_spans(span_seconds=86400, verbose=True)
-        sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
-    elif sd.df_events is None and len(project) <= 100:
-        sd.run_processing_loop(start, end, project, plot=parsed_args.plots)
+    sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, event_window_seconds=86400, verbose=True)
+    sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file, sp_sub_projects)
+    sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
 
 
 if __name__ == "__main__":

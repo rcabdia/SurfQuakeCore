@@ -8,6 +8,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & Cristina Palacios
 # Email: rcabdia@roa.es
 """
+
 import platform
 from typing import List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
@@ -18,19 +19,10 @@ import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 
-# Choose best backend before importing pyplot
-if platform.system() == 'Darwin':  # macOS
-    mplt.use("MacOSX")
-elif platform.system() == 'Linux':
-    mplt.use("TkAgg")  # or "Agg" for headless servers
-# Windows could be added if needed
-# elif platform.system() == 'Windows':
-#     mplt.use("TkAgg")
-# More Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:
     def __init__(self,
-                 trace_list: List[Trace],
+                 stream,
                  metadata: Optional[Union[dict, Inventory]] = None,
                  epicenter: Optional[Tuple[float, float]] = None):
         """
@@ -43,7 +35,7 @@ class PlotProj:
         epicenter : tuple of (latitude, longitude), optional
             Coordinates of the event epicenter.
         """
-        self.trace_list = trace_list
+        self.trace_list = stream
         self.metadata = metadata
         self.epicenter = epicenter
         self._dist_az_cache = {}
@@ -94,9 +86,17 @@ class PlotProj:
         self._dist_az_cache[trace.id] = (dist_km, baz)
         return dist_km, baz
 
-    def plot(self,
-             traces_per_fig: int = None,
-             sort_by: Optional[str] = None, vspace: float = 0.0):
+    def plot(self, traces_per_fig: int = None, sort_by: Optional[str] = None, vspace: float = 0.0):
+
+        # Choose best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
+        if platform.system() == 'Darwin':  # macOS
+            mplt.use("MacOSX")
+        elif platform.system() == 'Linux':
+            mplt.use("TkAgg")  # or "Agg" for headless servers
+        # Windows could be added if needed
+        # elif platform.system() == 'Windows':
+        #     mplt.use("TkAgg")
+
         """
         Plot the traces with a specified number of subplots per figure.
 
@@ -107,6 +107,7 @@ class PlotProj:
         sort_by : str, optional
             Options: 'distance', 'backazimuth', or None.
         """
+
         traces = list(self.trace_list)  # Ensure it's a true list
 
         if sort_by == 'distance':
@@ -156,7 +157,7 @@ class PlotProj:
             plt.tight_layout()
             plt.ion()
             plt.show(block=True)
-            #plt.pause(0.1)
+            #plt.pause(5.0)
 
     def _setup_pick_interaction(self):
         """Set up double-click mouse event and key press events."""
