@@ -152,29 +152,62 @@ class SurfProject:
 
         return os.path.isfile(path_file_to_storage)
 
-    def extract_subproject_between(self, start: UTCDateTime, end: UTCDateTime, mode="tolerant",
-                                   margin=5) -> "SurfProject":
+    def extract_subproject_between(self, start, end, mode="tolerant", margin=5, overlap_threshold=0.25):
         """
-        Returns a new SurfProject containing only the traces that overlap with the given time window.
+        Extract a subproject containing only data files within a time window.
 
         Args:
-            start (UTCDateTime): Start of the time window.
-            end (UTCDateTime): End of the time window.
-            mode (str): 'tolerant' or 'strict'.
-            margin (int): Seconds margin if mode is 'tolerant'.
+            start (UTCDateTime): Time window start.
+            end (UTCDateTime): Time window end.
+            mode (str): 'tolerant', 'strict', 'max_overlap_per_day', or 'overlap_threshold'.
+            margin (int): Extra buffer seconds for 'tolerant' mode.
+            overlap_threshold (float): Minimum ratio of overlap for 'overlap_threshold' mode.
 
         Returns:
-            SurfProject: New subproject with only relevant traces.
+            SurfProject: New subproject with selected files.
         """
-        matched_files = self.extract_files_in_window(start, end, mode=mode, margin=margin)
+        selected = {}
 
-        new_project = self.clone_project_with_subset(matched_files)
+        window_duration = (end - start)
 
-        # Fill data_files in the new subproject
-        new_project.data_files = []
-        for trace_list in matched_files.values():
-            for trace_path, _ in trace_list:
-                new_project.data_files.append(trace_path)
+        for key, trace_list in self.project.items():
+            best_entry = None
+            max_overlap = 0
+            good_entries = []
+
+            for trace_path, stats in trace_list:
+                overlap = max(0, min(end, stats.endtime) - max(start, stats.starttime))
+
+                if mode == "max_overlap_per_day":
+                    if overlap > max_overlap:
+                        max_overlap = overlap
+                        best_entry = (trace_path, stats)
+
+                elif mode == "overlap_threshold":
+                    if overlap / window_duration >= overlap_threshold:
+                        good_entries.append((trace_path, stats))
+
+                elif mode == "strict":
+                    if stats.starttime <= end and stats.endtime >= start:
+                        if key not in selected:
+                            selected[key] = []
+                        selected[key].append((trace_path, stats))
+
+                elif mode == "tolerant":
+                    if stats.starttime <= end + margin and stats.endtime >= start - margin:
+                        if key not in selected:
+                            selected[key] = []
+                        selected[key].append((trace_path, stats))
+
+            if mode == "max_overlap_per_day" and best_entry:
+                selected[key] = [best_entry]
+
+            elif mode == "overlap_threshold" and good_entries:
+                selected[key] = good_entries
+
+        # Create and populate subproject
+        new_project = self.clone_project_with_subset(selected)
+        new_project.data_files = [trace_path for trace_list in selected.values() for trace_path, _ in trace_list]
 
         return new_project
 
@@ -758,7 +791,11 @@ class SurfProject:
                 meta = getattr(sp, "_events_metadata", [])
                 info = sp.get_project_basic_info()
                 ev_label = meta[0]["origin_time"] if meta else "span"
-                print(f"[{i}] {info['Start']} → {info['End']} | {info['num_files']} files | Event: {ev_label}")
+
+                if "Start" in info and "End" in info:
+                    print(f"[{i}] {info['Start']} → {info['End']} | {info['num_files']} files | Event: {ev_label}")
+                else:
+                    print(f"[{i}] No valid time range | {info.get('num_files', 0)} files | Event: {ev_label}")
 
         if save_path:
             self.save_subprojects_list(save_path, results)
