@@ -153,83 +153,6 @@ class AnalysisEvents:
             print(f"[WARNING] Station group failed: {e}")
             return []
 
-    # def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True):
-    #     additional_processing = {"rotate": {}, "shift": {}}
-    #     rotate = {}
-    #     shift = {}
-    #     # Check if Rotate & Shift
-    #     if self.config:
-    #         rotate = next((item for item in self.config if item.get('name') == 'rotate'), None)
-    #         shift = next((item for item in self.config if item.get('name') == 'shift'), None)
-    #
-    #     if rotate:
-    #         additional_processing["rotate"] = rotate
-    #     if shift:
-    #         additional_processing["shift"] = shift
-    #
-    #     if self.surf_projects is None:
-    #         print("No projects to process.")
-    #         return
-    #
-    #     for i, project in enumerate(self.surf_projects):
-    #         event = getattr(project, "_event_metadata", None)
-    #         if not event:
-    #             print(f"[INFO] Skipping subproject {i}: no event metadata")
-    #             continue
-    #
-    #         print(f"[INFO] Cutting traces for event {i} at {event['origin_time']}")
-    #
-    #         # ---- Group trace files by station code ----
-    #         station_files = defaultdict(list)
-    #         for trace_list in project.project.values():
-    #             for trace_path, stats in trace_list:
-    #                 station_key = f"{stats.network}.{stats.station}"
-    #                 station_files[station_key].append((trace_path, stats))
-    #
-    #         # ---- Create parallel tasks ----
-    #         tasks = []
-    #         for station_key, file_group in station_files.items():
-    #             tasks.append((
-    #                 file_group,  # all files for one station
-    #                 event,
-    #                 self.model,
-    #                 cut_start,
-    #                 cut_end,
-    #                 self.inventory,
-    #                 self._set_header,
-    #                 additional_processing
-    #             ))
-    #
-    #         # ---- Multiprocessing ----
-    #         with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-    #             results = pool.map(self._process_station_traces, tasks)
-    #
-    #         # Flatten lists of list of traces
-    #         all_traces = [tr for sublist in results for tr in sublist if tr is not None]
-    #         full_stream = self._clean_traces(all_traces)
-    #
-    #         # let's apply shift
-    #         if shift:
-    #             full_stream = self._shift(additional_processing, full_stream)
-    #
-    #         print(f"[INFO] Subproject {i}: {len(full_stream)} traces kept")
-    #
-    #         # let's apply custom script.py
-    #         if self.post_script_func:
-    #             try:
-    #                 print(f"[INFO] Running user post-script for event {i}")
-    #                 full_stream = self.post_script_func(full_stream, event)
-    #             except Exception as e:
-    #                 print(f"[WARNING] Post-script for event {i} failed: {e}")
-    #
-    #         # ---- Optional Plot ----
-    #         if full_stream:
-    #             if plot and len(full_stream) > 0:
-    #                 PlotProj(full_stream, plot_config=self.plot_config).plot()
-    #
-    #         # ---- Optional Save ----
-    #         if self.output:
-    #             self._write_files(full_stream)
 
     def _write_files(self, full_stream):
         errors = False
@@ -270,45 +193,6 @@ class AnalysisEvents:
             if isinstance(tr, Trace) and len(tr.data) > 0:
                 stream.append(tr)
         return stream
-
-    # def run_waveform_analysis(self, plot: bool = False):
-    #     if self.surf_projects is None:
-    #         print("No subprojects to process.")
-    #         return
-    #
-    #     for i, project in enumerate(self.surf_projects):
-    #         print(f"[INFO] Processing subproject {i} (daily stream)")
-    #
-    #         # Group by station
-    #         station_files = defaultdict(list)
-    #         for trace_list in project.project.values():
-    #             for trace_path, stats in trace_list:
-    #                 key = f"{stats.network}.{stats.station}"
-    #                 station_files[key].append((trace_path, stats))
-    #
-    #         tasks = []
-    #         for _, file_group in station_files.items():
-    #             tasks.append((
-    #                 file_group,
-    #                 None,  # No event metadata used
-    #                 None,  # No TauPyModel needed
-    #                 0, 0,  # No cut window
-    #                 self.inventory,
-    #                 self._set_header  # Still tags geodetic but without origin time
-    #             ))
-    #
-    #         with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-    #             results = pool.map(self._process_station_analysis, tasks)
-    #
-    #         all_traces = [tr for group in results for tr in group if tr is not None]
-    #         full_stream = self._clean_traces(all_traces)
-    #         print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
-    #
-    #         if plot and len(full_stream) > 0:
-    #             PlotProj(full_stream, plot_config=self.plot_config).plot()
-    #
-    #         if self.output:
-    #             self._write_files(full_stream)
 
     def run_waveform_analysis(self, plot: bool = False):
         if self.surf_projects is None:
@@ -365,6 +249,8 @@ class AnalysisEvents:
 
         for i, project in enumerate(self.surf_projects):
             events = getattr(project, "_events_metadata", [])
+            if isinstance(events, dict):  # Normalize single event
+                events = [events]
             if not events:
                 print(f"[INFO] Skipping subproject {i}: no associated events")
                 continue
@@ -379,7 +265,7 @@ class AnalysisEvents:
                         station_key = f"{stats.network}.{stats.station}"
                         station_files[station_key].append((trace_path, stats))
 
-                # ---- Parallel tasks ----
+                # ---- Parallel processing of stations ----
                 tasks = []
                 for file_group in station_files.values():
                     tasks.append((
@@ -393,9 +279,18 @@ class AnalysisEvents:
                         additional_processing
                     ))
 
-                with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                    results = pool.map(self._process_station_traces, tasks)
+                # with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                #     results = pool.map(self._process_station_traces, tasks)
+                    # ---- Conditional multiprocessing ----
+                if self.post_script_func:
+                    print(
+                        "[INFO] Post-script detected, using sequential processing to avoid multiprocessing issues.")
+                    results = [self._process_station_traces(task) for task in tasks]
+                else:
+                    with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                        results = pool.map(self._process_station_traces, tasks)
 
+                # ---- Collect, clean and shift traces if needed ----
                 all_traces = [tr for sublist in results for tr in sublist if tr is not None]
                 full_stream = self._clean_traces(all_traces)
 
@@ -404,17 +299,19 @@ class AnalysisEvents:
 
                 print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
 
-                # ---- Post-user script if defined ----
+                # ✅ Post-user script applied AFTER parallel block
                 if self.post_script_func:
                     try:
                         print(f"[INFO] Running post-script for subproject {i}, event {j}")
-                        full_stream = self.post_script_func(full_stream, event)
+                        self.post_script_func(full_stream, event)
                     except Exception as e:
                         print(f"[WARNING] Post-script failed: {e}")
 
+                # ---- Plotting if enabled ----
                 if plot and len(full_stream) > 0:
                     PlotProj(full_stream, plot_config=self.plot_config).plot()
 
+                # ---- Saving if output is defined ----
                 if self.output:
                     self._write_files(full_stream)
     def _process_station_analysis(self, args):

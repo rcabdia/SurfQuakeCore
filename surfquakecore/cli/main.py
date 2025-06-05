@@ -69,7 +69,10 @@ def _create_actions():
             name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "processing_cut": _CliActions(
-            name="processing_cut", run=_processing_cut, description=f"Type {__entry_point_name} -h for help.\n")
+            name="processing_cut", run=_processing_cut, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "processing_daily": _CliActions(
+            name="processing_daily", run=_processing_cut, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -715,10 +718,11 @@ def _processing_cut():
     if len(filter) > 0:
         sp.filter_project_keys(**filter)
 
-    sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, event_window_seconds=86400, verbose=True)
-    sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file, sp_sub_projects)
+    sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, cut_start_time=start,
+                                             cut_end_time=end, verbose=True)
+    sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
+                        sp_sub_projects, post_script=parsed_args.post_script,)
     sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
-
 def _processing_daily():
 
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
