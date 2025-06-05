@@ -633,16 +633,17 @@ def _buildmticonfig():
 
 def _processing_cut():
 
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
-                               description="Processing waveforms command")
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms associated to events. ",
+                               description="Processing waveforms associated to events command")
 
     arg_parse.epilog = """
             Overview:
-                Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
+                Cut seismograms associated to events and apply processing to the waveforms. You can perform either or both of these operations
                 Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
                 -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
                 -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms] 
-                --plot_config [Path to optional plotting configuration file (.yaml)]
+                --plot_config [Path to optional plotting configuration file (.yaml) 
+                --post_script [Path to Python script to apply to each event stream]
             """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
@@ -725,14 +726,14 @@ def _processing_cut():
     sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
 def _processing_daily():
 
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms. ",
-                               description="Processing waveforms command")
+    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing continous waveforms. ",
+                               description="Processing continous waveforms command")
     arg_parse.epilog = """
                 Overview:
-                    Cut seismograms and apply processing to the waveforms. You can perform either or both of these operations
+                    Cut seismograms and apply processing to continous waveforms. You can perform either or both of these operations
                     Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
-                    -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
-                    -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms] 
+                    -n [net] -s [station] -ch [channel] --min_date [Start time YYYY-MM-DD HH:MM:SS.sss] 
+                    --max_date [End time YYYY-MM-DD HH:MM:SS.sss] -l [if interactive plot seismograms] 
                     --plot_config [Path to optional plotting configuration file (.yaml)]
                 """
     arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
@@ -784,7 +785,7 @@ def _processing_daily():
     # --- Split into subprojects ---
     print(f"[INFO] Splitting into subprojects every {args.span_seconds} seconds")
     subprojects = sp.split_by_time_spans(span_seconds=args.span_seconds, min_date=args.min_date, max_date=args.max_date,
-                                         verbose=True)
+                                         file_selection_mode="overlap_threshold", verbose=True)
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
