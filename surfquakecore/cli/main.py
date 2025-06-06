@@ -744,7 +744,8 @@ def _processing_daily():
     arg_parse.add_argument("--span_seconds", type=int, default=86400, help="Time span to split subprojects (in seconds)")
     arg_parse.add_argument("--time_segment", action="store_true",
                            help="If set, process entire time window as a single merged stream")
-
+    arg_parse.add_argument("--time_tolerance", type=int, default=120,
+                           help="Tolerance in seconds for time filtering")
     # Filter arguments
     arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
     arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
@@ -780,7 +781,7 @@ def _processing_daily():
             max_date = parser.parse(args.max_date)
         if min_date or max_date:
             print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
-            sp.filter_by_timerange(min_date=min_date, max_date=max_date)
+            sp.filter_project_time(starttime=min_date, endtime=max_date, tol=args.time_tolerance, verbose=True)
     except ValueError as ve:
         print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
         raise ve
