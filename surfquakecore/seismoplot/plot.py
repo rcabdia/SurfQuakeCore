@@ -10,14 +10,13 @@
 """
 import os
 import platform
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 from obspy.core.trace import Trace
-from obspy.core.inventory import Inventory
-from obspy.geodetics import gps2dist_azimuth
 import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
+import matplotlib.dates as mdates
 # Choose best backend before importing pyplot,
 # more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
@@ -146,6 +145,7 @@ class PlotProj:
 
             self._setup_pick_interaction()
 
+            # Inside your plot() method, after ax.plot(...)
             for ax, tr in zip(self.axs, sub_traces):
                 t = tr.times("matplotlib")
                 dist, baz = self._get_geodetic_info(tr)
@@ -154,6 +154,12 @@ class PlotProj:
                 ax.set_title(str(tr.stats.starttime), fontsize=cfg["title_fontsize"])
                 if cfg["show_legend"]:
                     ax.legend()
+
+                # ✅ Set x-axis to datetime format
+                ax.xaxis_date()
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+                ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+                ax.tick_params(axis='x')
 
             auto_start = min(tr.times("matplotlib")[0] for tr in sub_traces)
             auto_end = max(tr.times("matplotlib")[-1] for tr in sub_traces)

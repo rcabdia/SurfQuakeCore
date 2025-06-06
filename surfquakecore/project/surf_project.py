@@ -786,21 +786,35 @@ class SurfProject:
                 subprojects = pool.map(_generate_subproject_for_time_window, task_args)
                 results.extend([sp for sp in subprojects if sp is not None])
 
+        # Group subprojects by identical content (based on data_files)
+        deduped = {}
+        for sp in results:
+            key = tuple(sorted(sp.data_files))
+            if key in deduped:
+                # Merge events
+                old_events = getattr(deduped[key], "_events_metadata", [])
+                new_events = getattr(sp, "_events_metadata", [])
+                merged_events = old_events + [e for e in new_events if e not in old_events]
+                setattr(deduped[key], "_events_metadata", merged_events)
+            else:
+                deduped[key] = sp
+
+        final_subprojects = list(deduped.values())
+
         if verbose:
-            for i, sp in enumerate(results):
+            for i, sp in enumerate(final_subprojects):
                 meta = getattr(sp, "_events_metadata", [])
                 info = sp.get_project_basic_info()
                 ev_label = meta[0]["origin_time"] if meta else "span"
-
                 if "Start" in info and "End" in info:
                     print(f"[{i}] {info['Start']} → {info['End']} | {info['num_files']} files | Event: {ev_label}")
                 else:
                     print(f"[{i}] No valid time range | {info.get('num_files', 0)} files | Event: {ev_label}")
 
         if save_path:
-            self.save_subprojects_list(save_path, results)
+            self.save_subprojects_list(save_path, final_subprojects)
 
-        return results
+        return final_subprojects
 
 
 

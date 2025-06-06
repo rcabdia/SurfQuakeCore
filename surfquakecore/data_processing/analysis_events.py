@@ -24,6 +24,7 @@ from surfquakecore.seismoplot.plot import PlotProj
 from collections import defaultdict
 import importlib.util
 
+
 class AnalysisEvents:
 
     def __init__(self, output: Optional[str] = None,
@@ -249,7 +250,7 @@ class AnalysisEvents:
 
         for i, project in enumerate(self.surf_projects):
             events = getattr(project, "_events_metadata", [])
-            if isinstance(events, dict):  # Normalize single event
+            if isinstance(events, dict):
                 events = [events]
             if not events:
                 print(f"[INFO] Skipping subproject {i}: no associated events")
@@ -258,62 +259,54 @@ class AnalysisEvents:
             for j, event in enumerate(events):
                 print(f"[INFO] Cutting traces for subproject {i}, event {j} at {event['origin_time']}")
 
-                # ---- Group files by station ----
+                # --- Prepare station-wise file groups ---
                 station_files = defaultdict(list)
                 for trace_list in project.project.values():
                     for trace_path, stats in trace_list:
                         station_key = f"{stats.network}.{stats.station}"
                         station_files[station_key].append((trace_path, stats))
 
-                # ---- Parallel processing of stations ----
+                # --- Create tasks for each station ---
                 tasks = []
                 for file_group in station_files.values():
                     tasks.append((
-                        file_group,
-                        event,
-                        self.model,
-                        cut_start,
-                        cut_end,
-                        self.inventory,
-                        self._set_header,
-                        additional_processing
+                        file_group, event, self.model, cut_start, cut_end,
+                        self.inventory, self._set_header, additional_processing
                     ))
 
-                # with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                #     results = pool.map(self._process_station_traces, tasks)
-                    # ---- Conditional multiprocessing ----
+                # --- Process stations (parallel if no post-script) ---
                 if self.post_script_func:
-                    print(
-                        "[INFO] Post-script detected, using sequential processing to avoid multiprocessing issues.")
+                    print("[INFO] Using sequential mode due to post-script")
                     results = [self._process_station_traces(task) for task in tasks]
                 else:
                     with Pool(processes=min(cpu_count(), len(tasks))) as pool:
                         results = pool.map(self._process_station_traces, tasks)
 
-                # ---- Collect, clean and shift traces if needed ----
-                all_traces = [tr for sublist in results for tr in sublist if tr is not None]
+                # --- Gather and clean traces ---
+                all_traces = [tr for sub in results for tr in sub if tr is not None]
                 full_stream = self._clean_traces(all_traces)
 
+                # --- Shift if needed ---
                 if shift:
                     full_stream = self._shift(additional_processing, full_stream)
 
                 print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
 
-                # ✅ Post-user script applied AFTER parallel block
+                # --- Post-script (optional) ---
                 if self.post_script_func:
                     try:
-                        print(f"[INFO] Running post-script for subproject {i}, event {j}")
                         self.post_script_func(full_stream, event)
                     except Exception as e:
                         print(f"[WARNING] Post-script failed: {e}")
 
-                # ---- Plotting if enabled ----
+                # --- Plot if requested ---
                 if plot and len(full_stream) > 0:
                     PlotProj(full_stream, plot_config=self.plot_config).plot()
 
-                # ---- Saving if output is defined ----
+                # --- Save output if requested ---
                 if self.output:
                     self._write_files(full_stream)
+
     def _process_station_analysis(self, args):
         file_group, _, _, _, _, inventory, set_header_func = args
         try:
