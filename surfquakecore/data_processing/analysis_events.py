@@ -23,7 +23,7 @@ from obspy.core.stream import Stream, Trace
 from surfquakecore.seismoplot.plot import PlotProj
 from collections import defaultdict
 import importlib.util
-
+import gc
 
 class AnalysisEvents:
 
@@ -285,6 +285,12 @@ class AnalysisEvents:
                 # --- Gather and clean traces ---
                 all_traces = [tr for sub in results for tr in sub if tr is not None]
                 full_stream = self._clean_traces(all_traces)
+
+                # save memory for further usage
+                if len(all_traces) >= 40:
+                    del all_traces
+                    del results
+                    gc.collect()
 
                 # --- Shift if needed ---
                 if shift:

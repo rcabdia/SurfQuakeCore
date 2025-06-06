@@ -20,11 +20,12 @@ import copy
 
 
 def _generate_subproject_for_time_window(args):
-    (start, end), serialized_project, events, mode, margin = args
+    (start, end), serialized_project, events, mode, overlap_threshold, margin = args
     project = pickle.loads(serialized_project)
 
     # Extract only traces within the window
-    sub = project.extract_subproject_between(start, end, mode=mode, margin=margin)
+    sub = project.extract_subproject_between(start, end, mode=mode, overlap_threshold=overlap_threshold,
+                                             margin=margin)
 
     # Attach relevant events
     setattr(sub, "_events_metadata", events or [])
@@ -36,6 +37,7 @@ def _generate_subproject_for_time_window(args):
             sub.data_files.append(trace_path)
 
     return sub
+
 
 class SurfProject:
 
@@ -152,7 +154,7 @@ class SurfProject:
 
         return os.path.isfile(path_file_to_storage)
 
-    def extract_subproject_between(self, start, end, mode="tolerant", margin=5, overlap_threshold=0.25):
+    def extract_subproject_between(self, start, end, mode="tolerant", margin=5, overlap_threshold=0.05):
         """
         Extract a subproject containing only data files within a time window.
 
@@ -704,6 +706,7 @@ class SurfProject:
                             event_file: str = None,
                             cut_start_time: float = 300,
                             cut_end_time: float = 300,
+                            overlap_threshold=0.05,
                             file_selection_mode: str = "tolerant") -> List["SurfProject"]:
         """
         Splits the project into subprojects by time spans or event-based windows.
@@ -717,6 +720,8 @@ class SurfProject:
             event_file (str): Optional CSV with events.
             cut_start_time (float): Pre-arrival time.
             cut_end_time (float): Post-arrival time.
+            overlap_threshold (float): minimum percentage over span_seconds to be
+            considered a file inside a span time window. Recommended small for very split daily files
             file_selection_mode (str): 'tolerant' or 'strict'.
 
         Returns:
@@ -766,7 +771,8 @@ class SurfProject:
 
                 window_start = origin - cut_start_time
                 window_end = origin + cut_end_time
-                task_args.append(((window_start, window_end), serialized_self, [event], file_selection_mode, 5))
+                task_args.append(((window_start, window_end), serialized_self, [event], file_selection_mode,
+                                  overlap_threshold, 5))
 
             with Pool(processes=min(cpu_count(), len(task_args))) as pool:
                 subprojects = pool.map(_generate_subproject_for_time_window, task_args)
@@ -779,7 +785,8 @@ class SurfProject:
             while current < end:
                 window_start = current
                 window_end = current + span_seconds
-                task_args.append(((window_start, window_end), serialized_self, [], file_selection_mode, 5))
+                task_args.append(((window_start, window_end), serialized_self, [], file_selection_mode,
+                                  overlap_threshold, 5))
                 current += span_seconds
 
             with Pool(processes=min(cpu_count(), len(task_args))) as pool:
@@ -815,7 +822,6 @@ class SurfProject:
             self.save_subprojects_list(save_path, final_subprojects)
 
         return final_subprojects
-
 
 
 class ProjectSaveFailed(Exception):
