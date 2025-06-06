@@ -12,7 +12,7 @@ import os
 import sys
 from argparse import ArgumentParser
 from dataclasses import dataclass
-from datetime import datetime
+from dateutil import parser
 from multiprocessing import freeze_support
 from typing import Optional
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
@@ -25,7 +25,6 @@ from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
 from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
-from surfquakecore.data_processing.analysis import Analysis
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -743,6 +742,8 @@ def _processing_daily():
     arg_parse.add_argument("-l", "--plot", action="store_true", help="Enable plotting")
     arg_parse.add_argument("--plot_config", help="YAML file for plot customization")
     arg_parse.add_argument("--span_seconds", type=int, default=86400, help="Time span to split subprojects (in seconds)")
+    arg_parse.add_argument("--time_segment", action="store_true",
+                           help="If set, process entire time window as a single merged stream")
 
     # Filter arguments
     arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
@@ -772,9 +773,11 @@ def _processing_daily():
     min_date, max_date = None, None
     try:
         if args.min_date:
-            min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
+            #min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
+            min_date = parser.parse(args.min_date)
         if args.max_date:
-            max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
+            #max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
+            max_date = parser.parse(args.max_date)
         if min_date or max_date:
             print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
             sp.filter_by_timerange(min_date=min_date, max_date=max_date)
@@ -782,10 +785,19 @@ def _processing_daily():
         print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
         raise ve
 
-    # --- Split into subprojects ---
-    print(f"[INFO] Splitting into subprojects every {args.span_seconds} seconds")
-    subprojects = sp.split_by_time_spans(span_seconds=args.span_seconds, min_date=args.min_date, max_date=args.max_date,
-                                         file_selection_mode="overlap_threshold", verbose=True)
+    # --- Decide between time segment or split ---
+    if args.time_segment:
+        print(f"[INFO] Running single-segment analysis from {args.min_date} to {args.max_date}")
+        subprojects = [sp]  # No splitting
+    else:
+        print(f"[INFO] Splitting into subprojects every {args.span_seconds} seconds")
+        subprojects = sp.split_by_time_spans(
+            span_seconds=args.span_seconds,
+            min_date=args.min_date,
+            max_date=args.max_date,
+            file_selection_mode="overlap_threshold",
+            verbose=True
+        )
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
@@ -793,7 +805,9 @@ def _processing_daily():
         inventory_file=args.inventory_file,
         config_file=args.config_file,
         surf_projects=subprojects,
-        plot_config_file=args.plot_config
+        plot_config_file=args.plot_config,
+        time_segment_start=args.min_date,
+        time_segment_end=args.max_date
     )
     ae.run_waveform_analysis(plot=args.plot)
 

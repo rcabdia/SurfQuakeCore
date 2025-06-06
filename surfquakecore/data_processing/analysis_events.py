@@ -9,7 +9,7 @@
 # --------------------------------------------------------------------
 
 import yaml
-from obspy import read_inventory
+from obspy import read_inventory, UTCDateTime
 from obspy.taup import TauPyModel
 import os
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
@@ -30,7 +30,8 @@ class AnalysisEvents:
     def __init__(self, output: Optional[str] = None,
                  inventory_file: Optional[str] = None, config_file: Optional[str] = None,
                  surf_projects: List[SurfProject] = None, plot_config_file: Optional[str] = None,
-                 post_script: Optional[str] = None):
+                 post_script: Optional[str] = None, time_segment_start: Optional[str] = None,
+                 time_segment_end: Optional[str] = None):
 
         self.model = TauPyModel("iasp91")
         self.output = output
@@ -38,6 +39,10 @@ class AnalysisEvents:
         self.inventory = None
         self.all_traces = []
         self.surf_projects = surf_projects
+
+        # Store user-specified time segment (as string or UTCDateTime)
+        self.time_segment_start = time_segment_start
+        self.time_segment_end = time_segment_end
 
         if inventory_file:
             try:
@@ -200,6 +205,12 @@ class AnalysisEvents:
             print("No subprojects to process.")
             return
 
+        # Convert string-based time segment (if set) to UTCDateTime
+        if hasattr(self, "time_segment_start") and isinstance(self.time_segment_start, str):
+            self.time_segment_start = UTCDateTime(self.time_segment_start)
+        if hasattr(self, "time_segment_end") and isinstance(self.time_segment_end, str):
+            self.time_segment_end = UTCDateTime(self.time_segment_end)
+
         for i, project in enumerate(self.surf_projects):
             print(f"[INFO] Processing subproject {i} (daily stream)")
 
@@ -314,17 +325,22 @@ class AnalysisEvents:
                     self._write_files(full_stream)
 
     def _process_station_analysis(self, args):
+
         file_group, _, _, _, _, inventory, set_header_func = args
         try:
             st = Stream()
             for trace_path, _ in file_group:
                 st += read(trace_path)
+
             st.merge(method=1, fill_value='interpolate')
+
+            # Trim to time segment if defined
+            if hasattr(self, "time_segment_start") and hasattr(self, "time_segment_end"):
+                st.trim(starttime=self.time_segment_start, endtime=self.time_segment_end)
 
             if len(st) == 0:
                 return []
 
-            # Metadata from first trace
             stats = file_group[0][1]
             net, sta = stats.network, stats.station
 
