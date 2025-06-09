@@ -1,4 +1,6 @@
 from .rmean import validate_rmean
+from .stack import validate_stack
+from .synch import validate_synch
 from .taper import validate_taper
 from .normalize import validate_normalize
 from .integrate import validate_integrate
@@ -37,7 +39,9 @@ CHECK_DISPATCH = {
     'fill_gaps': validate_fill_gaps,
     'smoothing': validate_smoothing,
     'rotate': validate_rotate,
-    'cross_correlate': validate_cross_correlate
+    'cross_correlate': validate_cross_correlate,
+    'stack': validate_stack,
+    'synch': validate_synch,
 }
 
 def validate_step(step_type, config):

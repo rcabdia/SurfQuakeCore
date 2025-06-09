@@ -1,4 +1,4 @@
-from obspy import Stream, Trace
+from obspy import Stream, Trace, UTCDateTime
 import numpy as np
 from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
@@ -7,6 +7,9 @@ from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
 from collections import defaultdict
+
+from surfquakecore.data_processing.seismicUtils import SeismicUtils
+
 
 class SeismogramData:
     def __init__(self, st, inventory=None, **kwargs):
@@ -188,7 +191,7 @@ class StreamProcessing:
     Class for applying stream-wide processing steps (e.g., stack, cross-correlation, rotate, shift).
     """
 
-    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift"}
+    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch"}
 
     def __init__(self, stream: Stream, config: list, **kwargs):
         self.stream = stream
@@ -206,37 +209,46 @@ class StreamProcessing:
                 continue  # skip unknown or trace-level methods
 
             if method_name == "stack":
-                self.stream = self._apply_stack(step)
+                self.stream = self.apply_stack(step)
             elif method_name == "cross_correlate":
-                self.stream = self._apply_cross_correlation(step)
+                self.stream = self.apply_cross_correlation(step)
             elif method_name == "rotate":
-                self.stream = self._apply_rotation(step)
+                self.stream = self.apply_rotation(step)
             elif method_name == "shift":
-                self.stream = self._apply_shift(step)
+                self.stream = self.apply_shift(step)
+            elif method_name == "synch":
+                self.stream = self.apply_synch(step)
 
         return self.stream
 
-    def _apply_stack(self, step_config):
+    def apply_stack(self, step_config):
 
         if len(self.stream) == 0:
             return self.stream  # Return empty
 
+        method = "linear"
+        if step_config["method"] == "pw" or step_config["method"] == "root":
+            method = (step_config["method"], step_config["order"])
+        elif step_config["method"] == "linear":
+            method = step_config["method"]
         # Ensure all traces are the same length
         min_length = min(len(tr.data) for tr in self.stream)
         trimmed_data = np.array([tr.data[:min_length] for tr in self.stream])
 
         # Apply the stack
-        stacked_array = stack(trimmed_data, stack_type=step_config["stack_type"])
+        stacked_array = stack(trimmed_data, stack_type=method)
 
         # Create a new Trace with metadata from the first one
         stacked_trace = Trace(data=stacked_array)
         stacked_trace.stats = self.stream[0].stats.copy()
-        stacked_trace.stats.channel += "_STK"  # Mark it's a stacked trace
+        stacked_trace.stats.station = "STA"
+        stacked_trace.stats.network = "NET"
+        stacked_trace.stats.channel = "STK"  # Mark it's a stacked trace
 
         # Return a new Stream
         return Stream(traces=[stacked_trace])
 
-    def _apply_cross_correlation(self, step_config):
+    def apply_cross_correlation(self, step_config):
         """
         Cross-correlate all traces in stream with respect to a reference trace.
 
@@ -291,9 +303,9 @@ class StreamProcessing:
 
         return Stream(cc_stream)
 
-    def _apply_rotation(self, step_config):
+    def apply_rotation(self, step_config):
 
-        self.standardize_to_NE_components()
+        self.stream = SeismicUtils.standardize_to_NE_components(self.stream)
 
         if "GAC" in step_config["method"]:
             self.stream.rotate(method=step_config["type"])
@@ -303,7 +315,7 @@ class StreamProcessing:
                                inclination=step_config["inclination"])
         return self.stream
 
-    def _apply_shift(self, step_config):
+    def apply_shift(self, step_config):
         try:
             time_shifts = step_config.get("time_shifts", [])
             for i, shift_val in enumerate(time_shifts):
@@ -314,54 +326,17 @@ class StreamProcessing:
             print(f"Error applying time shifts: {e}")
         return self.stream
 
-    def standardize_to_NE_components(self, verbose=False):
-        """
-        Rename OBS-style components (e.g., '1', '2', 'X', 'Y') to 'N', 'E' in self.stream.
-        Only changes the final character of the channel code. Operates per station.
 
-        Parameters:
-        - verbose (bool): Print renaming steps.
-        """
-        mapping = {
-            "1": "N", "2": "E",
-            "X": "E", "Y": "N",
-            "Z": "Z"
-        }
+    def apply_synch(self, step_config):
 
-        # Group traces by station
-        station_groups = defaultdict(list)
-        for tr in self.stream:
-            key = (tr.stats.network, tr.stats.station, tr.stats.location)
-            station_groups[key].append(tr)
+        if step_config["method"] == "starttime":
+            ref_starttime = UTCDateTime("1983-12-23T00:00:00.0")
+            for i, tr in enumerate(self.stream):
+                self.stream[i].stats.starttime = ref_starttime
 
-        new_stream = Stream()
+        elif step_config["method"] == "MCCC":
+            self.stream, _ = SeismicUtils.multichannel(self.stream, resample=False)
 
-        for station_key, traces in station_groups.items():
-            components = set(tr.stats.channel[-1].upper() for tr in traces)
+        return self.stream
 
-            if {"Z", "N", "E"}.issubset(components):
-                if verbose:
-                    print(f"✔ Station {station_key} already uses standard Z, N, E. Skipping.")
-                new_stream += Stream(traces)
-                continue
 
-            if verbose:
-                print(f"🔄 Renaming components for station {station_key}...")
-
-            for tr in traces:
-                orig_code = tr.stats.channel
-                last_char = orig_code[-1].upper()
-
-                if last_char in mapping:
-                    new_component = mapping[last_char]
-                    new_channel = orig_code[:-1] + new_component
-                    if verbose:
-                        print(f"Renaming {orig_code} → {new_channel}")
-                    tr.stats.channel = new_channel
-                else:
-                    if verbose:
-                        print(f"⚠ Could not rename channel: {orig_code} (left unchanged)")
-
-                new_stream.append(tr)
-
-        self.stream = new_stream

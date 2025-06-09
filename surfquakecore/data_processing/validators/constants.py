@@ -3,14 +3,16 @@
 """
 constants
 """
+
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
-                 'cross_correlate']
+                 'cross_correlate', 'stack', 'synch']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 
 ROTATE_METHODS = ['GAC', "FREE"]
+
 ROTATE_TYPES = ['NE->RT', 'RT->NE', 'ZNE->LQT', 'LQT->ZNE']
 
 TAPER_METHODS = ['cosine', 'barthann', 'bartlett', 'blackman', 'blackmanharris', 'bohman', 'boxcar', 'chebwin',
@@ -35,3 +37,7 @@ FILL_GAP_METHODS = ['latest', 'interpolate']
 SMOOTHING_METHODS = ['mean', 'gaussian', 'adaptive', 'tkeo']
 
 TAPER_SIDE = ['both', 'left', 'right']
+
+STACK_METHODS = ['linear', 'pw', 'root']
+
+SYNCH_METHODS = ['starttime', 'MCCC']

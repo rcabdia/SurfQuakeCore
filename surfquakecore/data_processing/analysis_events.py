@@ -98,7 +98,7 @@ class AnalysisEvents:
         return parse_configuration_file(yaml_data)
 
     def _process_station_traces(self, args):
-        file_group, event, model, cut_start, cut_end, inventory, set_header_func, additional_processing = args
+        file_group, event, model, cut_start, cut_end, inventory, set_header_func = args
         try:
             # Read & merge all files for this station
             st = Stream()
@@ -232,6 +232,15 @@ class AnalysisEvents:
             all_traces = [tr for group in results for tr in group if tr is not None]
             full_stream = self._clean_traces(all_traces)
 
+            # save memory for further usage
+            if len(all_traces) >= 10:
+                del all_traces
+                del results
+                gc.collect()
+
+            sp = StreamProcessing(full_stream, self.config)
+            full_stream = sp.run_stream_processing()
+
             print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
 
             if plot and len(full_stream) > 0:
@@ -241,11 +250,8 @@ class AnalysisEvents:
                 self._write_files(full_stream)
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True):
-        additional_processing = {"rotate": {}, "shift": {}}
-        shift = next((item for item in self.config if item.get('name') == 'shift'), None) if self.config else None
 
-        if shift:
-            additional_processing["shift"] = shift
+        #shift = next((item for item in self.config if item.get('name') == 'shift'), None) if self.config else None
 
         if self.surf_projects is None:
             print("No projects to process.")
@@ -274,7 +280,7 @@ class AnalysisEvents:
                 for file_group in station_files.values():
                     tasks.append((
                         file_group, event, self.model, cut_start, cut_end,
-                        self.inventory, self._set_header, additional_processing
+                        self.inventory, self._set_header
                     ))
 
                 # --- Process stations (parallel if no post-script) ---
@@ -297,11 +303,6 @@ class AnalysisEvents:
 
                 sp = StreamProcessing(full_stream, self.config)
                 full_stream = sp.run_stream_processing()
-
-                # --- Shift if needed ---
-                # TODO MOVE THIS FUNCTIONALITY TO STREAMPROCESSING
-                if shift:
-                    full_stream = self._shift(additional_processing, full_stream)
 
                 print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
 
@@ -357,14 +358,3 @@ class AnalysisEvents:
             print(f"[WARNING] Failed station processing: {e}")
             return []
 
-    def _shift(self, additional_processing, full_stream):
-        try:
-            for i, tr in enumerate(full_stream):
-                tr[i].stats.starttime = tr[i].stats.starttime + additional_processing["shift"][i]
-                # print(original, additional_processing["shift"][i].stats.starttime,
-                # additional_processing["shift"]['time_shifts'][i])
-
-            # Now `traces` is updated in-place
-        except Exception as e:
-            print(f"Error applying time shifts: {e}")
-        return full_stream

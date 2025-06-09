@@ -35,7 +35,7 @@ class PlotProj:
         # Default plotting configuration
         self.plot_config = {
             "traces_per_fig": 6,
-            "sort_by": "distance",  # options: distance, backazimuth, None
+            "sort_by": None,  # options: distance, backazimuth, None
             "vspace": 0.0,
             "title_fontsize": 9,
             "show_legend": True,
@@ -54,60 +54,13 @@ class PlotProj:
         self.axs = None
         self.pick_type = "P"
 
-    # def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
-    #     """
-    #     Retrieve station coordinates from metadata.
-    #     """
-    #     if self.metadata is None:
-    #         return None
-    #
-    #     network = trace.stats.network
-    #     station = trace.stats.station
-    #
-    #     if isinstance(self.metadata, Inventory):
-    #         try:
-    #             coords = self.metadata.get_coordinates(f"{network}.{station}")
-    #             return coords['latitude'], coords['longitude']
-    #         except Exception:
-    #             return None
-    #     elif isinstance(self.metadata, dict):
-    #         return self.metadata.get(f"{network}.{station}")
-    #
-    #     return None
-
-    # def _compute_distance_azimuth(self, trace: Trace) -> Tuple[float, float]:
-    #     """
-    #     Prefer distance and backazimuth from trace header if available.
-    #     """
-    #     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
-    #         try:
-    #             dist, az, baz = trace.stats.geodetic['geodetic']
-    #             return dist, baz
-    #         except Exception:
-    #             pass  # fallback below
-    #
-    #     # Fallback: compute from station coordinates and epicenter
-    #     if trace.id in self._dist_az_cache:
-    #         return self._dist_az_cache[trace.id]
-    #
-    #     coords = self._get_station_coords(trace)
-    #     if coords is None or self.epicenter is None:
-    #         return float('inf'), float('inf')
-    #
-    #     epi_lat, epi_lon = self.epicenter
-    #     sta_lat, sta_lon = coords
-    #     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
-    #     dist_km = dist_m / 1000.0
-    #
-    #     self._dist_az_cache[trace.id] = (dist_km, baz)
-    #     return dist_km, baz
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
         Returns distance (km) and back-azimuth from trace header.
         """
         try:
-            dist, az, baz = trace.stats.geodetic['geodetic']
+            dist, az, baz, incidence_ang = trace.stats.geodetic['geodetic']
             return dist, baz
         except Exception:
             return float('inf'), float('inf')
@@ -319,15 +272,51 @@ class PlotProj:
         print(f"[INFO] Pick type set to: {self.pick_type}")
 
 if __name__ == "__main__":
-    from obspy import read, read_inventory, UTCDateTime
+    print("READY TO TEST")
+    # def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
+    #     """
+    #     Retrieve station coordinates from metadata.
+    #     """
+    #     if self.metadata is None:
+    #         return None
+    #
+    #     network = trace.stats.network
+    #     station = trace.stats.station
+    #
+    #     if isinstance(self.metadata, Inventory):
+    #         try:
+    #             coords = self.metadata.get_coordinates(f"{network}.{station}")
+    #             return coords['latitude'], coords['longitude']
+    #         except Exception:
+    #             return None
+    #     elif isinstance(self.metadata, dict):
+    #         return self.metadata.get(f"{network}.{station}")
+    #
+    #     return None
 
-    # Load stream and metadata
-    st = read()  # your traces
-    inv = read_inventory()  # or a dict with station coords: {'NET.STA': (lat, lon)}
-
-    # Define epicenter (latitude, longitude)
-    epicenter = (10.0, 20.0)
-
-    # Initialize and plot
-    plotter = PlotProj(st, metadata=inv, epicenter=epicenter)
-    plotter.plot(traces_per_fig=3, sort_by='distance')
+    # def _compute_distance_azimuth(self, trace: Trace) -> Tuple[float, float]:
+    #     """
+    #     Prefer distance and backazimuth from trace header if available.
+    #     """
+    #     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
+    #         try:
+    #             dist, az, baz = trace.stats.geodetic['geodetic']
+    #             return dist, baz
+    #         except Exception:
+    #             pass  # fallback below
+    #
+    #     # Fallback: compute from station coordinates and epicenter
+    #     if trace.id in self._dist_az_cache:
+    #         return self._dist_az_cache[trace.id]
+    #
+    #     coords = self._get_station_coords(trace)
+    #     if coords is None or self.epicenter is None:
+    #         return float('inf'), float('inf')
+    #
+    #     epi_lat, epi_lon = self.epicenter
+    #     sta_lat, sta_lon = coords
+    #     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
+    #     dist_km = dist_m / 1000.0
+    #
+    #     self._dist_az_cache[trace.id] = (dist_km, baz)
+    #     return dist_km, baz
