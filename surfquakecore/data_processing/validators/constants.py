@@ -5,7 +5,8 @@ constants
 """
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
-                 'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate']
+                 'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
+                 'cross_correlate']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 
@@ -21,6 +22,8 @@ WAVELET_METHODS = ['db2','db4','db6','db8','db10','db12','db14','db16','db18','d
                    'bior2.6', 'bior2.8', 'bior3.3', 'bior3.5', 'bior3.7', 'bior3.9', 'bior4.4', 'bior5.5', 'bior6.8']
 
 INTEGRATE_METHODS = ['cumtrapz', 'spline', 'spectral']
+
+CROSS_CORRELATE_MODE = ['full', 'valid', 'same']
 
 FILTER_METHODS = ['bandpass', 'bandstop', 'lowpass', 'highpass', 'cheby1', 'cheby2', 'elliptic', 'bessel']
 

@@ -5,7 +5,7 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
     wiener_filter, add_frequency_domain_noise, whiten, normalize, wavelet_denoise, safe_downsample, smoothing
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
-from obspy.signal.cross_correlation import correlate, xcorr_max
+from obspy.signal.cross_correlation import correlate_template
 
 
 class SeismogramData:
@@ -243,10 +243,9 @@ class StreamProcessing:
         Returns a new Stream with the correlation functions as Trace objects.
         """
         # --- Configuration ---
-        shift = step_config.get("shift", 20)
-        demean = step_config.get("demean", True)
-        normalize = step_config.get("normalize", 'naive')
-        method = step_config.get("method", 'auto')
+
+        normalize = step_config.get("normalize", 'full')
+        mode = step_config.get("mode", 'full')
         reference_idx = step_config.get("reference", 0)
 
         st = self.stream.copy()
@@ -277,16 +276,13 @@ class StreamProcessing:
         cc_stream = Stream()
 
         for i, tr in enumerate(st):
-            cc = correlate(tr, ref_trace, shift=shift, demean=demean,
-                           normalize=normalize, method=method)
-
+            cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
             cc_tr = Trace()
             cc_tr.data = cc
             cc_tr.stats.sampling_rate = sr
-            cc_tr.stats.starttime = -shift / sr
             cc_tr.stats.network = tr.stats.network
             cc_tr.stats.station = tr.stats.station
-            cc_tr.stats.channel = "XC"
+            cc_tr.stats.channel = tr.stats.channel[0:1]+"X"+tr.stats.channel[-1]
             cc_tr.stats.correlation_with = ref_trace.id
             cc_tr.stats.original_trace = tr.id
             cc_tr.stats.is_autocorrelation = (i == reference_idx)
@@ -301,9 +297,12 @@ class StreamProcessing:
         return self.stream
 
     def _apply_shift(self, step_config):
-        print("[INFO] Applying shift")
-        time_shifts = step_config.get("time_shifts", [])
-        for i, shift_val in enumerate(time_shifts):
-            if i < len(self.stream):
-                self.stream[i].stats.starttime += shift_val
+        try:
+            time_shifts = step_config.get("time_shifts", [])
+            for i, shift_val in enumerate(time_shifts):
+                if i < len(self.stream):
+                    self.stream[i].stats.starttime += shift_val
+            # Now `traces` is updated in-place
+        except Exception as e:
+            print(f"Error applying time shifts: {e}")
         return self.stream

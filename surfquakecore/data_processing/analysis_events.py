@@ -14,7 +14,7 @@ from obspy.taup import TauPyModel
 import os
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
 from typing import Optional, List
-from surfquakecore.data_processing.seismogram_analysis import SeismogramData
+from surfquakecore.data_processing.seismogram_analysis import SeismogramData, StreamProcessing
 from surfquakecore.project.surf_project import SurfProject
 from multiprocessing import Pool, cpu_count
 from obspy.geodetics import gps2dist_azimuth
@@ -303,7 +303,11 @@ class AnalysisEvents:
                     del results
                     gc.collect()
 
+                sp = StreamProcessing(full_stream, self.config)
+                full_stream = sp.run_stream_processing()
+
                 # --- Shift if needed ---
+                # TODO MOVE THIS FUNCTIONALITY TO STREAMPROCESSING
                 if shift:
                     full_stream = self._shift(additional_processing, full_stream)
 
