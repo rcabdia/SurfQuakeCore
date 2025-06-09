@@ -8,17 +8,18 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & Cristina Palacios
 # Email: rcabdia@roa.es
 """
+
 import os
 import platform
 from typing import Optional, Tuple
 import matplotlib.pyplot as plt
+from obspy import UTCDateTime
 from obspy.core.trace import Trace
 import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 import matplotlib.dates as mdates
-# Choose best backend before importing pyplot,
-# more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
+# Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:
     def __init__(self, stream,
@@ -40,6 +41,7 @@ class PlotProj:
             "title_fontsize": 9,
             "show_legend": True,
             "autosave": False,
+            "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
             "save_folder": "./plots"
         }
 
@@ -70,12 +72,22 @@ class PlotProj:
             mplt.use("MacOSX")
         elif platform.system() == 'Linux':
             mplt.use("TkAgg")
-        cfg = self.plot_config
-        traces = self.trace_list
 
-        if cfg["sort_by"] == 'distance':
+        plot_type = self.plot_config.get("plot_type", "standard")
+
+        if plot_type == "record":
+            self._plot_record_section()
+        elif plot_type == "overlay":
+            self._plot_overlay_traces()
+        else:
+            self._plot_standard_traces()
+
+    def _plot_standard_traces(self):
+
+        traces = self.trace_list
+        if self.plot_config["sort_by"] == 'distance':
             traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
-        elif cfg["sort_by"] == 'backazimuth':
+        elif self.plot_config["sort_by"] == 'backazimuth':
             traces.sort(key=lambda tr: self._get_geodetic_info(tr)[1])
 
         n_traces = len(traces)
@@ -83,7 +95,7 @@ class PlotProj:
             print("No traces to plot.")
             return
 
-        traces_per_fig = cfg["traces_per_fig"]
+        traces_per_fig = self.plot_config["traces_per_fig"]
 
         for i in range(0, n_traces, traces_per_fig):
             sub_traces = traces[i:i + traces_per_fig]
@@ -91,7 +103,7 @@ class PlotProj:
                 len(sub_traces), 1,
                 figsize=(10, 2 * len(sub_traces)),
                 sharex=True,
-                gridspec_kw={'hspace': cfg["vspace"]}
+                gridspec_kw={'hspace': self.plot_config["vspace"]}
             )
             if len(sub_traces) == 1:
                 self.axs = [self.axs]
@@ -104,8 +116,8 @@ class PlotProj:
                 dist, baz = self._get_geodetic_info(tr)
                 ax.plot(t, tr.data, linewidth=0.75,
                         label=f"{tr.id} | Dist: {dist:.1f} km | Baz: {baz:.1f}°")
-                ax.set_title(str(tr.stats.starttime), fontsize=cfg["title_fontsize"])
-                if cfg["show_legend"]:
+                ax.set_title(str(tr.stats.starttime), fontsize=self.plot_config["title_fontsize"])
+                if self.plot_config["show_legend"]:
                     ax.legend()
 
                 # ✅ Set x-axis to datetime format
@@ -119,15 +131,87 @@ class PlotProj:
             for ax in self.axs:
                 ax.set_xlim(auto_start, auto_end)
 
-            if cfg["autosave"]:
-                os.makedirs(cfg["save_folder"], exist_ok=True)
-                fig_path = os.path.join(cfg["save_folder"], f"waveform_plot_{i // traces_per_fig + 1}.png")
+            if self.plot_config["autosave"]:
+                os.makedirs(self.plot_config["save_folder"], exist_ok=True)
+                fig_path = os.path.join(self.plot_config["save_folder"], f"waveform_plot_{i // traces_per_fig + 1}.png")
                 plt.savefig(fig_path, dpi=150)
                 print(f"[INFO] Plot saved to {fig_path}")
             else:
                 plt.ion()
                 plt.tight_layout()
                 plt.show(block=True)
+
+    def _plot_record_section(self):
+
+        cfg = self.plot_config
+        traces = self.trace_list
+
+        # Sort by distance
+        traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
+        distances = [self._get_geodetic_info(tr)[0] for tr in traces]
+        scale = cfg.get("scale_factor", 1.0)
+
+        # Compute global start time for alignment
+        #t0 = min(tr.stats.starttime for tr in traces)
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        for tr, dist in zip(traces, distances):
+            # Normalize trace to its max amplitude
+            norm_data = tr.data / np.max(np.abs(tr.data)) if np.max(np.abs(tr.data)) != 0 else tr.data
+
+            # Align time axis to earliest start
+            t = tr.times("matplotlib")
+
+            ax.plot(t, norm_data * scale + dist, linewidth=0.6, label=tr.id)
+
+        ax.set_xlabel("Time (UTC)")
+        ax.set_ylabel("Distance (km)")
+        ax.xaxis_date()
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        ax.set_title("Record Section")
+
+        if cfg["show_legend"]:
+            ax.legend(fontsize=6)
+
+        if cfg["autosave"]:
+            os.makedirs(cfg["save_folder"], exist_ok=True)
+            fig_path = os.path.join(cfg["save_folder"], f"record_section.png")
+            plt.savefig(fig_path, dpi=150)
+            print(f"[INFO] Record section saved to {fig_path}")
+        else:
+            plt.tight_layout()
+            plt.show(block=True)
+
+    def _plot_overlay_traces(self):
+        traces = self.trace_list
+
+        if len(traces) == 0:
+            print("No traces to plot.")
+            return
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        for tr in traces:
+            t = tr.times("matplotlib")
+            ax.plot(t, tr.data, linewidth=0.8, alpha=0.7, label=tr.id)
+
+        ax.set_xlabel("Time (UTC)")
+        ax.set_ylabel("Normalized Amplitude")
+        ax.xaxis_date()
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        ax.set_title("Overlay of All Traces")
+
+        if self.plot_config["show_legend"]:
+            ax.legend(fontsize=6)
+
+        if self.plot_config["autosave"]:
+            os.makedirs(self.plot_config["save_folder"], exist_ok=True)
+            fig_path = os.path.join(self.plot_config["save_folder"], "overlay_plot.png")
+            plt.savefig(fig_path, dpi=150)
+            print(f"[INFO] Overlay plot saved to {fig_path}")
+        else:
+            plt.tight_layout()
+            plt.show(block=True)
 
     def _setup_pick_interaction(self):
         """Set up double-click mouse event and key press events."""
