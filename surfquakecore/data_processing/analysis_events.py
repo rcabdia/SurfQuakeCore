@@ -125,6 +125,7 @@ class AnalysisEvents:
             if not arrivals:
                 raise ValueError("No valid arrivals returned by TauPyModel.")
 
+            incidence_angle = arrivals[0].incident_angle
             first_arrival = origin + arrivals[0].time
             t1 = first_arrival - cut_start
             t2 = first_arrival + cut_end
@@ -138,20 +139,9 @@ class AnalysisEvents:
                 if self.config:
                     sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
                     tr = sd.run_analysis(self.config)
-                tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
+                tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az, incidence_angle=incidence_angle,
                                      otime=origin, lat=lat, lon=lon, depth=depth)
                 traces.append(tr)
-
-            # In this point we can go ahead with rotate  if  needed
-            if len(additional_processing["rotate"]) > 0:
-                # TODO, WE CAN INCLUDE LATER MORE METHOD LIKE LQT
-                st_rotate = Stream(traces)
-                st_rotate.rotate(method='NE->RT', back_azimuth=baz)
-
-                # Back to list of traces
-                traces = []
-                for tr in st:
-                    traces.append(tr)
 
             return traces
 
@@ -186,8 +176,13 @@ class AnalysisEvents:
             else:
                 print("Writting Complete, check output", self.output)
 
-    def _set_header(self, tr, distance_km, BAZ, AZ, otime, lat, lon, depth):
-        tr.stats['geodetic'] = {'otime': otime, 'geodetic': [distance_km, AZ, BAZ], 'event': [lat, lon, depth]}
+    def _set_header(self, tr, distance_km, BAZ, AZ, incidence_angle, otime, lat, lon, depth):
+
+        tr.stats['geodetic'] = {'otime': otime, 'geodetic': [distance_km, AZ, BAZ, incidence_angle],
+                                'event': [lat, lon, depth]}
+        tr.stats.back_azimuth = BAZ
+        tr.stats.inclination = incidence_angle
+
         return tr
 
     def _clean_traces(self, traces: List[Trace]) -> Stream:
@@ -247,11 +242,8 @@ class AnalysisEvents:
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True):
         additional_processing = {"rotate": {}, "shift": {}}
-        rotate = next((item for item in self.config if item.get('name') == 'rotate'), None) if self.config else None
         shift = next((item for item in self.config if item.get('name') == 'shift'), None) if self.config else None
 
-        if rotate:
-            additional_processing["rotate"] = rotate
         if shift:
             additional_processing["shift"] = shift
 

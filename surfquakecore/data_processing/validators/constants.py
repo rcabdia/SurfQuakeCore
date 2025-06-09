@@ -10,7 +10,8 @@ ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'f
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 
-ROTATE_METHODS = ['GAC', 'RT', 'LQT']
+ROTATE_METHODS = ['GAC', "FREE"]
+ROTATE_TYPES = ['NE->RT', 'RT->NE', 'ZNE->LQT', 'LQT->ZNE']
 
 TAPER_METHODS = ['cosine', 'barthann', 'bartlett', 'blackman', 'blackmanharris', 'bohman', 'boxcar', 'chebwin',
                  'flattop', 'gaussian', 'general_gaussian', 'hamming', 'hann', 'kaiser', 'nuttall', 'parzen', 'slepian',

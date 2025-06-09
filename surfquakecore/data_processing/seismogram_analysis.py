@@ -6,7 +6,7 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
-
+from collections import defaultdict
 
 class SeismogramData:
     def __init__(self, st, inventory=None, **kwargs):
@@ -292,8 +292,15 @@ class StreamProcessing:
         return Stream(cc_stream)
 
     def _apply_rotation(self, step_config):
-        print("[INFO] Applying rotation")
-        self.stream.rotate(method="NE->RT")
+
+        self.standardize_to_NE_components()
+
+        if "GAC" in step_config["method"]:
+            self.stream.rotate(method=step_config["type"])
+        else:
+
+            self.stream.rotate(method=step_config["type"], back_azimuth=step_config["angle"],
+                               inclination=step_config["inclination"])
         return self.stream
 
     def _apply_shift(self, step_config):
@@ -306,3 +313,55 @@ class StreamProcessing:
         except Exception as e:
             print(f"Error applying time shifts: {e}")
         return self.stream
+
+    def standardize_to_NE_components(self, verbose=False):
+        """
+        Rename OBS-style components (e.g., '1', '2', 'X', 'Y') to 'N', 'E' in self.stream.
+        Only changes the final character of the channel code. Operates per station.
+
+        Parameters:
+        - verbose (bool): Print renaming steps.
+        """
+        mapping = {
+            "1": "N", "2": "E",
+            "X": "E", "Y": "N",
+            "Z": "Z"
+        }
+
+        # Group traces by station
+        station_groups = defaultdict(list)
+        for tr in self.stream:
+            key = (tr.stats.network, tr.stats.station, tr.stats.location)
+            station_groups[key].append(tr)
+
+        new_stream = Stream()
+
+        for station_key, traces in station_groups.items():
+            components = set(tr.stats.channel[-1].upper() for tr in traces)
+
+            if {"Z", "N", "E"}.issubset(components):
+                if verbose:
+                    print(f"✔ Station {station_key} already uses standard Z, N, E. Skipping.")
+                new_stream += Stream(traces)
+                continue
+
+            if verbose:
+                print(f"🔄 Renaming components for station {station_key}...")
+
+            for tr in traces:
+                orig_code = tr.stats.channel
+                last_char = orig_code[-1].upper()
+
+                if last_char in mapping:
+                    new_component = mapping[last_char]
+                    new_channel = orig_code[:-1] + new_component
+                    if verbose:
+                        print(f"Renaming {orig_code} → {new_channel}")
+                    tr.stats.channel = new_channel
+                else:
+                    if verbose:
+                        print(f"⚠ Could not rename channel: {orig_code} (left unchanged)")
+
+                new_stream.append(tr)
+
+        self.stream = new_stream
