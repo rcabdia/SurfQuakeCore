@@ -312,13 +312,14 @@ class AnalysisEvents:
                 # --- Post-script (optional) ---
                 if self.post_script_func:
                     try:
-                        self.post_script_func(full_stream, event)
+                       full_stream = self.post_script_func(full_stream, event)
                     except Exception as e:
                         print(f"[WARNING] Post-script failed: {e}")
 
                 # --- Plot if requested ---
-                if plot and len(full_stream) > 0:
-                    PlotProj(full_stream, plot_config=self.plot_config).plot()
+                if full_stream is not None:
+                    if plot and len(full_stream) > 0:
+                        PlotProj(full_stream, plot_config=self.plot_config).plot()
 
                 # --- Save output if requested ---
                 if self.output:

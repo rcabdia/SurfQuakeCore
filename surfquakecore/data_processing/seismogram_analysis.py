@@ -1,9 +1,12 @@
-from obspy import Stream
+from obspy import Stream, Trace
 import numpy as np
 from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, whiten, normalize, wavelet_denoise, safe_downsample, smoothing
 from surfquakecore.cython_module.hampel import hampel
+from obspy.signal.util import stack
+from obspy.signal.cross_correlation import correlate, xcorr_max
+
 
 class SeismogramData:
     def __init__(self, st, inventory=None, **kwargs):
@@ -179,3 +182,128 @@ class SeismogramData:
                 tr = smoothing(tr, type=_config['method'], k=_config['time_window'], fwhm=_config['FWHM'])
 
         return tr
+
+class StreamProcessing:
+    """
+    Class for applying stream-wide processing steps (e.g., stack, cross-correlation, rotate, shift).
+    """
+
+    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift"}
+
+    def __init__(self, stream: Stream, config: list, **kwargs):
+        self.stream = stream
+        self.config = config
+        self.kwargs = kwargs
+
+    def run_stream_processing(self) -> Stream:
+        """
+        Apply each stream-wide processing method defined in config.
+        """
+        for step in self.config:
+            method_name = step.get("name")
+
+            if method_name not in self.STREAM_METHODS:
+                continue  # skip unknown or trace-level methods
+
+            if method_name == "stack":
+                self.stream = self._apply_stack(step)
+            elif method_name == "cross_correlate":
+                self.stream = self._apply_cross_correlation(step)
+            elif method_name == "rotate":
+                self.stream = self._apply_rotation(step)
+            elif method_name == "shift":
+                self.stream = self._apply_shift(step)
+
+        return self.stream
+
+    def _apply_stack(self, step_config):
+
+        if len(self.stream) == 0:
+            return self.stream  # Return empty
+
+        # Ensure all traces are the same length
+        min_length = min(len(tr.data) for tr in self.stream)
+        trimmed_data = np.array([tr.data[:min_length] for tr in self.stream])
+
+        # Apply the stack
+        stacked_array = stack(trimmed_data, stack_type=step_config["stack_type"])
+
+        # Create a new Trace with metadata from the first one
+        stacked_trace = Trace(data=stacked_array)
+        stacked_trace.stats = self.stream[0].stats.copy()
+        stacked_trace.stats.channel += "_STK"  # Mark it's a stacked trace
+
+        # Return a new Stream
+        return Stream(traces=[stacked_trace])
+
+    def _apply_cross_correlation(self, step_config):
+        """
+        Cross-correlate all traces in stream with respect to a reference trace.
+
+        Returns a new Stream with the correlation functions as Trace objects.
+        """
+        # --- Configuration ---
+        shift = step_config.get("shift", 20)
+        demean = step_config.get("demean", True)
+        normalize = step_config.get("normalize", 'naive')
+        method = step_config.get("method", 'auto')
+        reference_idx = step_config.get("reference", 0)
+
+        st = self.stream.copy()
+
+        # --- Check for empty stream ---
+        if len(st) == 0:
+            print("[WARNING] Empty stream for cross-correlation")
+            return Stream()
+
+        # --- Ensure uniform sampling rate ---
+        sr = st[0].stats.sampling_rate
+        for tr in st:
+            if tr.stats.sampling_rate != sr:
+                raise ValueError("Inconsistent sampling rates in stream.")
+
+        # --- Trim to common time window ---
+        common_start = max(tr.stats.starttime for tr in st)
+        common_end = min(tr.stats.endtime for tr in st)
+        st.trim(starttime=common_start, endtime=common_end)
+
+        # --- Ensure uniform number of samples ---
+        npts = st[0].stats.npts
+        for tr in st:
+            if tr.stats.npts != npts:
+                raise ValueError("Traces do not have same number of samples after trimming.")
+
+        ref_trace = st[reference_idx]
+        cc_stream = Stream()
+
+        for i, tr in enumerate(st):
+            cc = correlate(tr, ref_trace, shift=shift, demean=demean,
+                           normalize=normalize, method=method)
+
+            cc_tr = Trace()
+            cc_tr.data = cc
+            cc_tr.stats.sampling_rate = sr
+            cc_tr.stats.starttime = -shift / sr
+            cc_tr.stats.network = tr.stats.network
+            cc_tr.stats.station = tr.stats.station
+            cc_tr.stats.channel = "XC"
+            cc_tr.stats.correlation_with = ref_trace.id
+            cc_tr.stats.original_trace = tr.id
+            cc_tr.stats.is_autocorrelation = (i == reference_idx)
+
+            cc_stream.append(cc_tr)
+
+        return Stream(cc_stream)
+
+    def _apply_rotation(self, step_config):
+        print("[INFO] Applying rotation")
+        self.stream.rotate(method="NE->RT")
+        return self.stream
+
+    def _apply_shift(self, step_config):
+        print("[INFO] Applying shift")
+        time_shifts = step_config.get("time_shifts", [])
+        for i, shift_val in enumerate(time_shifts):
+            if i < len(self.stream):
+                self.stream[i].stats.starttime += shift_val
+        return self.stream
