@@ -249,7 +249,8 @@ class AnalysisEvents:
             if self.output:
                 self._write_files(full_stream)
 
-    def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True):
+    def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True,
+                             interactive=False):
 
         #shift = next((item for item in self.config if item.get('name') == 'shift'), None) if self.config else None
 
@@ -315,7 +316,7 @@ class AnalysisEvents:
                 # --- Plot if requested ---
                 if full_stream is not None:
                     if plot and len(full_stream) > 0:
-                        plotter = PlotProj(full_stream, plot_config=self.plot_config)
+                        plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
                         full_stream = plotter.plot()  # Use updated stream
 
                         # Print pick information on screen

@@ -11,6 +11,7 @@
 
 import os
 import platform
+import time
 from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 from obspy import UTCDateTime
@@ -19,7 +20,6 @@ import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 import matplotlib.dates as mdates
-
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
 
@@ -27,7 +27,7 @@ from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
 class PlotProj:
     def __init__(self, stream,
-                 plot_config: Optional[dict] = None):
+                 plot_config: Optional[dict] = None, **kwargs):
         """
         Parameters
         ----------
@@ -47,9 +47,10 @@ class PlotProj:
             "autosave": False,
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
             "save_folder": "./plots",
-            "pick_output_file": "./picks.csv",
-            "enable_command_prompt": False
+            "pick_output_file": "./picks.csv"
         }
+
+        self.enable_command_prompt = kwargs.pop("interactive", False)
 
         # Override defaults with user config if provided
         if plot_config:
@@ -61,6 +62,7 @@ class PlotProj:
         self.fig = None
         self.axs = None
         self.pick_type = "P"
+        self.prompt_active = False
 
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
@@ -148,14 +150,13 @@ class PlotProj:
                 plt.ion()
                 plt.tight_layout()
 
-                if self.plot_config.get("enable_command_prompt", True):
+                if self.enable_command_prompt:
                     plt.show(block=False)
                     plt.pause(0.25)  # Let the GUI event loop catch up
-                    print("[INFO] Type 'spectrum <index>' or 'spectrum all' or 'exit'")
+                    print("[INFO] Type 'spectrum <index>' or 'spectrum all' or 'e' to exit'")
                     self.command_prompt()
                 else:
                     plt.show(block=True)
-
 
 
     def _plot_record_section(self):
@@ -500,10 +501,26 @@ class PlotProj:
             print("[INFO] No reference times found to remove.")
 
     def command_prompt(self):
+        if self.prompt_active:
+            return  # Prevent re-entry if already running
+        self.prompt_active = True
+
         while True:
             cmd = input(">> ").strip().lower()
-            if cmd == "exit":
+            if cmd == "e":
+                self.prompt_active = False
                 break
+
+            elif cmd.startswith("spectrogram"):
+                parts = cmd.split()
+                if len(parts) == 2:
+                    _, index = parts
+                    idx = int(index)
+                    if 0 <= idx < len(self.trace_list):
+                        self._plot_spectrogram(idx)
+                    else:
+                        print(f"[ERROR] Index {idx} out of range.")
+
             elif cmd.startswith("spectrum"):
                 parts = cmd.split()
                 if len(parts) == 2:
@@ -513,7 +530,7 @@ class PlotProj:
                     elif index.isdigit():
                         idx = int(index)
                         if 0 <= idx < len(self.trace_list):
-                            done_spectrum = self._plot_single_spectrum(idx)
+                            self._plot_single_spectrum(idx)
                         else:
                             print(f"[ERROR] Index {idx} out of range.")
                     else:
@@ -528,30 +545,61 @@ class PlotProj:
         trace = self.trace_list[idx]
         spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
 
-        self.fig, self.ax = plt.subplots()
-        self.ax.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
-        self.ax.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
-        self.ax.set_xlabel("Frequency (Hz)")
-        self.ax.set_ylabel("Amplitude")
-        self.ax.legend()
+        self.fig_spec, self.ax_spec = plt.subplots()
+        self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+        self.ax_spec.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
+        self.ax_spec.set_xlabel("Frequency (Hz)")
+        self.ax_spec.set_ylabel("Amplitude")
+        self.ax_spec.set_title(f"Spectrum for {trace.id}")
+        self.ax_spec.legend()
         plt.tight_layout()
-        plt.show()
-        #plt.show(block=True)
-        return True
+        plt.show(block=False)
+
+        # Poll until the figure is closed
+        while plt.fignum_exists(self.fig_spec.number):
+            plt.pause(0.2)
+            time.sleep(0.1)
+
 
     def _plot_all_spectra(self):
 
-        self.fig, self.ax = plt.subplots()
+        self.fig_spec, self.ax_spec = plt.subplots()
 
         for trace in self.trace_list:
             spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
-            self.ax.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+            self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
 
-        self.ax.set_xlabel("Frequency (Hz)")
-        self.ax.set_ylabel("Amplitude")
-        self.ax.legend(fontsize=6)
+        self.ax_spec.set_xlabel("Frequency (Hz)")
+        self.ax_spec.set_ylabel("Amplitude")
+        self.ax_spec.legend(fontsize=6)
         plt.tight_layout()
-        plt.show(block=True)
+        plt.show(block=False)
+
+        # Poll until the figure is closed
+        while plt.fignum_exists(self.fig_spec.number):
+            plt.pause(0.2)
+            time.sleep(0.1)
+
+    def _plot_spectrogram(self, idx):
+
+        self.fig_spec, self.ax_spec = plt.subplots()
+
+        trace = self.trace_list[idx]
+        spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(trace.data, win=5*trace.data, dt=trace.stats.delta, linf=0,
+                                                     lsup=int(trace.stats.sampling_rate//2), step_percentage=0.5)
+        self.ax_spec.pcolormesh(t, f, 10 * np.log10(spectrum), shading='auto', cmap='viridis')
+        self.ax_spec.ylabel('Frequency [Hz]')
+        self.ax_spec.xlabel('Time [s]')
+        self.ax_spec.title(f"Spectrogram for {trace.id}")
+        self.ax_spec.colorbar(label='Power [dB]')
+        self.ax_spec.tight_layout()
+        self.ax_spec.show()
+        self.ax_spec.show(block=False)
+
+        # Poll until the figure is closed
+        while plt.fignum_exists(self.fig_spec.number):
+            plt.pause(0.2)
+            time.sleep(0.1)
 
 
 # def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
