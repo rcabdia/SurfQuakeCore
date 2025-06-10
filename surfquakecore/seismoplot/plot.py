@@ -19,6 +19,10 @@ import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 import matplotlib.dates as mdates
+
+from surfquakecore.data_processing.spectral_tools import SpectrumTool
+
+
 # Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:
@@ -43,7 +47,8 @@ class PlotProj:
             "autosave": False,
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
             "save_folder": "./plots",
-            "pick_output_file": "./picks.csv"
+            "pick_output_file": "./picks.csv",
+            "enable_command_prompt": False
         }
 
         # Override defaults with user config if provided
@@ -142,7 +147,16 @@ class PlotProj:
             else:
                 plt.ion()
                 plt.tight_layout()
-                plt.show(block=True)
+
+                if self.plot_config.get("enable_command_prompt", True):
+                    plt.show(block=False)
+                    plt.pause(0.25)  # Let the GUI event loop catch up
+                    print("[INFO] Type 'spectrum <index>' or 'spectrum all' or 'exit'")
+                    self.command_prompt()
+                else:
+                    plt.show(block=True)
+
+
 
     def _plot_record_section(self):
 
@@ -338,27 +352,22 @@ class PlotProj:
 
         elif event.key == 'd' and self.current_pick:
             trace_id, pick_time = self.current_pick
-
-            # Remove from self.picks
+            # Remove from in-memory picks
             if trace_id in self.picks:
                 self.picks[trace_id] = [p for p in self.picks[trace_id] if p[0] != pick_time]
                 if not self.picks[trace_id]:
                     del self.picks[trace_id]
 
-            # Remove from trace.stats.picks
+            # Remove from trace.stats
             for tr in self.trace_list:
                 if tr.id == trace_id and hasattr(tr.stats, "picks"):
-                    tr.stats.picks = [
-                        p for p in tr.stats.picks if abs(p["time"] - UTCDateTime(pick_time)) > 0.001
-                    ]
+                    tr.stats.picks = [p for p in tr.stats.picks if p["time"] != UTCDateTime(pick_time)]
                     if not tr.stats.picks:
                         del tr.stats.picks
-                    break
 
             self._redraw_picks()
             self._update_info_box()
             self.current_pick = None
-            self.fig.canvas.draw()
 
         elif event.key == 'c':
             self._clear_picks()
@@ -381,19 +390,32 @@ class PlotProj:
             self._redraw_all_reference_lines()
             self.fig.canvas.draw()
 
-    def _redraw_picks(self):
-        """Redraw all pick lines."""
-        for line in self.pick_lines:
-            line.remove()
-        self.pick_lines = []
+        elif event.key == 'k':
+            self._remove_last_reference()
 
-        # Redraw remaining picks
-        for picks in self.picks.values():
-            for pick in picks:
-                x = mdt.date2num(pick)
-                for ax in self.axs:
+    def _redraw_picks(self):
+        """Redraw all pick lines only on their corresponding axes."""
+        # Remove all existing pick lines
+        for lines in self.pick_lines.values():
+            for line in lines:
+                line.remove()
+        self.pick_lines = {}
+
+        # Redraw picks on correct axes
+        for tr_idx, trace in enumerate(self.trace_list):
+            trace_id = trace.id
+            if trace_id in self.picks:
+                ax = self.axs[tr_idx]  # Match trace to its axis
+                for pick in self.picks[trace_id]:
+                    if len(pick) == 4:
+                        pt, _, _, _ = pick
+                    else:
+                        pt, _, _ = pick
+                    x = mdt.date2num(pt)
                     line = ax.axvline(x=x, color='r', linestyle='--', alpha=0.7)
-                    self.pick_lines.append(line)
+                    if trace_id not in self.pick_lines:
+                        self.pick_lines[trace_id] = []
+                    self.pick_lines[trace_id].append(line)
 
         self.fig.canvas.draw()
 
@@ -443,6 +465,93 @@ class PlotProj:
         """Set current pick type (e.g., 'P', 'S', etc.)"""
         self.pick_type = pick_type.upper()
         print(f"[INFO] Pick type set to: {self.pick_type}")
+
+    def _redraw_all_reference_lines(self):
+        """Remove old reference lines and redraw all from trace stats."""
+        # Remove previous green reference lines
+        for ax in self.axs:
+            lines_to_remove = [line for line in ax.lines if line.get_color() == 'g' and line.get_linestyle() == '--']
+            for line in lines_to_remove:
+                line.remove()
+
+        # Redraw reference lines from stats
+        for tr in self.trace_list:
+            if hasattr(tr.stats, "references"):
+                for ref_time in tr.stats.references:
+                    x = mdt.date2num(ref_time.datetime)
+                    for ax in self.axs:
+                        ax.axvline(x=x, color='g', linestyle='--', alpha=0.5)
+
+        self.fig.canvas.draw()
+
+    def _remove_last_reference(self):
+        """Remove the last reference time from all traces and update the plot."""
+        removed_any = False
+
+        for tr in self.trace_list:
+            if hasattr(tr.stats, "references") and tr.stats.references:
+                tr.stats.references.pop()
+                removed_any = True
+
+        if removed_any:
+            print("[INFO] Last reference time removed from all traces.")
+            self._redraw_all_reference_lines()
+        else:
+            print("[INFO] No reference times found to remove.")
+
+    def command_prompt(self):
+        while True:
+            cmd = input(">> ").strip().lower()
+            if cmd == "exit":
+                break
+            elif cmd.startswith("spectrum"):
+                parts = cmd.split()
+                if len(parts) == 2:
+                    _, index = parts
+                    if index == "all":
+                        self._plot_all_spectra()
+                    elif index.isdigit():
+                        idx = int(index)
+                        if 0 <= idx < len(self.trace_list):
+                            done_spectrum = self._plot_single_spectrum(idx)
+                        else:
+                            print(f"[ERROR] Index {idx} out of range.")
+                    else:
+                        print("[ERROR] Invalid spectrum command.")
+                else:
+                    print("[ERROR] Use 'spectrum all' or 'spectrum <index>'")
+            else:
+                print(f"[WARN] Unknown command: {cmd}")
+
+    def _plot_single_spectrum(self, idx):
+
+        trace = self.trace_list[idx]
+        spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
+
+        self.fig, self.ax = plt.subplots()
+        self.ax.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+        self.ax.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
+        self.ax.set_xlabel("Frequency (Hz)")
+        self.ax.set_ylabel("Amplitude")
+        self.ax.legend()
+        plt.tight_layout()
+        plt.show()
+        #plt.show(block=True)
+        return True
+
+    def _plot_all_spectra(self):
+
+        self.fig, self.ax = plt.subplots()
+
+        for trace in self.trace_list:
+            spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
+            self.ax.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+
+        self.ax.set_xlabel("Frequency (Hz)")
+        self.ax.set_ylabel("Amplitude")
+        self.ax.legend(fontsize=6)
+        plt.tight_layout()
+        plt.show(block=True)
 
 
 # def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
