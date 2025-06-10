@@ -296,10 +296,9 @@ class AnalysisEvents:
                 full_stream = self._clean_traces(all_traces)
 
                 # save memory for further usage
-                if len(all_traces) >= 40:
-                    del all_traces
-                    del results
-                    gc.collect()
+                del all_traces
+                del results
+                gc.collect()
 
                 sp = StreamProcessing(full_stream, self.config)
                 full_stream = sp.run_stream_processing()
@@ -316,7 +315,13 @@ class AnalysisEvents:
                 # --- Plot if requested ---
                 if full_stream is not None:
                     if plot and len(full_stream) > 0:
-                        PlotProj(full_stream, plot_config=self.plot_config).plot()
+                        plotter = PlotProj(full_stream, plot_config=self.plot_config)
+                        full_stream = plotter.plot()  # Use updated stream
+
+                        # Print pick information on screen
+                        for tr in full_stream:
+                            if hasattr(tr.stats, "picks"):
+                                print(f"Picks found for {tr.id}: {tr.stats.picks}")
 
                 # --- Save output if requested ---
                 if self.output:

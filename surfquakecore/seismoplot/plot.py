@@ -42,7 +42,8 @@ class PlotProj:
             "show_legend": True,
             "autosave": False,
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
-            "save_folder": "./plots"
+            "save_folder": "./plots",
+            "pick_output_file": "./picks.csv"
         }
 
         # Override defaults with user config if provided
@@ -82,6 +83,8 @@ class PlotProj:
         else:
             self._plot_standard_traces()
 
+        return self.trace_list  # Return modified trace list
+
     def _plot_standard_traces(self):
 
         traces = self.trace_list
@@ -120,7 +123,7 @@ class PlotProj:
                 if self.plot_config["show_legend"]:
                     ax.legend()
 
-                # ✅ Set x-axis to datetime format
+                # Set x-axis to datetime format
                 ax.xaxis_date()
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
                 ax.xaxis.set_major_locator(mdates.AutoDateLocator())
@@ -227,47 +230,68 @@ class PlotProj:
 
     def _on_doubleclick(self, event):
         """Handle double-clicks to place picks."""
-        # if event.dblclick is not True or event.inaxes not in self.axs:
-        #     return
-        if event.dblclick == 3 or event.inaxes not in self.axs:
-            return  # Only left-clicks inside trace axes
-        # Check if click was in any of our axes
-        if not any(ax == event.inaxes for ax in self.axs.flat):
+
+        # Ignore invalid clicks
+        if not event.dblclick or event.inaxes not in self.axs:
             return
 
-        if event.dblclick:
-            # Find which trace was clicked
-            ax = event.inaxes
-            tr_idx = np.where(self.axs.flat == event.inaxes)[0][0]
-            trace = self.trace_list[tr_idx]
-            pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
+        # Check which subplot was clicked
+        ax = event.inaxes
+        tr_idx = np.where(self.axs == ax)[0][0]
+        trace = self.trace_list[tr_idx]
+        pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
 
-            # Ask for pick type on each pick
-            try:
-                print("Input prompt")
-                pick_type = input(f"Enter pick type for {trace.id} at {pick_time.strftime('%H:%M:%S')}: ").strip()
-                if not pick_type:
-                    pick_type = "?"
-            except Exception:
-                pick_type = "?"
-
-                # Convert pick_time to trace-relative seconds
-            rel_time = (pick_time - trace.stats.starttime.datetime).total_seconds()
-
-            # Interpolate amplitude at that time
-            times = trace.times()
-            amplitude = np.interp(rel_time, times, trace.data)
-
-            # Store pick
-            if trace.id in self.picks:
-                self.picks[trace.id].append((pick_time, pick_type, amplitude))
+        # Ask for pick type (optional input)
+        try:
+            raw_input = input(
+                f"Enter pick type and polarity for {trace.id} at {pick_time.strftime('%H:%M:%S')} (e.g., 'P,U' or 'Sg'): ").strip()
+            if ',' in raw_input:
+                phase, polarity = [s.strip() or '?' for s in raw_input.split(",", maxsplit=1)]
             else:
-                self.picks[trace.id] = [(pick_time, pick_type, amplitude)]
+                phase = raw_input if raw_input else "?"
+                polarity = "?"
+        except Exception:
+            phase, polarity = "?", "?"
 
-            self.current_pick = (trace.id, pick_time)
-            self._draw_pick_lines(trace.id, ax, pick_time)
-            self._update_info_box()
-            self.fig.canvas.draw()
+        if polarity not in ['U', 'D', '?']:
+            print("[WARNING] Polarity not recognized. Defaulting to '?'.")
+            polarity = '?'
+
+        # Calculate relative time and amplitude
+        rel_time = (pick_time - trace.stats.starttime.datetime).total_seconds()
+        amplitude = np.interp(rel_time, trace.times(), trace.data)
+
+        # Build and store pick dictionary in trace
+        pick_entry = {
+            "time": UTCDateTime(pick_time),
+            "phase": phase,
+            "amplitude": amplitude,
+            "polarity": polarity
+        }
+
+        if not hasattr(trace.stats, "picks"):
+            trace.stats.picks = []
+        trace.stats.picks.append(pick_entry)
+
+        # Save to CSV file if configured
+        csv_path = self.plot_config.get("pick_output_file")
+        if csv_path:
+            header_needed = not os.path.exists(csv_path)
+            with open(csv_path, "a") as f:
+                if header_needed:
+                    f.write("id,time,phase,amplitude,polarity\n")
+                f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
+
+        # Add to in-memory pick tracking
+        if trace.id not in self.picks:
+            self.picks[trace.id] = []
+        self.picks[trace.id].append((pick_time, phase, amplitude, polarity))
+
+        # Draw pick line and update display
+        self.current_pick = (trace.id, pick_time)
+        self._draw_pick_lines(trace.id, ax, pick_time)
+        self._update_info_box()
+        self.fig.canvas.draw()
 
     def _draw_pick_lines(self, trace_id, ax, pick_time):
         """Draw vertical line only on the selected axis."""
@@ -293,15 +317,69 @@ class PlotProj:
 
     def _on_key_press(self, event):
         """Handle key presses for pick management."""
-        if event.key == 'd' and self.current_pick:
+
+        # Reference marker key
+        if event.key == 'r' and event.inaxes in self.axs:
+            ref_time = mdt.num2date(event.xdata).replace(tzinfo=None)
+            utc_ref_time = UTCDateTime(ref_time)
+
+            # Store the reference in all traces
+            for tr in self.trace_list:
+                if not hasattr(tr.stats, "references"):
+                    tr.stats.references = []
+                tr.stats.references.append(utc_ref_time)
+
+            # Draw the reference line on all axes
+            for ax in self.axs:
+                ax.axvline(x=mdt.date2num(ref_time), color='g', linestyle='--', alpha=0.5)
+
+            self.fig.canvas.draw()
+            print(f"[INFO] Reference time added at {utc_ref_time.isoformat()}")
+
+        elif event.key == 'd' and self.current_pick:
             trace_id, pick_time = self.current_pick
+
+            # Remove from self.picks
             if trace_id in self.picks:
                 self.picks[trace_id] = [p for p in self.picks[trace_id] if p[0] != pick_time]
-            self._draw_pick_lines()
+                if not self.picks[trace_id]:
+                    del self.picks[trace_id]
+
+            # Remove from trace.stats.picks
+            for tr in self.trace_list:
+                if tr.id == trace_id and hasattr(tr.stats, "picks"):
+                    tr.stats.picks = [
+                        p for p in tr.stats.picks if abs(p["time"] - UTCDateTime(pick_time)) > 0.001
+                    ]
+                    if not tr.stats.picks:
+                        del tr.stats.picks
+                    break
+
+            self._redraw_picks()
             self._update_info_box()
+            self.current_pick = None
+            self.fig.canvas.draw()
 
         elif event.key == 'c':
             self._clear_picks()
+
+        elif event.key == 'x':
+            removed_any = False
+            for tr in self.trace_list:
+                if hasattr(tr.stats, "references") and tr.stats.references:
+                    last_ref = tr.stats.references.pop()
+                    removed_any = True
+                    if not tr.stats.references:
+                        del tr.stats.references
+
+            if removed_any:
+                print("[INFO] Last reference time removed from all traces.")
+            else:
+                print("[INFO] No reference times to remove.")
+
+            # Redraw to remove last green line (could be refined for exact removal)
+            self._redraw_all_reference_lines()
+            self.fig.canvas.draw()
 
     def _redraw_picks(self):
         """Redraw all pick lines."""
@@ -320,9 +398,15 @@ class PlotProj:
         self.fig.canvas.draw()
 
     def _clear_picks(self, event=None):
-        for trace_id in self.picks:
-            self.picks[trace_id] = []
+        # Clear internal pick records
+        self.picks.clear()
 
+        # Clear from trace.stats if exists
+        for trace in self.trace_list:
+            if hasattr(trace.stats, "picks"):
+                del trace.stats.picks
+
+        # Remove pick lines from plot
         for lines in self.pick_lines.values():
             for line in lines:
                 line.remove()
@@ -344,9 +428,14 @@ class PlotProj:
 
         lines = ["Picks:"]
         for tr_id, pick_list in self.picks.items():
-            for pt, ptype, amp in pick_list:
+            for pick in pick_list:
+                if len(pick) == 4:
+                    pt, ptype, amp, pol = pick
+                else:
+                    pt, ptype, amp = pick
+                    pol = "?"
                 time_str = pt.strftime('%H:%M:%S.%f')[:-3]
-                lines.append(f"{tr_id}: {time_str} ({ptype}) amp={amp:.2f}")
+                lines.append(f"{tr_id}: {time_str} ({ptype}, {pol}) amp={amp:.2f}")
 
         self.info_box.text(0, 1, '\n'.join(lines), va='top', fontsize=9)
 
@@ -355,52 +444,51 @@ class PlotProj:
         self.pick_type = pick_type.upper()
         print(f"[INFO] Pick type set to: {self.pick_type}")
 
-if __name__ == "__main__":
-    print("READY TO TEST")
-    # def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
-    #     """
-    #     Retrieve station coordinates from metadata.
-    #     """
-    #     if self.metadata is None:
-    #         return None
-    #
-    #     network = trace.stats.network
-    #     station = trace.stats.station
-    #
-    #     if isinstance(self.metadata, Inventory):
-    #         try:
-    #             coords = self.metadata.get_coordinates(f"{network}.{station}")
-    #             return coords['latitude'], coords['longitude']
-    #         except Exception:
-    #             return None
-    #     elif isinstance(self.metadata, dict):
-    #         return self.metadata.get(f"{network}.{station}")
-    #
-    #     return None
 
-    # def _compute_distance_azimuth(self, trace: Trace) -> Tuple[float, float]:
-    #     """
-    #     Prefer distance and backazimuth from trace header if available.
-    #     """
-    #     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
-    #         try:
-    #             dist, az, baz = trace.stats.geodetic['geodetic']
-    #             return dist, baz
-    #         except Exception:
-    #             pass  # fallback below
-    #
-    #     # Fallback: compute from station coordinates and epicenter
-    #     if trace.id in self._dist_az_cache:
-    #         return self._dist_az_cache[trace.id]
-    #
-    #     coords = self._get_station_coords(trace)
-    #     if coords is None or self.epicenter is None:
-    #         return float('inf'), float('inf')
-    #
-    #     epi_lat, epi_lon = self.epicenter
-    #     sta_lat, sta_lon = coords
-    #     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
-    #     dist_km = dist_m / 1000.0
-    #
-    #     self._dist_az_cache[trace.id] = (dist_km, baz)
-    #     return dist_km, baz
+# def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
+#     """
+#     Retrieve station coordinates from metadata.
+#     """
+#     if self.metadata is None:
+#         return None
+#
+#     network = trace.stats.network
+#     station = trace.stats.station
+#
+#     if isinstance(self.metadata, Inventory):
+#         try:
+#             coords = self.metadata.get_coordinates(f"{network}.{station}")
+#             return coords['latitude'], coords['longitude']
+#         except Exception:
+#             return None
+#     elif isinstance(self.metadata, dict):
+#         return self.metadata.get(f"{network}.{station}")
+#
+#     return None
+
+# def _compute_distance_azimuth(self, trace: Trace) -> Tuple[float, float]:
+#     """
+#     Prefer distance and backazimuth from trace header if available.
+#     """
+#     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
+#         try:
+#             dist, az, baz = trace.stats.geodetic['geodetic']
+#             return dist, baz
+#         except Exception:
+#             pass  # fallback below
+#
+#     # Fallback: compute from station coordinates and epicenter
+#     if trace.id in self._dist_az_cache:
+#         return self._dist_az_cache[trace.id]
+#
+#     coords = self._get_station_coords(trace)
+#     if coords is None or self.epicenter is None:
+#         return float('inf'), float('inf')
+#
+#     epi_lat, epi_lon = self.epicenter
+#     sta_lat, sta_lon = coords
+#     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
+#     dist_km = dist_m / 1000.0
+#
+#     self._dist_az_cache[trace.id] = (dist_km, baz)
+#     return dist_km, baz
