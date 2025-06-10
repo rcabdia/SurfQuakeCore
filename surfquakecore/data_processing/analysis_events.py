@@ -39,7 +39,7 @@ class AnalysisEvents:
         self.inventory = None
         self.all_traces = []
         self.surf_projects = surf_projects
-
+        self.config_file = config_file
         # Store user-specified time segment (as string or UTCDateTime)
         self.time_segment_start = time_segment_start
         self.time_segment_end = time_segment_end
@@ -267,66 +267,88 @@ class AnalysisEvents:
                 continue
 
             for j, event in enumerate(events):
-                print(f"[INFO] Cutting traces for subproject {i}, event {j} at {event['origin_time']}")
+                while True:
+                    print(f"[INFO] Cutting traces for subproject {i}, event {j} at {event['origin_time']}")
 
-                # --- Prepare station-wise file groups ---
-                station_files = defaultdict(list)
-                for trace_list in project.project.values():
-                    for trace_path, stats in trace_list:
-                        station_key = f"{stats.network}.{stats.station}"
-                        station_files[station_key].append((trace_path, stats))
+                    # --- Prepare station-wise file groups ---
+                    station_files = defaultdict(list)
+                    for trace_list in project.project.values():
+                        for trace_path, stats in trace_list:
+                            station_key = f"{stats.network}.{stats.station}"
+                            station_files[station_key].append((trace_path, stats))
 
-                # --- Create tasks for each station ---
-                tasks = []
-                for file_group in station_files.values():
-                    tasks.append((
-                        file_group, event, self.model, cut_start, cut_end,
-                        self.inventory, self._set_header
-                    ))
+                    # --- Create tasks for each station ---
+                    tasks = []
+                    for file_group in station_files.values():
+                        tasks.append((
+                            file_group, event, self.model, cut_start, cut_end,
+                            self.inventory, self._set_header
+                        ))
 
-                # --- Process stations (parallel if no post-script) ---
-                if self.post_script_func:
-                    print("[INFO] Using sequential mode due to post-script")
-                    results = [self._process_station_traces(task) for task in tasks]
-                else:
-                    with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                        results = pool.map(self._process_station_traces, tasks)
+                    # --- Process stations (parallel if no post-script) ---
+                    if self.post_script_func:
+                        print("[INFO] Using sequential mode due to post-script")
+                        results = [self._process_station_traces(task) for task in tasks]
+                    else:
+                        with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                            results = pool.map(self._process_station_traces, tasks)
 
-                # --- Gather and clean traces ---
-                all_traces = [tr for sub in results for tr in sub if tr is not None]
-                full_stream = self._clean_traces(all_traces)
+                    # --- Gather and clean traces ---
+                    all_traces = [tr for sub in results for tr in sub if tr is not None]
+                    full_stream = self._clean_traces(all_traces)
 
-                # save memory for further usage
-                del all_traces
-                del results
-                gc.collect()
+                    del all_traces
+                    del results
+                    gc.collect()
 
-                sp = StreamProcessing(full_stream, self.config)
-                full_stream = sp.run_stream_processing()
+                    sp = StreamProcessing(full_stream, self.config)
+                    full_stream = sp.run_stream_processing()
 
-                print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
+                    print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
 
-                # --- Post-script (optional) ---
-                if self.post_script_func:
-                    try:
-                       full_stream = self.post_script_func(full_stream, event)
-                    except Exception as e:
-                        print(f"[WARNING] Post-script failed: {e}")
+                    # --- Post-script (optional) ---
+                    if self.post_script_func:
+                        try:
+                            full_stream = self.post_script_func(full_stream, event)
+                        except Exception as e:
+                            print(f"[WARNING] Post-script failed: {e}")
 
-                # --- Plot if requested ---
-                if full_stream is not None:
-                    if plot and len(full_stream) > 0:
+                    # --- Plot if requested ---
+                    if full_stream is not None and plot and len(full_stream) > 0:
                         plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
-                        full_stream = plotter.plot()  # Use updated stream
+                        full_stream = plotter.plot()
 
-                        # Print pick information on screen
                         for tr in full_stream:
                             if hasattr(tr.stats, "picks"):
                                 print(f"Picks found for {tr.id}: {tr.stats.picks}")
 
-                # --- Save output if requested ---
-                if self.output:
-                    self._write_files(full_stream)
+                    # --- Save output if requested ---
+                    if self.output:
+                        self._write_files(full_stream)
+
+                    # --- User prompt for next action ---
+                    if plot:
+                        user_choice = input(
+                            f"\n[Prompt] Finished subproject {i}, event {j}. Type 'next' to continue, 'redo' to reprocess this event, or 'exit': "
+                        ).strip().lower()
+
+                        if user_choice == "next":
+                            break  # Exit the while-loop → go to next event
+
+                        elif user_choice == "redo":
+                            print(f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
+                            self.config = self.load_analysis_configuration(self.config_file)
+                            continue  # Rerun same event
+
+                        elif user_choice == "exit":
+                            print("[INFO] Exiting waveform cutting by user request.")
+                            return  # Exit entire `run_waveform_cutting`
+
+                        else:
+                            print("[WARN] Unknown command. Assuming 'next'.")
+                            break
+                    else:
+                        break  # No prompt: go to next event
 
     def _process_station_analysis(self, args):
 
