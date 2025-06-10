@@ -14,6 +14,8 @@ import platform
 import time
 from typing import Optional, Tuple
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
+from matplotlib.ticker import ScalarFormatter
 from obspy import UTCDateTime
 from obspy.core.trace import Trace
 import matplotlib as mplt
@@ -153,7 +155,7 @@ class PlotProj:
                 if self.enable_command_prompt:
                     plt.show(block=False)
                     plt.pause(0.25)  # Let the GUI event loop catch up
-                    print("[INFO] Type 'spectrum <index>' or 'spectrum all' or 'e' to exit'")
+                    print("[INFO] Type 'command parameter' or 'e' to exit'")
                     self.command_prompt()
                 else:
                     plt.show(block=True)
@@ -513,13 +515,31 @@ class PlotProj:
 
             elif cmd.startswith("spectrogram"):
                 parts = cmd.split()
-                if len(parts) == 2:
-                    _, index = parts
-                    idx = int(index)
-                    if 0 <= idx < len(self.trace_list):
-                        self._plot_spectrogram(idx)
-                    else:
-                        print(f"[ERROR] Index {idx} out of range.")
+                if len(parts) == 4:
+                    _, index_str, win_str, overlap_str = parts
+                    try:
+                        idx = int(index_str)
+                        win_sec = float(win_str)
+                        overlap = float(overlap_str)
+                        if 0 <= idx < len(self.trace_list):
+                            self._plot_spectrogram(idx, win_sec, overlap)
+                        else:
+                            print(f"[ERROR] Index {idx} out of range.")
+                    except ValueError:
+                        print("[ERROR] Usage: spectrogram <index> <win_sec> <overlap%>")
+                elif len(parts) == 2:
+                    _, index_str = parts
+                    try:
+                        idx = int(index_str)
+                        if 0 <= idx < len(self.trace_list):
+                            # Use default values if not provided
+                            self._plot_spectrogram(idx)
+                        else:
+                            print(f"[ERROR] Index {idx} out of range.")
+                    except ValueError:
+                        print("[ERROR] Invalid index for spectrogram.")
+                else:
+                    print("[ERROR] Use: spectrogram <index> [<win_sec> <overlap%>]")
 
             elif cmd.startswith("spectrum"):
                 parts = cmd.split()
@@ -537,6 +557,7 @@ class PlotProj:
                         print("[ERROR] Invalid spectrum command.")
                 else:
                     print("[ERROR] Use 'spectrum all' or 'spectrum <index>'")
+
             else:
                 print(f"[WARN] Unknown command: {cmd}")
 
@@ -580,23 +601,50 @@ class PlotProj:
             plt.pause(0.2)
             time.sleep(0.1)
 
-    def _plot_spectrogram(self, idx):
-
-        self.fig_spec, self.ax_spec = plt.subplots()
+    def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0):
 
         trace = self.trace_list[idx]
-        spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(trace.data, win=5*trace.data, dt=trace.stats.delta, linf=0,
-                                                     lsup=int(trace.stats.sampling_rate//2), step_percentage=0.5)
-        self.ax_spec.pcolormesh(t, f, 10 * np.log10(spectrum), shading='auto', cmap='viridis')
-        self.ax_spec.ylabel('Frequency [Hz]')
-        self.ax_spec.xlabel('Time [s]')
-        self.ax_spec.title(f"Spectrogram for {trace.id}")
-        self.ax_spec.colorbar(label='Power [dB]')
-        self.ax_spec.tight_layout()
-        self.ax_spec.show()
-        self.ax_spec.show(block=False)
+        spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(
+            trace.data,
+            win=int(win_sec * trace.stats.sampling_rate),
+            dt=trace.stats.delta,
+            linf=0,
+            lsup=int(trace.stats.sampling_rate // 2),
+            step_percentage=(100-overlap_percent)*1E-2
+        )
 
-        # Poll until the figure is closed
+        # --- Set up GridSpec with reserved space for colorbar ---
+        self.fig_spec = plt.figure(figsize=(10, 5))
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
+                               hspace=0.02, wspace=0.02)
+
+        ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
+        ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
+        ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_powerlimits((0, 0))  # Forces scientific notation always
+        ax_waveform.yaxis.set_major_formatter(formatter)
+
+        # --- Plot waveform ---
+        ax_waveform.plot(trace.times(), trace.data, linewidth=0.75)
+        ax_waveform.set_title(f"Spectrogram for {trace.id}")
+        ax_waveform.tick_params(labelbottom=False)
+
+        # --- Plot spectrogram ---
+        pcm = ax_spec.pcolormesh(
+            t, f, 10 * np.log10(spectrum / np.max(spectrum)),
+            shading='auto', cmap='rainbow'
+        )
+        ax_waveform.set_ylabel('Amplitude')
+        ax_spec.set_ylabel('Frequency [Hz]')
+        ax_spec.set_xlabel('Time [s]')
+
+        # --- Add colorbar without shifting axes ---
+        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
+        cbar.set_label("Power [dB]")
+
+        plt.show(block=False)
+
         while plt.fignum_exists(self.fig_spec.number):
             plt.pause(0.2)
             time.sleep(0.1)

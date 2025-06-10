@@ -6,9 +6,8 @@ spectral_tools
 
 import math
 import numpy as np
-from scipy.signal import spectrogram
-from spectrum import pmtm
-
+# from spectrum import pmtm # might be for the future
+import nitime.algorithms as tsa # awesome !!!
 
 class SpectrumTool:
 
@@ -51,11 +50,9 @@ class SpectrumTool:
         return amplitude, freq
 
     @staticmethod
-    def compute_spectrogram(data, win, dt, linf, lsup, step_percentage=0.1, res=1):
+    def compute_spectrogram(data, win, dt, linf, lsup, step_percentage=0.5):
         #Sxx = spectrogram(data, fs=1/delta, nperseg=time_window/delta)
-        def find_nearest(array, value):
-            idx, val = min(enumerate(array), key=lambda x: abs(x[1] - value))
-            return idx, val
+
         # win -- samples
         # Ensure nfft is a power of 2
         nfft = 2 ** math.ceil(math.log2(win))  # Next power to 2
@@ -69,19 +66,18 @@ class SpectrumTool:
         # Precompute frequency indices for slicing spectrum
         fs = 1 / dt  # Sampling frequency
         # freq, _, _ = tsa.multi_taper_psd(np.zeros(nfft), fs, adaptive=True, jackknife=False, low_bias=False)
-
         for idx, n in enumerate(range(0, lim, step_size)):
             # print(f"{(n + 1) * 100 / lim:.2f}% done")
             data1 = data[n:nfft + n]
             data1 = data1 - np.mean(data1)
-            #freq, spec, _ = tsa.multi_taper_psd(data1, fs, adaptive=True, jackknife=False, low_bias=True)
-            spec, weights, eigenvalues = pmtm(data1, NW=2.5, k=4, show=False)
-            spec = np.mean(spec * np.transpose(weights), axis=0)
+            freq, spec, _ = tsa.multi_taper_psd(data1, fs, adaptive=True, jackknife=False, low_bias=True)
+            #spec, weights, eigenvalues = pmtm(data1, NW=2.5, k=4, show=False)
+            #spec = np.mean(spec * np.transpose(weights), axis=0)
             S[:, idx] = spec
 
         freq = np.fft.rfftfreq(nfft, d=dt)
-        value1, freq1 = find_nearest(freq, linf)
-        value2, freq2 = find_nearest(freq, lsup)
+        value1, freq1 = SpectrumTool.find_nearest(freq, linf)
+        value2, freq2 = SpectrumTool.find_nearest(freq, lsup)
 
         spectrum = S[value1:value2, :]
 
@@ -90,3 +86,8 @@ class SpectrumTool:
         f = np.linspace(linf, lsup, spectrum.shape[0])
 
         return spectrum, num_steps, t, f
+
+    @staticmethod
+    def find_nearest(array, value):
+        idx, val = min(enumerate(array), key=lambda x: abs(x[1] - value))
+        return idx, val
