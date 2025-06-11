@@ -1,0 +1,25 @@
+Default Matplotlib Key Bindings
+Key	Action
+h	Toggle help (prints shortcut keys)
+s	Save the figure
+p	Toggle pan mode
+z	Toggle zoom mode
+o	Toggle zoom to rectangle mode
+f	Forward in navigation history
+b	Backward in navigation history
+r	Reset original view
+g	Toggle grid
+l	Toggle log scaling of y-axis
+k	Toggle log scaling of x-axis
+a	Autoscale
+C	Toggle full-screen
+q	Close the figure window
+
+def _disable_matplotlib_keys(self):
+    keys_to_disable = [
+        'keymap.save', 'keymap.quit', 'keymap.fullscreen', 'keymap.grid',
+        'keymap.yscale', 'keymap.xscale', 'keymap.all_axes', 'keymap.home',
+        'keymap.back', 'keymap.forward', 'keymap.pan', 'keymap.zoom', 'keymap.zoomrect'
+    ]
+    for key in keys_to_disable:
+        plt.rcParams[key] = []

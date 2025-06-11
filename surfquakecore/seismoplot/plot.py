@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 # Filename: plot.py
 # Program: surfQuake & ISP
@@ -8,6 +9,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & Cristina Palacios
 # Email: rcabdia@roa.es
 """
+
 import math
 import os
 import platform
@@ -50,8 +52,8 @@ class PlotProj:
             "autosave": False,
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
             "save_folder": "./plots",
-            "pick_output_file": "./picks.csv"
-        }
+            "pick_output_file": "./picks.csv",
+            "sharey": False}
 
         self.enable_command_prompt = kwargs.pop("interactive", False)
 
@@ -117,7 +119,7 @@ class PlotProj:
             sub_traces = traces[i:i + traces_per_fig]
             max_traces = min(8, 2 * len(sub_traces))
             self.fig, self.axs = plt.subplots(len(sub_traces), 1, figsize=(12, max_traces),
-                sharex=True,
+                sharex=True, sharey=self.plot_config["sharey"],
                 gridspec_kw={'hspace': self.plot_config["vspace"]}
             )
             if len(sub_traces) == 1:
@@ -131,9 +133,21 @@ class PlotProj:
                 dist, baz = self._get_geodetic_info(tr)
                 ax.plot(t, tr.data, linewidth=0.75,
                         label=f"{tr.id} | Dist: {dist:.1f} km | Baz: {baz:.1f}°")
-                ax.set_title(str(tr.stats.starttime), fontsize=self.plot_config["title_fontsize"])
+                #ax.set_title(str(tr.stats.starttime), fontsize=self.plot_config["title_fontsize"])
                 if self.plot_config["show_legend"]:
                     ax.legend()
+
+                # Add starttime info box in top-left of each subplot
+                starttime = tr.stats.starttime
+                julday = starttime.julday
+                year = starttime.year
+                date_str = starttime.strftime("%Y-%m-%d")
+
+                textstr = f"JD {julday} / {year}\n{date_str}"
+                ax.text(0.01, 0.95, textstr,
+                        transform=ax.transAxes,
+                        fontsize=8, va='top', ha='left',
+                        bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
 
                 # Set x-axis to datetime format
                 ax.xaxis_date()
@@ -258,9 +272,9 @@ class PlotProj:
         """Set up double-click mouse event and key press events."""
         self.fig.canvas.mpl_connect('button_press_event', self._on_doubleclick)
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
-        plt.gcf().text(0.1, 0.95,
-                       "Click to place picks | 'd' to delete last | 'c' to clear",
-                       fontsize=9)
+        #plt.gcf().text(0.1, 0.95,
+        #               "Click to place picks | 'd' to delete last | 'c' to clear",
+        #               fontsize=9)
         # Reserve space for displaying pick info
         self.info_box = self.fig.add_axes([0.8, 0.1, 0.18, 0.8], frameon=False)
         self.info_box.axis('off')
@@ -332,13 +346,31 @@ class PlotProj:
         self.fig.canvas.draw()
 
     def _draw_pick_lines(self, trace_id, ax, pick_time):
-        """Draw vertical line only on the selected axis."""
+        """Draw vertical line and annotate pick info."""
         if trace_id not in self.pick_lines:
             self.pick_lines[trace_id] = []
 
         x = mdt.date2num(pick_time)
         line = ax.axvline(x=x, color='r', linestyle='--', alpha=0.8)
-        self.pick_lines[trace_id].append(line)
+
+        # Find matching pick
+        pick_info = None
+        for pick in self.picks.get(trace_id, []):
+            if pick[0] == pick_time:
+                if len(pick) == 4:
+                    _, phase, _, polarity = pick
+                    pick_info = f"{phase}, {polarity}"
+                break
+
+        # Default position for the label
+        y_pos = ax.get_ylim()[1] * 0.25
+        label = ax.text(
+            x, y_pos, pick_info or "", fontsize=8,
+            color='black', ha='left', va='bottom', rotation=0,
+            bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='black', alpha=0.6)
+        )
+
+        self.pick_lines[trace_id].append((line, label))
 
     def _draw_pick_all(self):
         """Redraw all pick lines."""
@@ -357,7 +389,7 @@ class PlotProj:
         """Handle key presses for pick management."""
 
         # Reference marker key
-        if event.key == 'r' and event.inaxes in self.axs:
+        if event.key == 'w' and event.inaxes in self.axs:
             ref_time = mdt.num2date(event.xdata).replace(tzinfo=None)
             utc_ref_time = UTCDateTime(ref_time)
 
@@ -396,7 +428,7 @@ class PlotProj:
         elif event.key == 'c':
             self._clear_picks()
 
-        elif event.key == 'x':
+        elif event.key == 'p':
             removed_any = False
             for tr in self.trace_list:
                 if hasattr(tr.stats, "references") and tr.stats.references:
@@ -414,32 +446,32 @@ class PlotProj:
             self._redraw_all_reference_lines()
             self.fig.canvas.draw()
 
-        elif event.key == 'k':
+        elif event.key == 'm':
             self._remove_last_reference()
+
+        elif event.key == 'v':
+            self.enable_command_prompt = True
+            self.plot()
 
     def _redraw_picks(self):
         """Redraw all pick lines only on their corresponding axes."""
         # Remove all existing pick lines
         for lines in self.pick_lines.values():
-            for line in lines:
+            for line, label in lines:
                 line.remove()
+                label.remove()
         self.pick_lines = {}
 
-        # Redraw picks on correct axes
         for tr_idx, trace in enumerate(self.trace_list):
             trace_id = trace.id
             if trace_id in self.picks:
-                ax = self.axs[tr_idx]  # Match trace to its axis
+                ax = self.axs[tr_idx]
                 for pick in self.picks[trace_id]:
                     if len(pick) == 4:
                         pt, _, _, _ = pick
                     else:
                         pt, _, _ = pick
-                    x = mdt.date2num(pt)
-                    line = ax.axvline(x=x, color='r', linestyle='--', alpha=0.7)
-                    if trace_id not in self.pick_lines:
-                        self.pick_lines[trace_id] = []
-                    self.pick_lines[trace_id].append(line)
+                    self._draw_pick_lines(trace_id, ax, pt)
 
         self.fig.canvas.draw()
 
@@ -454,8 +486,9 @@ class PlotProj:
 
         # Remove pick lines from plot
         for lines in self.pick_lines.values():
-            for line in lines:
+            for line, label in lines:
                 line.remove()
+                label.remove()
         self.pick_lines = {}
 
         self.current_pick = None
@@ -530,9 +563,15 @@ class PlotProj:
 
         while True:
             cmd = input(">> ").strip().lower()
+
             if cmd == "n":
                 self.prompt_active = False
                 break
+
+            if cmd == "pick":
+                self.prompt_active = False
+                self.enable_command_prompt = False
+                self.plot()
 
             elif cmd.startswith("spectrogram") or cmd.startswith("spec"):
                 parts = cmd.split()
@@ -703,7 +742,7 @@ class PlotProj:
     def _plot_wavelet(self, idx, wavelet_type, param, **kwargs):
 
         if wavelet_type == "cm":
-            wavelet_type  = "Complex Morlet"
+            wavelet_type = "Complex Morlet"
         elif wavelet_type == "mh":
             wavelet_type = "Mexican Hat"
         elif wavelet_type == "pa":
