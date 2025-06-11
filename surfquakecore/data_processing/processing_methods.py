@@ -12,6 +12,7 @@ import pywt
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheby1, sosfilt
 from surfquakecore.utils.obspy_utils import Filters
+from obspy.signal.filter import lowpass, envelope
 
 def filter_trace(trace, type, fmin, fmax, **kwargs):
     """
@@ -400,6 +401,24 @@ def __hampel_aux(input_series, window_size, size, n_sigmas):
 
     return new_series
 
+def trace_envelope(tr, method = "FULL", **kwargs):
+    corner_freq = kwargs.pop("corner_freq", 0.15)
+    N = len(tr.data)
+    D = 2 ** math.ceil(math.log2(N))
+    z = np.zeros(D - N)
+    data = np.concatenate((tr.data, z), axis=0)
+
+    ###Necesary padding with zeros
+    data_envelope = envelope(data)
+    data_envelope = data_envelope[0:N]
+    tr.data = data_envelope
+
+    if method == "SMOOTH":
+        tr.detrend(type="simple")
+        tr.taper(max_percentage=0.05)
+        tr.filter(type='lowpass',freq=corner_freq, corners=3, zerophase=True)
+
+    return tr
 
 def normalize(tr, clip_factor=6, clip_weight=10, norm_win=10, norm_method="1bit"):
     if norm_method == 'clipping':

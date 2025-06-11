@@ -2,7 +2,8 @@ from obspy import Stream, Trace, UTCDateTime
 import numpy as np
 from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
-    wiener_filter, add_frequency_domain_noise, whiten, normalize, wavelet_denoise, safe_downsample, smoothing
+    wiener_filter, add_frequency_domain_noise, whiten, normalize, wavelet_denoise, safe_downsample, smoothing, \
+    trace_envelope
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
@@ -182,6 +183,11 @@ class SeismogramData:
             if _config['name'] == 'smoothing':
                 tr = smoothing(tr, type=_config['method'], k=_config['time_window'], fwhm=_config['FWHM'])
 
+            if _config['name'] == 'envelope':
+                if _config['method'] == "SMOOTH" and "corner_freq" in _config.keys():
+                    tr = trace_envelope(tr, method=_config['method'], corner_freq=_config['corner_freq'])
+                else:
+                    tr = trace_envelope(tr, method=_config['method'])
         return tr
 
 class StreamProcessing:

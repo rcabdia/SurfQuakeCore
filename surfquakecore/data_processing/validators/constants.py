@@ -7,7 +7,7 @@ constants
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
-                 'cross_correlate', 'stack', 'synch']
+                 'cross_correlate', 'stack', 'synch', 'envelope']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 
@@ -41,3 +41,5 @@ TAPER_SIDE = ['both', 'left', 'right']
 STACK_METHODS = ['linear', 'pw', 'root']
 
 SYNCH_METHODS = ['starttime', 'MCCC']
+
+ENVELOPE_MODE = ['FULL', 'SMOOTH']
