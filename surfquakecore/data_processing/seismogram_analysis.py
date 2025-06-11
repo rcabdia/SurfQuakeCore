@@ -6,8 +6,6 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
-from collections import defaultdict
-
 from surfquakecore.data_processing.seismicUtils import SeismicUtils
 
 

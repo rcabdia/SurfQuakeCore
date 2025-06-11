@@ -8,7 +8,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & Cristina Palacios
 # Email: rcabdia@roa.es
 """
-
+import math
 import os
 import platform
 import time
@@ -23,6 +23,7 @@ import matplotlib.dates as mdt
 import numpy as np
 import matplotlib.dates as mdates
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
+from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
 
 
 # Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
@@ -533,7 +534,7 @@ class PlotProj:
                 self.prompt_active = False
                 break
 
-            elif cmd.startswith("spectrogram"):
+            elif cmd.startswith("spectrogram") or cmd.startswith("spec"):
                 parts = cmd.split()
                 if len(parts) == 4:
                     _, index_str, win_str, overlap_str = parts
@@ -547,6 +548,7 @@ class PlotProj:
                             print(f"[ERROR] Index {idx} out of range.")
                     except ValueError:
                         print("[ERROR] Usage: spectrogram <index> <win_sec> <overlap%>")
+
                 elif len(parts) == 2:
                     _, index_str = parts
                     try:
@@ -557,11 +559,41 @@ class PlotProj:
                         else:
                             print(f"[ERROR] Index {idx} out of range.")
                     except ValueError:
-                        print("[ERROR] Invalid index for spectrogram.")
+                        print("[ERROR] Invalid index for spectrogram")
                 else:
                     print("[ERROR] Use: spectrogram <index> [<win_sec> <overlap%>]")
 
-            elif cmd.startswith("spectrum"):
+            elif cmd.startswith("cwt"):
+                parts = cmd.split()
+                if len(parts) == 6:
+                    _, index_str, wavelet_type, param, fmin, fmax = parts
+                    try:
+                        idx = int(index_str)
+                        wavelet_type = str(wavelet_type)
+                        param = float(param)
+                        fmin = float(fmin)
+                        fmax = float(fmax)
+                        if 0 <= idx < len(self.trace_list):
+                            self._plot_wavelet(idx, wavelet_type, param, fmin=fmin, fmax=fmax)
+                        else:
+                            print(f"[ERROR] Index {idx} out of range.")
+                    except ValueError:
+                        print("[ERROR] Usage: cwt <index> <wavelet_type> <parameter>")
+                elif len(parts) == 4:
+                    _, index_str, wavelet_type, param = parts
+                    try:
+                        idx = int(index_str)
+                        if 0 <= idx < len(self.trace_list):
+                            # Use default values if not provided
+                            self._plot_wavelet(idx, wavelet_type, param)
+                        else:
+                            print(f"[ERROR] Index {idx} out of range.")
+                    except ValueError:
+                        print("[ERROR] Invalid index for spectrogram")
+                else:
+                    print("[ERROR] Use: spectrogram <index> [<win_sec> <overlap%>]")
+
+            elif cmd.startswith("spectrum") or cmd.startswith("sp"):
                 parts = cmd.split()
                 if len(parts) == 2:
                     _, index = parts
@@ -600,7 +632,6 @@ class PlotProj:
         while plt.fignum_exists(self.fig_spec.number):
             plt.pause(0.2)
             time.sleep(0.1)
-
 
     def _plot_all_spectra(self):
 
@@ -668,6 +699,73 @@ class PlotProj:
         while plt.fignum_exists(self.fig_spec.number):
             plt.pause(0.2)
             time.sleep(0.1)
+
+    def _plot_wavelet(self, idx, wavelet_type, param, **kwargs):
+
+        if wavelet_type == "cm":
+            wavelet_type  = "Complex Morlet"
+        elif wavelet_type == "mh":
+            wavelet_type = "Mexican Hat"
+        elif wavelet_type == "pa":
+            wavelet_type = "Paul"
+
+        param = float(param)
+        tr = self.trace_list[idx]
+        f_min = kwargs.pop("fmin", 0.5)
+        f_max = kwargs.pop("fmax", tr.stats.sampling_rate//2)
+
+        cw = ConvolveWaveletScipy(tr)
+        tt = int(tr.stats.sampling_rate/ f_min)
+        cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=f_min, fmax=f_max, nf=80,
+                         use_wavelet=wavelet_type, m=param, decimate=False)
+        scalogram2 = cw.scalogram_in_dbs()
+
+        t = np.linspace(0, tr.stats.delta * scalogram2.shape[1], scalogram2.shape[1])
+        f = np.logspace(np.log10(f_min), np.log10(f_max), scalogram2.shape[0])
+        x, y = np.meshgrid(t, f)
+
+        c_f = param / 2 * math.pi
+        ff = np.linspace(f_min, f_max, scalogram2.shape[0])
+        pred = (math.sqrt(2) * c_f / ff) - (math.sqrt(2) * c_f / f_max)
+
+        pred_comp = t[len(t) - 1] - pred
+        # --- Set up GridSpec with reserved space for colorbar ---
+        self.fig_spec = plt.figure(figsize=(10, 5))
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
+                               hspace=0.02, wspace=0.02)
+
+        ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
+        ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
+        ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
+
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_powerlimits((0, 0))  # Forces scientific notation always
+        ax_waveform.yaxis.set_major_formatter(formatter)
+
+        # --- Plot waveform ---
+        ax_waveform.plot(tr.times(), tr.data, linewidth=0.75)
+        ax_waveform.set_title(f"Spectrogram for {tr.id}")
+        ax_waveform.tick_params(labelbottom=False)
+
+        # --- Plot scaloogram ---
+        pcm = ax_spec.pcolormesh(x, y, scalogram2, shading='auto', cmap='rainbow')
+        ax_spec.fill_between(pred, ff, 0, color="black", edgecolor="red", alpha=0.3)
+        ax_spec.fill_between(pred_comp, ff, 0, color="black", edgecolor="red", alpha=0.3)
+        ax_waveform.set_ylabel('Amplitude')
+        ax_spec.set_ylim([np.min(f), np.max(f)])
+        ax_spec.set_ylabel('Frequency [Hz]')
+        ax_spec.set_xlabel('Time [s]')
+
+        # --- Add colorbar without shifting axes ---
+        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
+        cbar.set_label("Power [dB]")
+
+        plt.show(block=False)
+
+        while plt.fignum_exists(self.fig_spec.number):
+            plt.pause(0.2)
+            time.sleep(0.1)
+
 
 
 # def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
