@@ -2,8 +2,8 @@ from obspy import Stream, Trace, UTCDateTime
 import numpy as np
 from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
-    wiener_filter, add_frequency_domain_noise, whiten, normalize, wavelet_denoise, safe_downsample, smoothing, \
-    trace_envelope
+    wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
+    trace_envelope, whiten_new
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
@@ -149,7 +149,8 @@ class SeismogramData:
                 tr = add_frequency_domain_noise(tr, noise_type=_config['noise_type'], SNR_dB=_config['SNR_dB'])
 
             if _config['name'] == 'whitening':
-                tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
+                #tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
+                tr = whiten_new(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
 
             if _config['name'] == 'remove_spikes':
 

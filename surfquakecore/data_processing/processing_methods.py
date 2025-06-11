@@ -12,7 +12,8 @@ import pywt
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheby1, sosfilt
 from surfquakecore.utils.obspy_utils import Filters
-from obspy.signal.filter import lowpass, envelope
+from obspy.signal.filter import envelope
+from surfquakecore.cython_module.whiten import whiten_aux
 
 def filter_trace(trace, type, fmin, fmax, **kwargs):
     """
@@ -285,6 +286,69 @@ def add_frequency_domain_noise(trace, noise_type='white', SNR_dB=None, seed=None
     trace.data = signal + noise
     return trace
 
+def whiten_new(tr, freq_width=0.02, taper_edge=True):
+    """
+    Apply spectral whitening to a seismic trace.
+
+    Parameters:
+    -----------
+    tr : obspy.Trace
+        Input trace to be whitened.
+    freq_width : float, optional
+        Frequency smoothing window width [Hz] on both sides. Default is 0.02 Hz.
+
+    Returns:
+    --------
+    obspy.Trace
+        Whitened trace (amplitude spectrum flattened; phase preserved).
+    """
+    try:
+        fs = tr.stats.sampling_rate
+        N = tr.count()
+        D = 2 ** math.ceil(math.log2(N))
+        freq_res = 1 / (D / fs)
+        N_smooth = max(1, int(freq_width / freq_res))  # Ensure at least 1
+
+        if N_smooth % 2 == 0:
+            N_smooth += 1  # Ensure odd window for symmetric smoothing
+
+        average_window_width = N_smooth + 1
+        half_width = average_window_width // 2
+        half_width_pos = half_width - 1
+
+        # FFT of zero-padded trace
+        data = tr.data
+        data_f = np.fft.rfft(data, D)
+        N_rfft = len(data_f)
+        data_f_whiten = data_f.copy()
+
+        index = np.arange(0, N_rfft - half_width)
+
+        # Call Cython/Numba whitening function
+        data_f_whiten = whiten_aux(
+            data_f, data_f_whiten, index, half_width,
+            average_window_width, half_width_pos
+        )
+
+        # Taper edges in frequency domain
+        if taper_edge:
+            taper = np.cos(np.linspace(np.pi / 2, np.pi, half_width)) ** 2
+            taper_flip = taper[::-1]
+
+            mean_start = np.mean(np.abs(data_f[:half_width]))
+            mean_end = np.mean(np.abs(data_f[-half_width:]))
+
+            if mean_start != 0:
+                data_f_whiten[:half_width] = (data_f[:half_width] / mean_start) * taper
+            if mean_end != 0:
+                data_f_whiten[-half_width:] = (data_f[-half_width:] / mean_end) * taper_flip
+
+        # Inverse FFT and trim to original length
+        tr.data = np.fft.irfft(data_f_whiten)[:N]
+    except Exception as e:
+        print(f"Whitening failed: {e}")
+
+    return tr
 
 def whiten(tr, freq_width=0.05, taper_edge=True):
     """"
