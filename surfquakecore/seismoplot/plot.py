@@ -96,6 +96,9 @@ class PlotProj:
 
     def _plot_standard_traces(self):
 
+        formatter_pow = ScalarFormatter(useMathText=True)
+        formatter_pow.set_powerlimits((0, 0))  # Forces scientific notation always
+
         traces = self.trace_list
         if self.plot_config["sort_by"] == 'distance':
             traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
@@ -111,9 +114,8 @@ class PlotProj:
 
         for i in range(0, n_traces, traces_per_fig):
             sub_traces = traces[i:i + traces_per_fig]
-            self.fig, self.axs = plt.subplots(
-                len(sub_traces), 1,
-                figsize=(10, 2 * len(sub_traces)),
+            max_traces = min(8, 2 * len(sub_traces))
+            self.fig, self.axs = plt.subplots(len(sub_traces), 1, figsize=(12, max_traces),
                 sharex=True,
                 gridspec_kw={'hspace': self.plot_config["vspace"]}
             )
@@ -137,25 +139,44 @@ class PlotProj:
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
                 ax.xaxis.set_major_locator(mdates.AutoDateLocator())
                 ax.tick_params(axis='x')
+                ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+                ax.yaxis.set_major_formatter(formatter_pow)
+                ax.yaxis.get_offset_text().set_visible(True)
 
             auto_start = min(tr.times("matplotlib")[0] for tr in sub_traces)
             auto_end = max(tr.times("matplotlib")[-1] for tr in sub_traces)
+
+
             for ax in self.axs:
                 ax.set_xlim(auto_start, auto_end)
+
+            plt.ion()
+            plt.tight_layout()
 
             if self.plot_config["autosave"]:
                 os.makedirs(self.plot_config["save_folder"], exist_ok=True)
                 fig_path = os.path.join(self.plot_config["save_folder"], f"waveform_plot_{i // traces_per_fig + 1}.png")
                 plt.savefig(fig_path, dpi=150)
                 print(f"[INFO] Plot saved to {fig_path}")
+
             else:
-                plt.ion()
-                plt.tight_layout()
 
                 if self.enable_command_prompt:
                     plt.show(block=False)
-                    plt.pause(0.25)  # Let the GUI event loop catch up
-                    print("[INFO] Type 'command parameter' or 'e' to exit'")
+                    # Simulate a non-blocking wait for GUI responsiveness
+                    print("[INFO] Waiting for GUI to be responsive...")
+                    start_time = time.time()
+                    while not plt.fignum_exists(self.fig.number):
+                        plt.pause(0.10)
+                        if time.time() - start_time > 25:  # Timeout failsafe
+                            print("[WARNING] GUI did not become active.")
+                            break
+
+                    # Give it one last short pause to fully draw
+                    plt.pause(0.5)
+
+                    # Then launch prompt
+                    print("[INFO] Type 'command parameter' or 'n' to next set of traces'")
                     self.command_prompt()
                 else:
                     plt.show(block=True)
@@ -173,7 +194,7 @@ class PlotProj:
 
         # Compute global start time for alignment
         #t0 = min(tr.stats.starttime for tr in traces)
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 8))
 
         for tr, dist in zip(traces, distances):
             # Normalize trace to its max amplitude
@@ -181,7 +202,6 @@ class PlotProj:
 
             # Align time axis to earliest start
             t = tr.times("matplotlib")
-
             ax.plot(t, norm_data * scale + dist, linewidth=0.6, label=tr.id)
 
         ax.set_xlabel("Time (UTC)")
@@ -209,7 +229,7 @@ class PlotProj:
             print("No traces to plot.")
             return
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 8))
 
         for tr in traces:
             t = tr.times("matplotlib")
@@ -509,7 +529,7 @@ class PlotProj:
 
         while True:
             cmd = input(">> ").strip().lower()
-            if cmd == "e":
+            if cmd == "n":
                 self.prompt_active = False
                 break
 
