@@ -24,7 +24,6 @@ import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 import matplotlib.dates as mdates
-
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
@@ -721,13 +720,17 @@ class PlotProj:
 
 
     def _run_fk(self, **kwargs):
+        try:
+            plt.close(self.fig_fk)
+        except:
+            pass
 
-        timewindow = kwargs.pop("timewindow", 3)
-        overlap = kwargs.pop("overlap", 0.05)
-        fmin = kwargs.pop("fmin", 0.8)
-        fmax = kwargs.pop("fmax", 2.2)
-        smax= kwargs.pop("smax", 0.3)
-        slow_grid = kwargs.pop("smax", 0.05)
+        self.timewindow = kwargs.pop("timewindow", 3)
+        self.overlap = kwargs.pop("overlap", 0.05)
+        self.fmin = kwargs.pop("fmin", 0.8)
+        self.fmax = kwargs.pop("fmax", 2.2)
+        self.smax = kwargs.pop("smax", 0.3)
+        self.slow_grid = kwargs.pop("slow_grid", 0.05)
 
         try:
             stime = self.trace_list[0].stats.references[0]
@@ -738,32 +741,106 @@ class PlotProj:
         except:
             etime = self.trace_list[0].stats.stats.endtime
 
+        print("FK window: ", stime, etime)
         traces = Stream(self.trace_list)
         selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
         wavenumber = array_analysis.array()
         self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces, selection, stime, etime,
-                                                                                     fmin, fmax, smax, slow_grid,
-                                                                                     timewindow, overlap)
+                                                                                     self.fmin, self.fmax, self.smax,
+                                                                                     self.slow_grid,
+                                                                                     self.timewindow, self.overlap)
 
-        self.fig_fk, ax = plt.subplots(nrows=3, ncols=1, figsize=(8, 5), sharex=True)
-        ax[0].scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
-        ax[1].scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
-        ax[2].scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
+        # --- Create grid layout with reserved space for colorbar ---
+        self.fig_fk = plt.figure(figsize=(9, 6))
+        self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
+        gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
+                               wspace=0.02)
 
-        ax[2].set_xlabel("Date")
-        ax[1].set_ylabel("Rel. Power")
-        ax[1].set_ylabel("Slowness (s/km)")
-        ax[2].set_ylabel("BackAzimuth")
-        ax[0].set_title("FK Analysis - Relative Power")
-        formatter = mdt.DateFormatter('%H:%M:%S')
-        ax[2].xaxis.set_major_formatter(formatter)
-        ax[2].xaxis.set_tick_params(rotation=30)
-        #cbar = plt.colorbar(sc, ax=ax)
-        #cbar.set_label("Relative Power")
+        # Create subplots
+        ax0 = self.fig_fk.add_subplot(gs[0, 0])
+        ax1 = self.fig_fk.add_subplot(gs[1, 0], sharex=ax0)
+        ax2 = self.fig_fk.add_subplot(gs[2, 0], sharex=ax0)
+        ax_cbar = self.fig_fk.add_subplot(gs[:, 1])  # colorbar takes all rows
+
+        # Scatter plots
+        sc0 = ax0.scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
+        sc1 = ax1.scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
+        sc2 = ax2.scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
+
+        # Labels and formatting
+        ax0.set_ylabel("Rel. Power")
+        ax1.set_ylabel("Slowness\n(s/km)")
+        ax2.set_ylabel("BackAzimuth")
+        ax2.set_xlabel("Time (UTC)")
+        ax0.set_title("FK Analysis - Relative Power")
+
+        formatter = mdates.DateFormatter('%H:%M:%S')
+        ax2.xaxis.set_major_formatter(formatter)
+        ax2.tick_params(axis='x', rotation=0)
+
+        # Add colorbar
+        cbar = self.fig_fk.colorbar(sc2, cax=ax_cbar)
+        cbar.set_label("Relative Power")
+
+        plt.tight_layout()
         plt.show(block=False)
+
+        # Keep figure open
         while plt.fignum_exists(self.fig_fk.number):
             plt.pause(0.2)
             time.sleep(0.1)
+
+    def _on_fk_doubleclick(self, event):
+        """On double-click, show time and plot slowness map at that moment."""
+        if not event.dblclick or event.inaxes is None:
+            return
+
+        ax = event.inaxes
+        xdata = event.xdata
+        if xdata is None:
+            return
+
+        try:
+            time_clicked = mdt.num2date(xdata).replace(tzinfo=None)
+            print(f"[INFO] Double-clicked time: {time_clicked.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        except Exception as e:
+            print(f"[ERROR] Failed to convert time: {e}")
+            return
+
+        try:
+
+            # Get data
+            traces = Stream(self.trace_list)
+            selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
+            wavenumber = array_analysis.array()
+
+            Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
+                traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow, self.slow_grid, "FK"
+            )
+
+            # Build slowness grid
+            Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
+            nx = len(Sx[0])
+            x = y = np.linspace(-1 * self.smax, self.smax, nx)
+            X, Y = np.meshgrid(x, y)
+
+            # Plot
+            self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
+            contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
+            ax_slow.set_xlabel("Sx (s/km)")
+            ax_slow.set_ylabel("Sy (s/km)")
+            ax_slow.set_title(f"FK Coherence at {time_clicked.strftime('%H:%M:%S')}")
+            cbar = plt.colorbar(contour, ax=ax_slow)
+            cbar.set_label("Normalized Power")
+            plt.tight_layout()
+            plt.show(block=False)
+
+            while plt.fignum_exists(self.fig_slow_map.number):
+                plt.pause(0.2)
+                time.sleep(0.1)
+
+        except Exception as e:
+            print(f"[ERROR] Could not compute or plot FK coherence: {e}")
 
 
 
