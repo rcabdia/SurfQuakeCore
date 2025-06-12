@@ -104,9 +104,6 @@ class AnalysisEvents:
     def _process_station_traces(self, args):
         file_group, event, model, cut_start, cut_end, inventory, set_header_func = args
 
-
-
-
         try:
             # Read & merge all files for this station
             st = Stream()
@@ -281,11 +278,11 @@ class AnalysisEvents:
 
                 if plot:
                     user_choice = input(
-                        f"\n[Prompt] Finished subproject {i}. Type 'next' to continue, "
+                        f"\n[Prompt] Finished subproject {i}. Type 'n' to continue, "
                         f"'redo' to reprocess this event, or 'exit': "
                     ).strip().lower()
 
-                    if user_choice == "next":
+                    if user_choice == "n":
                         break  # Exit the while-loop → go to next event
 
                     elif user_choice == "redo":
@@ -362,7 +359,8 @@ class AnalysisEvents:
 
                     # --- Plot if requested ---
                     if full_stream is not None and plot and len(full_stream) > 0:
-                        plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
+                        plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive,
+                                           inventory=self.inventory)
                         full_stream = plotter.plot()
 
                         for tr in full_stream:
@@ -383,10 +381,10 @@ class AnalysisEvents:
                     # --- User prompt for next action ---
                     if plot:
                         user_choice = input(
-                            f"\n[Prompt] Finished subproject {i}, event {j}. Type 'next' to continue, 'redo' to reprocess this event, or 'exit': "
+                            f"\n[Prompt] Finished subproject {i}, event {j}. Type 'n' to continue, 'redo' to reprocess this event, or 'exit': "
                         ).strip().lower()
 
-                        if user_choice == "next":
+                        if user_choice == "n":
                             break  # Exit the while-loop → go to next event
 
                         elif user_choice == "redo":

@@ -3,6 +3,8 @@
 """
 plot_command_prompt.py
 """
+from surfquakecore.utils.obspy_utils import MseedUtil
+
 
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
@@ -16,6 +18,7 @@ class PlotCommandPrompt:
             "sp": self._cmd_spectrum,
             "cwt": self._cmd_cwt,
             "pick": self._cmd_pick,
+            "fk": self._cmd_fk,
         }
 
     def run(self) -> str:
@@ -96,6 +99,46 @@ class PlotCommandPrompt:
             self.plot_proj._plot_wavelet(idx, wavelet, param, fmin=fmin, fmax=fmax)
         else:
             self.plot_proj._plot_wavelet(idx, wavelet, param)
+
+    def _cmd_fk(self, args):
+        """
+        Run FK analysis and show output.
+        Usage: fk [--fmin 0.8] [--fmax 2.2] [--smax 0.3] [--grid 0.05] [--win 3] [--overlap 0.1]
+        """
+        import matplotlib.pyplot as plt
+
+        # Default parameters
+        params = {
+            "fmin": 0.8,
+            "fmax": 2.2,
+            "smax": 0.3,
+            "slow_grid": 0.05,
+            "timewindow": 3,
+            "overlap": 0.05
+        }
+
+        # Parse command-line style args
+        it = iter(args[1:])  # Skip 'fk'
+        for arg in it:
+            if arg.startswith("--"):
+                key = arg[2:]
+                try:
+                    val = float(next(it))
+                    if key == "grid":
+                        params["slow_grid"] = val
+                    else:
+                        params[key] = val
+                except (StopIteration, ValueError):
+                    print(f"[ERROR] Invalid value for --{key}")
+                    return
+
+        print(f"[INFO] Running FK with parameters: {params}")
+        #try:
+        self.plot_proj._run_fk(**params)
+        # except Exception as e:
+        #     print(f"[ERROR] FK run failed: {e}")
+
+
 
     def _cmd_help(self, args):
         print("Available commands:")

@@ -18,15 +18,18 @@ from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from matplotlib.ticker import ScalarFormatter
-from obspy import UTCDateTime
+from obspy import UTCDateTime, Stream
 from obspy.core.trace import Trace
 import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 import matplotlib.dates as mdates
+
+from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
+from surfquakecore.utils.obspy_utils import MseedUtil
 
 
 # Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
@@ -42,6 +45,7 @@ class PlotProj:
             Dictionary of plotting preferences.
         """
         self.trace_list = list(stream)
+        self.inventory = kwargs.pop("inventory", None)
 
         # Default plotting configuration
         self.plot_config = {
@@ -714,6 +718,54 @@ class PlotProj:
         while plt.fignum_exists(self.fig_spec.number):
             plt.pause(0.2)
             time.sleep(0.1)
+
+
+    def _run_fk(self, **kwargs):
+
+        timewindow = kwargs.pop("timewindow", 3)
+        overlap = kwargs.pop("overlap", 0.05)
+        fmin = kwargs.pop("fmin", 0.8)
+        fmax = kwargs.pop("fmax", 2.2)
+        smax= kwargs.pop("smax", 0.3)
+        slow_grid = kwargs.pop("smax", 0.05)
+
+        try:
+            stime = self.trace_list[0].stats.references[0]
+        except:
+            stime = self.trace_list[0].stats.starttime
+        try:
+            etime = self.trace_list[0].stats.references[1]
+        except:
+            etime = self.trace_list[0].stats.stats.endtime
+
+        traces = Stream(self.trace_list)
+        selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
+        wavenumber = array_analysis.array()
+        self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces, selection, stime, etime,
+                                                                                     fmin, fmax, smax, slow_grid,
+                                                                                     timewindow, overlap)
+
+        self.fig_fk, ax = plt.subplots(nrows=3, ncols=1, figsize=(8, 5), sharex=True)
+        ax[0].scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
+        ax[1].scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
+        ax[2].scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
+
+        ax[2].set_xlabel("Date")
+        ax[1].set_ylabel("Rel. Power")
+        ax[1].set_ylabel("Slowness (s/km)")
+        ax[2].set_ylabel("BackAzimuth")
+        ax[0].set_title("FK Analysis - Relative Power")
+        formatter = mdt.DateFormatter('%H:%M:%S')
+        ax[2].xaxis.set_major_formatter(formatter)
+        ax[2].xaxis.set_tick_params(rotation=30)
+        #cbar = plt.colorbar(sc, ax=ax)
+        #cbar.set_label("Relative Power")
+        plt.show(block=False)
+        while plt.fignum_exists(self.fig_fk.number):
+            plt.pause(0.2)
+            time.sleep(0.1)
+
+
 
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-interactive
+__init__.py
 
 
 
@@ -10,4 +10,3 @@ interactive
 :return: 
 :rtype: 
 """
-

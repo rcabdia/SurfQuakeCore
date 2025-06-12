@@ -726,9 +726,11 @@ def _processing_cut():
                                              cut_end_time=end, verbose=True)
 
     sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                        sp_sub_projects, post_script=parsed_args.post_script, reference=parsed_args.reference)
+                        sp_sub_projects, post_script=parsed_args.post_script, plot_config_file=parsed_args.plot_config,
+                        reference=parsed_args.reference)
 
     sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
+
 def _processing_daily():
 
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing continous waveforms. ",
