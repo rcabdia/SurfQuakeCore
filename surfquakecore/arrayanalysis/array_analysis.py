@@ -109,11 +109,11 @@ class array:
 
         return relpower, abspower, AZ, Slowness, T
 
-    def FKCoherence(self, st, inv, t1, linf, lsup, slim, win_len, sinc, method):
+    def FKCoherence(self, st_ini, inv, t1, linf, lsup, slim, win_len, sinc, method):
 
         t_start_utc = UTCDateTime(mdt.num2date(t1))
         t_end_utc = t_start_utc + win_len
-
+        st = st_ini.copy()
         def find_nearest(array, value):
 
             idx, val = min(enumerate(array), key=lambda x: abs(x[1] - value))

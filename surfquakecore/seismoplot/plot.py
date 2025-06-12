@@ -722,9 +722,11 @@ class PlotProj:
     def _run_fk(self, **kwargs):
         try:
             plt.close(self.fig_fk)
+            plt.close(self.fig_slow_map)
         except:
             pass
 
+        # TODO IMPLEMENT THE METHOD
         self.timewindow = kwargs.pop("timewindow", 3)
         self.overlap = kwargs.pop("overlap", 0.05)
         self.fmin = kwargs.pop("fmin", 0.8)
@@ -743,9 +745,11 @@ class PlotProj:
 
         print("FK window: ", stime, etime)
         traces = Stream(self.trace_list)
+
+        traces_fk = traces.copy()
         selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
         wavenumber = array_analysis.array()
-        self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces, selection, stime, etime,
+        self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces_fk, selection, stime, etime,
                                                                                      self.fmin, self.fmax, self.smax,
                                                                                      self.slow_grid,
                                                                                      self.timewindow, self.overlap)
@@ -811,7 +815,8 @@ class PlotProj:
 
             # Get data
             traces = Stream(self.trace_list)
-            selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
+            traces_slow = traces.copy()
+            selection = MseedUtil.filter_inventory_by_stream(traces_slow, self.inventory)
             wavenumber = array_analysis.array()
 
             Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
