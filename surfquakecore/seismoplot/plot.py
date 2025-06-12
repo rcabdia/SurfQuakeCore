@@ -56,7 +56,6 @@ class PlotProj:
             "sharey": False}
 
         self.enable_command_prompt = kwargs.pop("interactive", False)
-
         # Override defaults with user config if provided
         if plot_config:
             self.plot_config.update(plot_config)
@@ -99,6 +98,7 @@ class PlotProj:
 
     def _plot_standard_traces(self):
 
+        plt.close(self.fig)
         formatter_pow = ScalarFormatter(useMathText=True)
         formatter_pow.set_powerlimits((0, 0))  # Forces scientific notation always
 
@@ -191,7 +191,7 @@ class PlotProj:
                     plt.pause(0.5)
 
                     # Then launch prompt
-                    print("[INFO] Type 'command parameter' or 'n' to next set of traces'")
+                    print("[INFO] Type 'command parameter' or 'q' to next set of traces'")
                     self.command_prompt()
                 else:
                     plt.show(block=True)
@@ -564,7 +564,7 @@ class PlotProj:
         while True:
             cmd = input(">> ").strip().lower()
 
-            if cmd == "n":
+            if cmd == "q":
                 self.prompt_active = False
                 break
 
@@ -630,7 +630,7 @@ class PlotProj:
                     except ValueError:
                         print("[ERROR] Invalid index for spectrogram")
                 else:
-                    print("[ERROR] Use: spectrogram <index> [<win_sec> <overlap%>]")
+                    print("[ERROR] Usage: cwt <index> <wavelet_type> <parameter>")
 
             elif cmd.startswith("spectrum") or cmd.startswith("sp"):
                 parts = cmd.split()

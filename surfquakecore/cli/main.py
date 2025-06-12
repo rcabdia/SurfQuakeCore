@@ -678,9 +678,6 @@ def _processing_cut():
     arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
                            action="store_true")
 
-    arg_parse.add_argument("-k", "--interactive", help="In case user wants add spectral commands",
-                           action="store_true")
-
     arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)",
                            type=str)
 
@@ -725,7 +722,7 @@ def _processing_cut():
                                              cut_end_time=end, verbose=True)
     sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                         sp_sub_projects, post_script=parsed_args.post_script,)
-    sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots, interactive=parsed_args.interactive)
+    sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
 def _processing_daily():
 
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing continous waveforms. ",
