@@ -660,6 +660,10 @@ def _processing_cut():
     arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str,
                            required=True)
 
+    arg_parse.add_argument("-r", "--reference", help="Reference |event_time| if the first arrival "
+                           "needs to be estimated else pick time is the reference, default event",
+                           type=str, required=False)
+
     arg_parse.add_argument("-n", "--net", help="project net filter", type=str, required=False)
 
     arg_parse.add_argument("-s", "--station", help="project station filter", type=str, required=False)
@@ -720,8 +724,10 @@ def _processing_cut():
 
     sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, cut_start_time=start,
                                              cut_end_time=end, verbose=True)
+
     sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                        sp_sub_projects, post_script=parsed_args.post_script,)
+                        sp_sub_projects, post_script=parsed_args.post_script, reference=parsed_args.reference)
+
     sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
 def _processing_daily():
 

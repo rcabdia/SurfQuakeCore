@@ -31,12 +31,13 @@ class AnalysisEvents:
                  inventory_file: Optional[str] = None, config_file: Optional[str] = None,
                  surf_projects: List[SurfProject] = None, plot_config_file: Optional[str] = None,
                  post_script: Optional[str] = None, time_segment_start: Optional[str] = None,
-                 time_segment_end: Optional[str] = None):
+                 time_segment_end: Optional[str] = None, reference: Optional[str] = None):
 
         self.model = TauPyModel("iasp91")
         self.output = output
         self._exist_folder = False
         self.inventory = None
+        self.reference = reference
         self.all_traces = []
         self.surf_projects = surf_projects
         self.config_file = config_file
@@ -53,6 +54,9 @@ class AnalysisEvents:
 
         self.config = None
         self.df_events = None
+
+        if self.reference is None:
+            self.reference = "event_time"
 
         if config_file is not None:
             self.config = self.load_analysis_configuration(config_file)
@@ -99,6 +103,10 @@ class AnalysisEvents:
 
     def _process_station_traces(self, args):
         file_group, event, model, cut_start, cut_end, inventory, set_header_func = args
+
+
+
+
         try:
             # Read & merge all files for this station
             st = Stream()
@@ -113,23 +121,29 @@ class AnalysisEvents:
             stats = file_group[0][1]
             net, sta = stats.network, stats.station
             origin = event["origin_time"]
-            lat, lon, depth = event["latitude"], event["longitude"], event["depth"]
+            distance_m = baz = az = incidence_angle = lat = lon = depth = None
 
-            inv_sta = inventory.select(network=net, station=sta)
-            sta_coords = inv_sta[0][0].latitude, inv_sta[0][0].longitude, inv_sta[0][0].elevation
-            distance_m, az, baz = gps2dist_azimuth(sta_coords[0], sta_coords[1], lat, lon)
-            distance_deg = distance_m / 1000 / 111.19
+            if self.reference == "event_time":
+                lat, lon, depth = event["latitude"], event["longitude"], event["depth"]
+                inv_sta = inventory.select(network=net, station=sta)
+                sta_coords = inv_sta[0][0].latitude, inv_sta[0][0].longitude, inv_sta[0][0].elevation
+                distance_m, az, baz = gps2dist_azimuth(sta_coords[0], sta_coords[1], lat, lon)
+                distance_deg = distance_m / 1000 / 111.19
 
-            arrivals = model.get_travel_times(source_depth_in_km=depth,
-                                              distance_in_degree=distance_deg)
-            if not arrivals:
-                raise ValueError("No valid arrivals returned by TauPyModel.")
+                arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg)
+                if not arrivals:
+                    raise ValueError("No valid arrivals returned by TauPyModel.")
 
-            incidence_angle = arrivals[0].incident_angle
-            first_arrival = origin + arrivals[0].time
-            t1 = first_arrival - cut_start
-            t2 = first_arrival + cut_end
-            st.trim(starttime=t1, endtime=t2)
+                incidence_angle = arrivals[0].incident_angle
+                first_arrival = origin + arrivals[0].time
+                t1 = first_arrival - cut_start
+                t2 = first_arrival + cut_end
+                st.trim(starttime=t1, endtime=t2)
+
+            else:
+                t1 = origin - cut_start
+                t2 = origin + cut_end
+                st.trim(starttime=t1, endtime=t2)
 
             if len(st) == 0:
                 return []
@@ -139,8 +153,9 @@ class AnalysisEvents:
                 if self.config:
                     sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
                     tr = sd.run_analysis(self.config)
-                tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az, incidence_angle=incidence_angle,
-                                     otime=origin, lat=lat, lon=lon, depth=depth)
+                if self.reference == "event_time":
+                    tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az, incidence_angle=incidence_angle,
+                                         otime=origin, lat=lat, lon=lon, depth=depth)
                 traces.append(tr)
 
             return traces
@@ -288,7 +303,7 @@ class AnalysisEvents:
                 else:
                     break  # No prompt: go to next event
 
-    def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True,
+    def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True, reference="events",
                              interactive=False):
 
         #shift = next((item for item in self.config if item.get('name') == 'shift'), None) if self.config else None

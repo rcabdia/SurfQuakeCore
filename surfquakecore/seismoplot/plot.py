@@ -696,7 +696,7 @@ class PlotProj:
         ax_waveform.set_title(f"Spectrogram for {tr.id}")
         ax_waveform.tick_params(labelbottom=False)
 
-        # --- Plot scaloogram ---
+        # --- Plot scalogram ---
         pcm = ax_spec.pcolormesh(x, y, scalogram2, shading='auto', cmap='rainbow')
         ax_spec.fill_between(pred, ff, 0, color="black", edgecolor="red", alpha=0.3)
         ax_spec.fill_between(pred_comp, ff, 0, color="black", edgecolor="red", alpha=0.3)
@@ -717,50 +717,4 @@ class PlotProj:
 
 
 
-# def _get_station_coords(self, trace: Trace) -> Optional[Tuple[float, float]]:
-#     """
-#     Retrieve station coordinates from metadata.
-#     """
-#     if self.metadata is None:
-#         return None
-#
-#     network = trace.stats.network
-#     station = trace.stats.station
-#
-#     if isinstance(self.metadata, Inventory):
-#         try:
-#             coords = self.metadata.get_coordinates(f"{network}.{station}")
-#             return coords['latitude'], coords['longitude']
-#         except Exception:
-#             return None
-#     elif isinstance(self.metadata, dict):
-#         return self.metadata.get(f"{network}.{station}")
-#
-#     return None
 
-# def _compute_distance_azimuth(self, trace: Trace) -> Tuple[float, float]:
-#     """
-#     Prefer distance and backazimuth from trace header if available.
-#     """
-#     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
-#         try:
-#             dist, az, baz = trace.stats.geodetic['geodetic']
-#             return dist, baz
-#         except Exception:
-#             pass  # fallback below
-#
-#     # Fallback: compute from station coordinates and epicenter
-#     if trace.id in self._dist_az_cache:
-#         return self._dist_az_cache[trace.id]
-#
-#     coords = self._get_station_coords(trace)
-#     if coords is None or self.epicenter is None:
-#         return float('inf'), float('inf')
-#
-#     epi_lat, epi_lon = self.epicenter
-#     sta_lat, sta_lon = coords
-#     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
-#     dist_km = dist_m / 1000.0
-#
-#     self._dist_az_cache[trace.id] = (dist_km, baz)
-#     return dist_km, baz

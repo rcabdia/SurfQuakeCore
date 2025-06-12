@@ -2,7 +2,7 @@ import os
 import pickle
 import re
 from multiprocessing import Pool
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 import pandas as pd
 from obspy import read, UTCDateTime, Inventory
 from obspy.core.event import Origin
@@ -10,6 +10,7 @@ from surfquakecore.utils import read_nll_performance
 from surfquakecore.utils.nll_org_errors import computeOriginErrors
 from functools import partial
 from enum import Enum
+from obspy import Trace
 
 class MseedUtil:
 
@@ -274,6 +275,55 @@ class ObspyUtil:
                 'origin_uncertainty'].azimuth_max_horizontal_uncertainty
 
         return origin
+
+    @staticmethod
+    def _get_station_coords(trace: Trace, metadata) -> Optional[Tuple[float, float]]:
+        """
+        Retrieve station coordinates from metadata.
+        """
+        if metadata is None:
+            return None
+
+        network = trace.stats.network
+        station = trace.stats.station
+
+        if isinstance(metadata, Inventory):
+            try:
+                coords = metadata.get_coordinates(f"{network}.{station}")
+                return coords['latitude'], coords['longitude']
+            except Exception:
+                return None
+        elif isinstance(metadata, dict):
+            return metadata.get(f"{network}.{station}")
+
+        return None
+
+    # def _compute_distance_azimuth(trace: Trace) -> Tuple[float, float]:
+    #     """
+    #     Prefer distance and backazimuth from trace header if available.
+    #     """
+    #     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
+    #         try:
+    #             dist, az, baz = trace.stats.geodetic['geodetic']
+    #             return dist, baz
+    #         except Exception:
+    #             pass  # fallback below
+    #
+    #     # Fallback: compute from station coordinates and epicenter
+    #     if trace.id in self._dist_az_cache:
+    #         return self._dist_az_cache[trace.id]
+    #
+    #     coords = self._get_station_coords(trace)
+    #     if coords is None or self.epicenter is None:
+    #         return float('inf'), float('inf')
+    #
+    #     epi_lat, epi_lon = self.epicenter
+    #     sta_lat, sta_lon = coords
+    #     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
+    #     dist_km = dist_m / 1000.0
+    #
+    #     self._dist_az_cache[trace.id] = (dist_km, baz)
+    #     return dist_km, baz
 
 class Filters(Enum):
 
