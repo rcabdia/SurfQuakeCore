@@ -26,6 +26,7 @@ import numpy as np
 import matplotlib.dates as mdates
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
+from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 
 
 # Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
@@ -192,7 +193,12 @@ class PlotProj:
 
                     # Then launch prompt
                     print("[INFO] Type 'command parameter' or 'q' to next set of traces'")
-                    self.command_prompt()
+                    prompt = PlotCommandPrompt(self)
+                    result = prompt.run()
+
+                    if result == "pick":
+                        # Go back to interactive picking for this figure only
+                        plt.show(block=True)
                 else:
                     plt.show(block=True)
 
@@ -555,102 +561,6 @@ class PlotProj:
             self._redraw_all_reference_lines()
         else:
             print("[INFO] No reference times found to remove.")
-
-    def command_prompt(self):
-        if self.prompt_active:
-            return  # Prevent re-entry if already running
-        self.prompt_active = True
-
-        while True:
-            cmd = input(">> ").strip().lower()
-
-            if cmd == "q":
-                self.prompt_active = False
-                break
-
-            if cmd == "pick":
-                self.prompt_active = False
-                self.enable_command_prompt = False
-                self.plot()
-
-            elif cmd.startswith("spectrogram") or cmd.startswith("spec"):
-                parts = cmd.split()
-                if len(parts) == 4:
-                    _, index_str, win_str, overlap_str = parts
-                    try:
-                        idx = int(index_str)
-                        win_sec = float(win_str)
-                        overlap = float(overlap_str)
-                        if 0 <= idx < len(self.trace_list):
-                            self._plot_spectrogram(idx, win_sec, overlap)
-                        else:
-                            print(f"[ERROR] Index {idx} out of range.")
-                    except ValueError:
-                        print("[ERROR] Usage: spectrogram <index> <win_sec> <overlap%>")
-
-                elif len(parts) == 2:
-                    _, index_str = parts
-                    try:
-                        idx = int(index_str)
-                        if 0 <= idx < len(self.trace_list):
-                            # Use default values if not provided
-                            self._plot_spectrogram(idx)
-                        else:
-                            print(f"[ERROR] Index {idx} out of range.")
-                    except ValueError:
-                        print("[ERROR] Invalid index for spectrogram")
-                else:
-                    print("[ERROR] Use: spectrogram <index> [<win_sec> <overlap%>]")
-
-            elif cmd.startswith("cwt"):
-                parts = cmd.split()
-                if len(parts) == 6:
-                    _, index_str, wavelet_type, param, fmin, fmax = parts
-                    try:
-                        idx = int(index_str)
-                        wavelet_type = str(wavelet_type)
-                        param = float(param)
-                        fmin = float(fmin)
-                        fmax = float(fmax)
-                        if 0 <= idx < len(self.trace_list):
-                            self._plot_wavelet(idx, wavelet_type, param, fmin=fmin, fmax=fmax)
-                        else:
-                            print(f"[ERROR] Index {idx} out of range.")
-                    except ValueError:
-                        print("[ERROR] Usage: cwt <index> <wavelet_type> <parameter>")
-                elif len(parts) == 4:
-                    _, index_str, wavelet_type, param = parts
-                    try:
-                        idx = int(index_str)
-                        if 0 <= idx < len(self.trace_list):
-                            # Use default values if not provided
-                            self._plot_wavelet(idx, wavelet_type, param)
-                        else:
-                            print(f"[ERROR] Index {idx} out of range.")
-                    except ValueError:
-                        print("[ERROR] Invalid index for spectrogram")
-                else:
-                    print("[ERROR] Usage: cwt <index> <wavelet_type> <parameter>")
-
-            elif cmd.startswith("spectrum") or cmd.startswith("sp"):
-                parts = cmd.split()
-                if len(parts) == 2:
-                    _, index = parts
-                    if index == "all":
-                        self._plot_all_spectra()
-                    elif index.isdigit():
-                        idx = int(index)
-                        if 0 <= idx < len(self.trace_list):
-                            self._plot_single_spectrum(idx)
-                        else:
-                            print(f"[ERROR] Index {idx} out of range.")
-                    else:
-                        print("[ERROR] Invalid spectrum command.")
-                else:
-                    print("[ERROR] Use 'spectrum all' or 'spectrum <index>'")
-
-            else:
-                print(f"[WARN] Unknown command: {cmd}")
 
     def _plot_single_spectrum(self, idx):
 
