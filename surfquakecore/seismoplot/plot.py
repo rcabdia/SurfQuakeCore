@@ -50,8 +50,8 @@ class PlotProj:
         # Default plotting configuration
         self.plot_config = {
             "traces_per_fig": 6,
-            "sort_by": None,  # options: distance, backazimuth, None
-            "vspace": 0.0,
+            "sort_by": False,  # options: distance, backazimuth, None
+            "vspace": 0.05,
             "title_fontsize": 9,
             "show_legend": True,
             "autosave": False,
@@ -131,41 +131,60 @@ class PlotProj:
             if len(sub_traces) == 1:
                 self.axs = [self.axs]
 
-            self.cursors = []
-            for ax in self.axs:
-                cursor = BlittedCursor(ax)
-                ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
-                self.cursors.append(cursor)
+            if self.plot_config.get("show_crosshair", True):
+                self.cursors = []
+                for ax in self.axs:
+                    cursor = BlittedCursor(ax, self.axs)
+                    ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
+                    self.cursors.append(cursor)
 
             self._setup_pick_interaction()
             self._restore_state()
 
             # Inside your plot() method, after ax.plot(...)
-            for ax, tr in zip(self.axs, sub_traces):
+            for i, (ax, tr) in enumerate(zip(self.axs, sub_traces)):
                 t = tr.times("matplotlib")
-                dist, baz = self._get_geodetic_info(tr)
-                ax.plot(t, tr.data, linewidth=0.75,
-                        label=f"{tr.id} | Dist: {dist:.1f} km | Baz: {baz:.1f}°")
-                #ax.set_title(str(tr.stats.starttime), fontsize=self.plot_config["title_fontsize"])
-                if self.plot_config["show_legend"]:
+
+                if self.plot_config["sort_by"]:
+
+                    dist, baz = self._get_geodetic_info(tr)
+                    ax.plot(t, tr.data, linewidth=0.75,
+                            label=f"{tr.id} | Dist: {dist:.1f} km | Baz: {baz:.1f}°")
+                else:
+                    ax.plot(t, tr.data, linewidth=0.75, label = tr.id)
+
+
+                if self.plot_config["show_legend"] and len(self.axs) <= 9:
                     ax.legend()
 
-                # Add starttime info box in top-left of each subplot
-                starttime = tr.stats.starttime
-                julday = starttime.julday
-                year = starttime.year
-                date_str = starttime.strftime("%Y-%m-%d")
+                    # Add starttime info box in top-left of each subplot
+                    starttime = tr.stats.starttime
+                    julday = starttime.julday
+                    year = starttime.year
+                    date_str = starttime.strftime("%Y-%m-%d")
 
-                textstr = f"JD {julday} / {year}\n{date_str}"
-                ax.text(0.01, 0.95, textstr,
-                        transform=ax.transAxes,
-                        fontsize=8, va='top', ha='left',
-                        bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+                    textstr = f"JD {julday} / {year}\n{date_str}"
+                    ax.text(0.01, 0.95, textstr,
+                            transform=ax.transAxes,
+                            fontsize=8, va='top', ha='left',
+                            bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
 
                 # Set x-axis to datetime format
                 ax.xaxis_date()
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
                 ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+
+                # Hide x-axis ticks and bottom spine if not last
+                if i < len(self.axs) - 1:
+                    ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
+                    ax.spines['bottom'].set_visible(False)
+                else:
+                    ax.tick_params(axis='x', which='both', labelbottom=True, bottom=True)
+                    ax.spines['bottom'].set_visible(True)
+
+                for spine in ['top', 'right']:
+                    ax.spines[spine].set_visible(False)
+
                 ax.tick_params(axis='x')
                 ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
                 ax.yaxis.set_major_formatter(formatter_pow)
@@ -190,18 +209,23 @@ class PlotProj:
             else:
 
                 if self.enable_command_prompt:
-                    plt.show(block=False)
-                    # Simulate a non-blocking wait for GUI responsiveness
-                    print("[INFO] Waiting for GUI to be responsive...")
-                    start_time = time.time()
-                    while not plt.fignum_exists(self.fig.number):
-                        plt.pause(0.10)
-                        if time.time() - start_time > 25:  # Timeout failsafe
-                            print("[WARNING] GUI did not become active.")
-                            break
 
-                    # Give it one last short pause to fully draw
-                    plt.pause(0.5)
+                    # plt.show(block=False)
+                    # # Simulate a non-blocking wait for GUI responsiveness
+                    # print("[INFO] Waiting for GUI to be responsive...")
+                    # start_time = time.time()
+                    # while not plt.fignum_exists(self.fig.number):
+                    #     plt.pause(0.10)
+                    #     if time.time() - start_time > 25:  # Timeout failsafe
+                    #         print("[WARNING] GUI did not become active.")
+                    #         break
+                    #
+                    # # Give it one last short pause to fully draw
+                    # plt.pause(0.5)
+
+                    plt.show(block=False)
+                    self.fig.canvas.draw_idle()  # schedule a draw
+                    plt.pause(0.5)  # give time for GUI to process at least one frame
 
                     # Then launch prompt
                     print("[INFO] Type 'command parameter' or 'q' to next set of traces'")
@@ -294,8 +318,7 @@ class PlotProj:
         #               "Click to place picks | 'd' to delete last | 'c' to clear",
         #               fontsize=9)
         # Reserve space for displaying pick info
-        self.info_box = self.fig.add_axes([0.8, 0.1, 0.18, 0.8], frameon=False)
-        self.info_box.axis('off')
+        self.info_box = self.fig.text(0.75, 0.8, "", ha='left', va='top', fontsize=9)
         self._update_info_box()
         self._restore_state()
 
@@ -309,7 +332,11 @@ class PlotProj:
 
         # Check which subplot was clicked
         ax = event.inaxes
-        tr_idx = np.where(self.axs == ax)[0][0]
+        try:
+            tr_idx = next(i for i, a in enumerate(self.axs) if a == ax)
+        except StopIteration:
+            print("[WARNING] Clicked axis not found.")
+            return
         trace = self.trace_list[tr_idx]
         pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
 
@@ -521,9 +548,8 @@ class PlotProj:
                 for k, v in self.picks.items() if v}
 
     def _update_info_box(self):
+
         """Update the side info box with picks."""
-        self.info_box.clear()
-        self.info_box.axis('off')
 
         lines = ["Picks:"]
         for tr_id, pick_list in self.picks.items():
@@ -536,7 +562,7 @@ class PlotProj:
                 time_str = pt.strftime('%H:%M:%S.%f')[:-3]
                 lines.append(f"{tr_id}: {time_str} ({ptype}, {pol}) amp={amp:.2f}")
 
-        self.info_box.text(0, 1, '\n'.join(lines), va='top', fontsize=9)
+        self.info_box.set_text('\n'.join(lines))
 
     def set_pick_type(self, pick_type: str):
         """Set current pick type (e.g., 'P', 'S', etc.)"""
