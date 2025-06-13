@@ -7,6 +7,7 @@
 # Author: Roberto Cabieces & Thiago C. Junqueira
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
+
 import glob
 import pickle
 from datetime import datetime
@@ -17,7 +18,7 @@ from typing import Tuple, List, Union
 import re
 from obspy import read, UTCDateTime
 import copy
-
+import csv
 
 def _generate_subproject_for_time_window(args):
     (start, end), serialized_project, events, mode, overlap_threshold, margin = args
@@ -735,7 +736,7 @@ class SurfProject:
         Returns:
             List[SurfProject]
         """
-        import csv
+
 
         def parse_event_file(path):
             events = []
@@ -747,13 +748,17 @@ class SurfProject:
                     except ValueError:
                         dt = datetime.strptime(f"{row['date']} {row['hour']}", "%Y-%m-%d %H:%M:%S")
 
-                    events.append({
-                        "origin_time": UTCDateTime(dt),
-                        "latitude": float(row["latitude"]),
-                        "longitude": float(row["longitude"]),
-                        "depth": float(row["depth"]),
-                        "magnitude": float(row["magnitude"])
-                    })
+                    event = {
+                        "origin_time": UTCDateTime(dt)
+                    }
+
+                    # Add optional fields if they exist
+                    for field in ["latitude", "longitude", "depth", "magnitude"]:
+                        if field in row and row[field].strip():
+                            event[field] = float(row[field])
+
+                    events.append(event)
+
             return events
 
         # Get bounds

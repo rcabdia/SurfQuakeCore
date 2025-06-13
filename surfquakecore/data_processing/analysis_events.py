@@ -102,6 +102,7 @@ class AnalysisEvents:
         return parse_configuration_file(yaml_data)
 
     def _process_station_traces(self, args):
+
         file_group, event, model, cut_start, cut_end, inventory, set_header_func = args
 
         try:
@@ -118,7 +119,8 @@ class AnalysisEvents:
             stats = file_group[0][1]
             net, sta = stats.network, stats.station
             origin = event["origin_time"]
-            distance_m = baz = az = incidence_angle = lat = lon = depth = None
+            distance_m = baz = az = incidence_angle = -1
+            lat = lon = depth = None
 
             if self.reference == "event_time":
                 lat, lon, depth = event["latitude"], event["longitude"], event["depth"]
@@ -151,8 +153,8 @@ class AnalysisEvents:
                     sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
                     tr = sd.run_analysis(self.config)
                 if self.reference == "event_time":
-                    tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az, incidence_angle=incidence_angle,
-                                         otime=origin, lat=lat, lon=lon, depth=depth)
+                    tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
+                                         incidence_angle=incidence_angle, otime=origin, lat=lat, lon=lon, depth=depth)
                 traces.append(tr)
 
             return traces
@@ -246,10 +248,9 @@ class AnalysisEvents:
                 full_stream = self._clean_traces(all_traces)
 
                 # save memory for further usage
-                if len(all_traces) >= 10:
-                    del all_traces
-                    del results
-                    gc.collect()
+                del all_traces
+                del results
+                gc.collect()
 
                 sp = StreamProcessing(full_stream, self.config)
                 full_stream = sp.run_stream_processing()
@@ -282,7 +283,7 @@ class AnalysisEvents:
                         f"'redo' to reprocess this event, or 'exit': "
                     ).strip().lower()
 
-                    if user_choice == "n":
+                    if user_choice == "c":
                         break  # Exit the while-loop → go to next event
 
                     elif user_choice == "redo":
@@ -302,8 +303,6 @@ class AnalysisEvents:
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True, reference="events",
                              interactive=False):
-
-        #shift = next((item for item in self.config if item.get('name') == 'shift'), None) if self.config else None
 
         if self.surf_projects is None:
             print("No projects to process.")
@@ -381,10 +380,11 @@ class AnalysisEvents:
                     # --- User prompt for next action ---
                     if plot:
                         user_choice = input(
-                            f"\n[Prompt] Finished subproject {i}, event {j}. Type 'n' to continue, 'redo' to reprocess this event, or 'exit': "
+                            f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
+                            f"'redo' to reprocess this event, or 'exit': "
                         ).strip().lower()
 
-                        if user_choice == "n":
+                        if user_choice == "c":
                             break  # Exit the while-loop → go to next event
 
                         elif user_choice == "redo":
@@ -428,7 +428,7 @@ class AnalysisEvents:
                     sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
                     tr = sd.run_analysis(self.config)
 
-                tr = set_header_func(tr, distance_km=-1, BAZ=-1, AZ=-1,
+                tr = set_header_func(tr, distance_km=-1, BAZ=-1, AZ=-1, incidence_angle=-1,
                                      otime=None, lat=None, lon=None, depth=None)
                 traces.append(tr)
 

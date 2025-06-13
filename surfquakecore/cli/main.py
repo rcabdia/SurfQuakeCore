@@ -67,11 +67,11 @@ def _create_actions():
         "buildmticonfig": _CliActions(
             name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n"),
 
-        "processing_cut": _CliActions(
-            name="processing_cut", run=_processing_cut, description=f"Type {__entry_point_name} -h for help.\n"),
+        "processing": _CliActions(
+            name="processing", run=_processing, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "processing_daily": _CliActions(
-            name="processing_daily", run=_processing_cut, description=f"Type {__entry_point_name} -h for help.\n")
+            name="processing_daily", run=_processing_daily, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -629,13 +629,14 @@ def _buildmticonfig():
                            mag_max=float(parsed_args.mag_max))
 
 
-def _processing_cut():
+def _processing():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms associated to events. ",
                                description="Processing waveforms associated to events command")
 
     arg_parse.epilog = """
             Overview:
-                Cut seismograms associated to events and apply processing to the waveforms. You can perform either or both of these operations
+                Proces waveforms or cut traces associated to events and apply processing to the waveforms. 
+                You can perform either or both of these operations
                 Usage: surfquake processing -p [project_file] -w [path_to_waveform files] -o [output_folder] -i [inventory_file] -c [config_file]
                 -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
                 -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms] 
@@ -651,14 +652,14 @@ def _processing_cut():
     arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here",
                            type=str, required=False)
 
-    arg_parse.add_argument("-i", "--inventory_file", help="metadata file. xml extension", type=str,
-                           required=True)
+    arg_parse.add_argument("-i", "--inventory_file", help="stations metadata file.", type=str,
+                           required=False)
 
     arg_parse.add_argument("-c", "--config_file", help="absolute path to config file", type=str,
                            required=False),
 
     arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str,
-                           required=True)
+                           required=False)
 
     arg_parse.add_argument("-r", "--reference", help="Reference |event_time| if the first arrival "
                                                      "needs to be estimated else pick time is the reference, default event",
@@ -691,8 +692,10 @@ def _processing_cut():
     parsed_args = arg_parse.parse_args()
 
     # 1. Check if config or event files are not None
-    if parsed_args.config_file is None and parsed_args.event_file is None:
-        raise ValueError("Error: the command will do nothing. config_file and/or event_file are required")
+
+    # Not mandatory we try to make it more flexible to process simple files
+    # if parsed_args.config_file is None and parsed_args.event_file is None:
+    #     raise ValueError("Error: the command will do nothing. config_file and/or event_file are required")
 
     # Calculate start and end time
     if parsed_args.cut_start_time is not None:
@@ -727,7 +730,7 @@ def _processing_cut():
             sp.search_files(use_glob=True)
             print(f"[INFO] Using {len(wave_paths)} explicitly listed waveform files.")
         else:
-            # Wildcard path
+            # Wildcard path # WARNING: Termina in user propm neds to be between " ", example: "./*Z"
             wave_paths = make_abs(parsed_args.wave_files)
             sp = SurfProject(root_path=wave_paths)
             sp.search_files(use_glob=True, verbose=True)
@@ -746,14 +749,22 @@ def _processing_cut():
     if len(filter) > 0:
         sp.filter_project_keys(**filter)
 
-    sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, cut_start_time=start,
-                                             cut_end_time=end, verbose=True)
+    if parsed_args.event_file is not None:
 
-    sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                        sp_sub_projects, post_script=parsed_args.post_script, plot_config_file=parsed_args.plot_config,
-                        reference=parsed_args.reference)
+        # we want to loop over all events or reference times
+        sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, cut_start_time=start,
+                                                 cut_end_time=end, verbose=True)
+        sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
+                            sp_sub_projects, post_script=parsed_args.post_script,
+                            plot_config_file=parsed_args.plot_config, reference=parsed_args.reference)
+        sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
 
-    sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
+    else:
+
+        sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
+                            sp, post_script=parsed_args.post_script, plot_config_file=parsed_args.plot_config,
+                            reference=parsed_args.reference)
+        sd.run_waveform_analysis(plot=parsed_args.plot)
 
 
 def _processing_daily():
@@ -774,7 +785,7 @@ def _processing_daily():
 
     arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
 
-    arg_parse.add_argument("-i", "--inventory_file", required=True, help="Station XML metadata")
+    arg_parse.add_argument("-i", "--inventory_file", required=True, help="stations metadata file")
 
     arg_parse.add_argument("-c", "--config_file", help="YAML config for processing")
 
@@ -783,10 +794,11 @@ def _processing_daily():
     arg_parse.add_argument("--plot_config", help="YAML file for plot customization")
 
     arg_parse.add_argument("--span_seconds", type=int, default=86400,
-                           help="Time span to split subprojects (in seconds)")
+                           help="Time span to split your dataset (in seconds), default 86400s")
 
     arg_parse.add_argument("--time_segment", action="store_true",
                            help="If set, process entire time window as a single merged stream")
+
     arg_parse.add_argument("--time_tolerance", type=int, default=120,
                            help="Tolerance in seconds for time filtering")
     # Filter arguments
@@ -802,17 +814,16 @@ def _processing_daily():
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
+
     # --- Load project ---
     if parsed_args.wave_files:
         # Build project on-the-fly using wildcard path
         sp = SurfProject(root_path=parsed_args.wave_files)
         sp.search_files(use_glob=True, verbose=True)
-        if len(filter) > 0:
-            sp.filter_project_keys(**filter)
+
     elif parsed_args.project_file:
         sp = SurfProject.load_project(parsed_args.project_file)
-        if len(filter) > 0:
-            sp.filter_project_keys(**filter)
+
     else:
         raise ValueError("You must specify either --project_file or --wave_files.")
 
@@ -839,7 +850,7 @@ def _processing_daily():
             max_date = parser.parse(parsed_args.max_date)
         if min_date or max_date:
             print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
-            sp.filter_project_time(starttime=min_date, endtime=max_date, tol=args.time_tolerance, verbose=True)
+            sp.filter_project_time(starttime=min_date, endtime=max_date, tol=parsed_args.time_tolerance, verbose=True)
     except ValueError as ve:
         print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
         raise ve
