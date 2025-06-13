@@ -7,7 +7,7 @@
 # Author: Roberto Cabieces & Thiago C. Junqueira
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
-
+import glob
 import pickle
 from datetime import datetime
 from multiprocessing import Pool, cpu_count
@@ -30,7 +30,7 @@ def _generate_subproject_for_time_window(args):
     # Attach relevant events
     setattr(sub, "_events_metadata", events or [])
 
-    # ✅ Assign only relevant files to data_files
+    # Assign only relevant files to data_files
     sub.data_files = []
     for trace_list in sub.project.values():
         for trace_path, _ in trace_list:
@@ -213,7 +213,7 @@ class SurfProject:
 
         return new_project
 
-    def search_files(self, format="NONE", verbose=True, **kwargs):
+    def search_files(self, format="NONE", verbose=True, use_glob: bool = False, **kwargs):
 
         """
         Args:
@@ -256,13 +256,19 @@ class SurfProject:
         filter = {"start": start, "end": end, "nets": nets, "stations": stations, "channels": channels}
         data_files = []
 
-        if isinstance(self.root_path, list) and len(self.root_path) > 0:
+        if isinstance(self.root_path, list):
             for file in self.root_path:
-                data_files.append(file)
-        else:
-            for top_dir, sub_dir, files in os.walk(self.root_path):
-                for file in files:
-                    data_files.append(os.path.join(top_dir, file))
+                if use_glob:
+                    data_files.extend(glob.glob(file))
+                else:
+                    data_files.append(file)
+        elif isinstance(self.root_path, str):
+            if use_glob:
+                data_files = glob.glob(self.root_path, recursive=True)
+            else:
+                for top_dir, sub_dir, files in os.walk(self.root_path):
+                    for file in files:
+                        data_files.append(os.path.join(top_dir, file))
 
         cpus = max(1, min(len(data_files), os.cpu_count() or 1))
         with Pool(processes=cpus) as pool:

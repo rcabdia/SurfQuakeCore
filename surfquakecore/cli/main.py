@@ -638,7 +638,7 @@ def _processing_cut():
     arg_parse.epilog = """
             Overview:
                 Cut seismograms associated to events and apply processing to the waveforms. You can perform either or both of these operations
-                Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
+                Usage: surfquake processing -p [project_file] -w [path_to_waveform files] -o [output_folder] -i [inventory_file] -c [config_file]
                 -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
                 -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms] 
                 --plot_config [Path to optional plotting configuration file (.yaml) 
@@ -647,6 +647,8 @@ def _processing_cut():
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
                            required=True)
+
+    arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
 
     arg_parse.add_argument("-o", "--output_folder", help="absolute path to output folder. Files are saved here",
                            type=str, required=False)
@@ -718,9 +720,23 @@ def _processing_cut():
     if parsed_args.channel is not None:
         filter['channel'] = parsed_args.channel
 
-    sp = SurfProject.load_project(parsed_args.project_file)
-    if len(filter) > 0:
-        sp.filter_project_keys(**filter)
+    if parsed_args.wave_files:
+        # Build project on-the-fly using wildcard path
+        sp = SurfProject(root_path=parsed_args.wave_files)
+        sp.search_files(use_glob=True, verbose=True)
+
+        if len(filter) > 0:
+            sp.filter_project_keys(**filter)
+
+    elif parsed_args.project_file:
+
+        sp = SurfProject.load_project(parsed_args.project_file)
+
+        if len(filter) > 0:
+            sp.filter_project_keys(**filter)
+
+    else:
+        raise ValueError("You must specify either --project_file or --wave_files.")
 
     sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, cut_start_time=start,
                                              cut_end_time=end, verbose=True)
@@ -743,37 +759,62 @@ def _processing_daily():
                     --max_date [End time YYYY-MM-DD HH:MM:SS.sss] -l [if interactive plot seismograms] 
                     --plot_config [Path to optional plotting configuration file (.yaml)]
                 """
+
     arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
+
+    arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
+
     arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
+
     arg_parse.add_argument("-i", "--inventory_file", required=True, help="Station XML metadata")
+
     arg_parse.add_argument("-c", "--config_file", help="YAML config for processing")
+
     arg_parse.add_argument("-l", "--plot", action="store_true", help="Enable plotting")
+
     arg_parse.add_argument("--plot_config", help="YAML file for plot customization")
+
     arg_parse.add_argument("--span_seconds", type=int, default=86400, help="Time span to split subprojects (in seconds)")
+
     arg_parse.add_argument("--time_segment", action="store_true",
                            help="If set, process entire time window as a single merged stream")
     arg_parse.add_argument("--time_tolerance", type=int, default=120,
                            help="Tolerance in seconds for time filtering")
     # Filter arguments
     arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
+
     arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
+
     arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
+
     arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+
     arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
 
-    args = arg_parse.parse_args()
+    parsed_args = arg_parse.parse_args()
 
     # --- Load project ---
-    sp = SurfProject.load_project(args.project_file)
+    if parsed_args.wave_files:
+        # Build project on-the-fly using wildcard path
+        sp = SurfProject(root_path=parsed_args.wave_files)
+        sp.search_files(use_glob=True, verbose=True)
+        if len(filter) > 0:
+            sp.filter_project_keys(**filter)
+    elif parsed_args.project_file:
+        sp = SurfProject.load_project(parsed_args.project_file)
+        if len(filter) > 0:
+            sp.filter_project_keys(**filter)
+    else:
+        raise ValueError("You must specify either --project_file or --wave_files.")
 
     # --- Apply key filters ---
     filters = {}
-    if args.net:
-        filters["net"] = args.net
-    if args.station:
-        filters["station"] = args.station
-    if args.channel:
-        filters["channel"] = args.channel
+    if parsed_args.net:
+        filters["net"] = parsed_args.net
+    if parsed_args.station:
+        filters["station"] = parsed_args.station
+    if parsed_args.channel:
+        filters["channel"] = parsed_args.channel
     if filters:
         print(f"[INFO] Filtering project by: {filters}")
         sp.filter_project_keys(**filters)
@@ -781,12 +822,12 @@ def _processing_daily():
     # --- Apply time filters ---
     min_date, max_date = None, None
     try:
-        if args.min_date:
+        if parsed_args.min_date:
             #min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
-            min_date = parser.parse(args.min_date)
-        if args.max_date:
+            min_date = parser.parse(parsed_args.min_date)
+        if parsed_args.max_date:
             #max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
-            max_date = parser.parse(args.max_date)
+            max_date = parser.parse(parsed_args.max_date)
         if min_date or max_date:
             print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
             sp.filter_project_time(starttime=min_date, endtime=max_date, tol=args.time_tolerance, verbose=True)
@@ -795,30 +836,30 @@ def _processing_daily():
         raise ve
 
     # --- Decide between time segment or split ---
-    if args.time_segment:
-        print(f"[INFO] Running single-segment analysis from {args.min_date} to {args.max_date}")
+    if parsed_args.time_segment:
+        print(f"[INFO] Running single-segment analysis from {parsed_args.min_date} to {parsed_args.max_date}")
         subprojects = [sp]  # No splitting
     else:
-        print(f"[INFO] Splitting into subprojects every {args.span_seconds} seconds")
+        print(f"[INFO] Splitting into subprojects every {parsed_args.span_seconds} seconds")
         subprojects = sp.split_by_time_spans(
-            span_seconds=args.span_seconds,
-            min_date=args.min_date,
-            max_date=args.max_date,
+            span_seconds=parsed_args.span_seconds,
+            min_date=parsed_args.min_date,
+            max_date=parsed_args.max_date,
             file_selection_mode="overlap_threshold",
             verbose=True
         )
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
-        output=args.output_folder,
-        inventory_file=args.inventory_file,
-        config_file=args.config_file,
+        output=parsed_args.output_folder,
+        inventory_file=parsed_args.inventory_file,
+        config_file=parsed_args.config_file,
         surf_projects=subprojects,
-        plot_config_file=args.plot_config,
-        time_segment_start=args.min_date,
-        time_segment_end=args.max_date
+        plot_config_file=parsed_args.plot_config,
+        time_segment_start=parsed_args.min_date,
+        time_segment_end=parsed_args.max_date
     )
-    ae.run_waveform_analysis(plot=args.plot)
+    ae.run_waveform_analysis(plot=parsed_args.plot)
 
 if __name__ == "__main__":
     freeze_support()

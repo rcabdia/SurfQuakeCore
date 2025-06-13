@@ -27,6 +27,7 @@ import matplotlib.dates as mdates
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
+from surfquakecore.seismoplot.crosshair import BlittedCursor
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.utils.obspy_utils import MseedUtil
 
@@ -57,7 +58,8 @@ class PlotProj:
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
             "save_folder": "./plots",
             "pick_output_file": "./picks.csv",
-            "sharey": False}
+            "sharey": False,
+            "show_crosshair": True}
 
         self.enable_command_prompt = kwargs.pop("interactive", False)
         # Override defaults with user config if provided
@@ -129,7 +131,14 @@ class PlotProj:
             if len(sub_traces) == 1:
                 self.axs = [self.axs]
 
+            self.cursors = []
+            for ax in self.axs:
+                cursor = BlittedCursor(ax)
+                ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
+                self.cursors.append(cursor)
+
             self._setup_pick_interaction()
+            self._restore_state()
 
             # Inside your plot() method, after ax.plot(...)
             for ax, tr in zip(self.axs, sub_traces):
@@ -288,6 +297,8 @@ class PlotProj:
         self.info_box = self.fig.add_axes([0.8, 0.1, 0.18, 0.8], frameon=False)
         self.info_box.axis('off')
         self._update_info_box()
+        self._restore_state()
+
 
     def _on_doubleclick(self, event):
         """Handle double-clicks to place picks."""
@@ -846,6 +857,12 @@ class PlotProj:
 
         except Exception as e:
             print(f"[ERROR] Could not compute or plot FK coherence: {e}")
+
+    def _restore_state(self):
+        self._redraw_picks()
+        self._redraw_all_reference_lines()
+
+
 
 
 

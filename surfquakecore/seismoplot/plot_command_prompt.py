@@ -3,7 +3,6 @@
 """
 plot_command_prompt.py
 """
-from surfquakecore.utils.obspy_utils import MseedUtil
 
 
 class PlotCommandPrompt:
@@ -19,6 +18,7 @@ class PlotCommandPrompt:
             "cwt": self._cmd_cwt,
             "pick": self._cmd_pick,
             "fk": self._cmd_fk,
+            "help": self._cmd_help
         }
 
     def run(self) -> str:
