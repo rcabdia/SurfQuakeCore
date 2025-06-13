@@ -257,14 +257,16 @@ class SurfProject:
         data_files = []
 
         if isinstance(self.root_path, list):
-            for file in self.root_path:
-                if use_glob:
-                    data_files.extend(glob.glob(file))
-                else:
-                    data_files.append(file)
+            # Assume explicit file list
+            data_files = [f for f in self.root_path if os.path.isfile(f)]
+            if verbose:
+                print(f"[INFO] Using {len(data_files)} explicitly provided waveform files.")
+
         elif isinstance(self.root_path, str):
             if use_glob:
                 data_files = glob.glob(self.root_path, recursive=True)
+                if verbose:
+                    print(f"[INFO] Found {len(data_files)} files using glob pattern: {self.root_path}")
             else:
                 for top_dir, sub_dir, files in os.walk(self.root_path):
                     for file in files:

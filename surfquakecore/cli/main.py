@@ -629,9 +629,7 @@ def _buildmticonfig():
                            mag_max=float(parsed_args.mag_max))
 
 
-
 def _processing_cut():
-
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms associated to events. ",
                                description="Processing waveforms associated to events command")
 
@@ -646,7 +644,7 @@ def _processing_cut():
             """
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
-                           required=True)
+                           required=False)
 
     arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
 
@@ -663,7 +661,7 @@ def _processing_cut():
                            required=True)
 
     arg_parse.add_argument("-r", "--reference", help="Reference |event_time| if the first arrival "
-                           "needs to be estimated else pick time is the reference, default event",
+                                                     "needs to be estimated else pick time is the reference, default event",
                            type=str, required=False)
 
     arg_parse.add_argument("-n", "--net", help="project net filter", type=str, required=False)
@@ -720,23 +718,33 @@ def _processing_cut():
     if parsed_args.channel is not None:
         filter['channel'] = parsed_args.channel
 
+    print(parsed_args.wave_files)
     if parsed_args.wave_files:
-        # Build project on-the-fly using wildcard path
-        sp = SurfProject(root_path=parsed_args.wave_files)
-        sp.search_files(use_glob=True, verbose=True)
+        if "," in parsed_args.wave_files:
+            # Explicit list of files
+            wave_paths = [make_abs(f.strip()) for f in parsed_args.wave_files.split(",") if f.strip()]
+            sp = SurfProject(root_path=wave_paths)
+            sp.search_files(use_glob=True)
+            print(f"[INFO] Using {len(wave_paths)} explicitly listed waveform files.")
+        else:
+            # Wildcard path
+            wave_paths = make_abs(parsed_args.wave_files)
+            sp = SurfProject(root_path=wave_paths)
+            sp.search_files(use_glob=True, verbose=True)
+            print(f"[INFO] Found {len(sp.data_files)} waveform files using glob pattern.")
 
-        if len(filter) > 0:
-            sp.filter_project_keys(**filter)
+        if not wave_paths:
+            raise ValueError("[ERROR] No waveform files found with --wave_files input.")
 
     elif parsed_args.project_file:
 
         sp = SurfProject.load_project(parsed_args.project_file)
 
-        if len(filter) > 0:
-            sp.filter_project_keys(**filter)
-
     else:
         raise ValueError("You must specify either --project_file or --wave_files.")
+
+    if len(filter) > 0:
+        sp.filter_project_keys(**filter)
 
     sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, cut_start_time=start,
                                              cut_end_time=end, verbose=True)
@@ -747,8 +755,8 @@ def _processing_cut():
 
     sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
 
-def _processing_daily():
 
+def _processing_daily():
     arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing continous waveforms. ",
                                description="Processing continous waveforms command")
     arg_parse.epilog = """
@@ -774,7 +782,8 @@ def _processing_daily():
 
     arg_parse.add_argument("--plot_config", help="YAML file for plot customization")
 
-    arg_parse.add_argument("--span_seconds", type=int, default=86400, help="Time span to split subprojects (in seconds)")
+    arg_parse.add_argument("--span_seconds", type=int, default=86400,
+                           help="Time span to split subprojects (in seconds)")
 
     arg_parse.add_argument("--time_segment", action="store_true",
                            help="If set, process entire time window as a single merged stream")
@@ -792,7 +801,7 @@ def _processing_daily():
     arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
 
     parsed_args = arg_parse.parse_args()
-
+    print(parsed_args)
     # --- Load project ---
     if parsed_args.wave_files:
         # Build project on-the-fly using wildcard path
@@ -823,10 +832,10 @@ def _processing_daily():
     min_date, max_date = None, None
     try:
         if parsed_args.min_date:
-            #min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
+            # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
             min_date = parser.parse(parsed_args.min_date)
         if parsed_args.max_date:
-            #max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
+            # max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
             max_date = parser.parse(parsed_args.max_date)
         if min_date or max_date:
             print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
@@ -860,6 +869,19 @@ def _processing_daily():
         time_segment_end=parsed_args.max_date
     )
     ae.run_waveform_analysis(plot=parsed_args.plot)
+
+
+def resolve_path(path: Optional[str]) -> Optional[str]:
+    if path is None:
+        return None
+    if os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(os.getcwd(), path))
+
+
+def make_abs(path: Optional[str]) -> Optional[str]:
+    return os.path.abspath(path) if path else None
+
 
 if __name__ == "__main__":
     freeze_support()
