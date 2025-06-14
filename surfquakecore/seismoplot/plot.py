@@ -29,8 +29,10 @@ from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
 from surfquakecore.seismoplot.crosshair import BlittedCursor
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
+from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
-
+from matplotlib.widgets import SpanSelector
+from matplotlib.backend_bases import MouseButton
 
 # Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
@@ -59,7 +61,7 @@ class PlotProj:
             "save_folder": "./plots",
             "pick_output_file": "./picks.csv",
             "sharey": False,
-            "show_crosshair": True}
+            "show_crosshair": False}
 
         self.enable_command_prompt = kwargs.pop("interactive", False)
         # Override defaults with user config if provided
@@ -73,7 +75,8 @@ class PlotProj:
         self.axs = None
         self.pick_type = "P"
         self.prompt_active = False
-
+        self.utc_start = None
+        self.utc_end = None
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
@@ -105,6 +108,7 @@ class PlotProj:
     def _plot_standard_traces(self):
 
         plt.close(self.fig)
+
         formatter_pow = ScalarFormatter(useMathText=True)
         formatter_pow.set_powerlimits((0, 0))  # Forces scientific notation always
 
@@ -129,6 +133,14 @@ class PlotProj:
                 sharex=True, sharey=self.plot_config["sharey"],
                 gridspec_kw={'hspace': self.plot_config["vspace"]}
             )
+
+            # Register enter event only once
+            if not hasattr(self, "_entered_hook"):
+                self.fig.canvas.mpl_connect("axes_enter_event", self.__on_enter_axes)
+                self._entered_hook = True
+            self.__selected_ax_index = 0
+            self.fig.canvas.mpl_connect("axes_enter_event", self.__on_enter_axes)
+
             if len(sub_traces) == 1:
                 self.axs = [self.axs]
 
@@ -200,7 +212,7 @@ class PlotProj:
 
             plt.ion()
             plt.tight_layout()
-
+            self._register_span_selector()
             if self.plot_config["autosave"]:
                 os.makedirs(self.plot_config["save_folder"], exist_ok=True)
                 fig_path = os.path.join(self.plot_config["save_folder"], f"waveform_plot_{i // traces_per_fig + 1}.png")
@@ -225,6 +237,7 @@ class PlotProj:
                         # Go back to interactive picking for this figure only
                         plt.show(block=True)
                 else:
+
                     plt.show(block=True)
 
 
@@ -300,13 +313,14 @@ class PlotProj:
             plt.show(block=True)
 
     def _setup_pick_interaction(self):
-        """Set up double-click mouse event and key press events."""
-        self.fig.canvas.mpl_connect('button_press_event', self._on_doubleclick)
+        def filtered_doubleclick(event):
+            if event.button == MouseButton.RIGHT:
+                return  # allow SpanSelector to use right-click
+            self._on_doubleclick(event)
+
+        self.fig.canvas.mpl_connect('button_press_event', filtered_doubleclick)
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
-        #plt.gcf().text(0.1, 0.95,
-        #               "Click to place picks | 'd' to delete last | 'c' to clear",
-        #               fontsize=9)
-        # Reserve space for displaying pick info
+
         self.info_box = self.fig.text(0.75, 0.8, "", ha='left', va='top', fontsize=9)
         self._update_info_box()
         self._restore_state()
@@ -606,12 +620,12 @@ class PlotProj:
         trace = self.displayed_traces[idx]
 
         try:
-            stime = trace.stats.references[0]
+            stime = self.utc_start
         except:
             stime = trace.stats.starttime
 
         try:
-            etime = trace.stats.references[1]
+            etime = self.utc_end
         except:
             etime = trace.stats.endtime
 
@@ -648,12 +662,12 @@ class PlotProj:
         st = Stream(self.displayed_traces)
 
         try:
-            stime_trim = st[0].stats.references[0]
+            stime_trim = self.utc_start
         except:
             print("Not starttime set")
 
         try:
-            etime_trim = st[0].stats.references[1]
+            etime_trim = self.utc_end
         except:
             print("Not endtime set")
 
@@ -687,12 +701,12 @@ class PlotProj:
 
         trace = self.displayed_traces[idx]
         try:
-            stime = trace.stats.references[0]
+            stime = self.utc_start
         except:
             stime = trace.stats.starttime
 
         try:
-            etime = trace.stats.references[1]
+            etime = self.utc_end
         except:
             etime = trace.stats.endtime
 
@@ -760,12 +774,12 @@ class PlotProj:
         f_max = kwargs.pop("fmax", tr.stats.sampling_rate//2)
 
         try:
-            stime = tr.stats.references[0]
+            stime = self.utc_start
         except:
             stime = tr.stats.starttime
 
         try:
-            etime = tr.stats.references[1]
+            etime = self.utc_end
         except:
             etime = tr.stats.endtime
 
@@ -958,10 +972,65 @@ class PlotProj:
         self._redraw_picks()
         self._redraw_all_reference_lines()
 
+    def __on_enter_axes(self, event):
+        try:
+            self.__selected_ax_index = list(self.axs).index(event.inaxes)
+        except ValueError:
+            self.__selected_ax_index = -1
 
+    def _register_span_selector(self):
+        """
+        Use ExtendSpanSelector and route selections through __on_span_select.
+        """
 
+        def on_select(xmin, xmax):
+            print(f"[DEBUG] on_select triggered — current ax idx: {self.__selected_ax_index}")
+            print("Selection occurred:", xmin, xmax)
+            self.utc_start = UTCDateTime(mdt.num2date(xmin))
+            self.utc_end = UTCDateTime(mdt.num2date(xmax))
+            print(f"[INFO] Selected time window: {self.utc_start} to {self.utc_end}")
 
+            # Store in trace headers
+            if hasattr(self, "displayed_traces"):
+                for tr in self.displayed_traces:
+                    tr.stats.references = [self.utc_start, self.utc_end]
 
+            # Visual feedback
+            for ax in self.axs:
+                ax.axvline(x=xmin, color='blue', linestyle='--', alpha=0.5)
+                ax.axvline(x=xmax, color='blue', linestyle='--', alpha=0.5)
+            self.fig.canvas.draw_idle()
 
+        # Make sure self.axs is a flat list
+        axs = list(self.axs) if isinstance(self.axs, (list, np.ndarray)) else [self.axs]
 
+        self._span_selector = ExtendSpanSelector(
+            axs[0],
+            onselect=on_select,
+            direction="horizontal",
+            useblit=False,
+            minspan=0.1,
+            props=dict(alpha=0.2, facecolor='blue'),
+            button=MouseButton.RIGHT,
+            sharex=True
+        )
+        self._span_selector.set_sub_axes(axs)
+
+    def _on_span_selection(self, ax_index, xmin, xmax):
+        self.starttime = UTCDateTime(mdt.num2date(xmin))
+        self.endtime = UTCDateTime(mdt.num2date(xmax))
+        print(f"[SELECT] Axis {ax_index} — {self.starttime} to {self.endtime}")
+
+        for tr in self.displayed_traces:
+            tr.stats.references = [self.starttime, self.endtime]
+
+        for ax in self.axs:
+            ax.axvline(x=xmin, color='blue', linestyle='--', alpha=0.6)
+            ax.axvline(x=xmax, color='blue', linestyle='--', alpha=0.6)
+            ax.text(xmin, ax.get_ylim()[1] * 0.95, 'Start', color='blue', fontsize=8,
+                    ha='left', va='top', bbox=dict(fc='white', alpha=0.6))
+            ax.text(xmax, ax.get_ylim()[1] * 0.95, 'End', color='blue', fontsize=8,
+                    ha='right', va='top', bbox=dict(fc='white', alpha=0.6))
+
+        self.fig.canvas.draw_idle()
 
