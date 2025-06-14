@@ -207,24 +207,31 @@ class StreamProcessing:
         """
         Apply each stream-wide processing method defined in config.
         """
-        for step in self.config:
-            method_name = step.get("name")
 
-            if method_name not in self.STREAM_METHODS:
-                continue  # skip unknown or trace-level methods
+        if self.config is None:
 
-            if method_name == "stack":
-                self.stream = self.apply_stack(step)
-            elif method_name == "cross_correlate":
-                self.stream = self.apply_cross_correlation(step)
-            elif method_name == "rotate":
-                self.stream = self.apply_rotation(step)
-            elif method_name == "shift":
-                self.stream = self.apply_shift(step)
-            elif method_name == "synch":
-                self.stream = self.apply_synch(step)
+            return self.stream
 
-        return self.stream
+        else:
+
+            for step in self.config:
+                method_name = step.get("name")
+
+                if method_name not in self.STREAM_METHODS:
+                    continue  # skip unknown or trace-level methods
+
+                if method_name == "stack":
+                    self.stream = self.apply_stack(step)
+                elif method_name == "cross_correlate":
+                    self.stream = self.apply_cross_correlation(step)
+                elif method_name == "rotate":
+                    self.stream = self.apply_rotation(step)
+                elif method_name == "shift":
+                    self.stream = self.apply_shift(step)
+                elif method_name == "synch":
+                    self.stream = self.apply_synch(step)
+
+            return self.stream
 
     def apply_stack(self, step_config):
 

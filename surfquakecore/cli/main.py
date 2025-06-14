@@ -764,7 +764,7 @@ def _processing():
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp, post_script=parsed_args.post_script, plot_config_file=parsed_args.plot_config,
                             reference=parsed_args.reference)
-        sd.run_waveform_analysis(plot=parsed_args.plot)
+        sd.run_waveform_analysis(plot=parsed_args.plots)
 
 
 def _processing_daily():

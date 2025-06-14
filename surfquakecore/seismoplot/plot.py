@@ -603,7 +603,21 @@ class PlotProj:
 
         trace = self.displayed_traces[idx]
         spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
+        trace = self.displayed_traces[idx]
 
+        try:
+            stime = trace.stats.references[0]
+        except:
+            stime = trace.stats.starttime
+
+        try:
+            etime = trace.stats.references[1]
+        except:
+            etime = trace.stats.endtime
+
+        print("Spectrum window: ", stime, etime)
+
+        trace.trim(starttime=stime, endtime=etime)
         self.fig_spec, self.ax_spec = plt.subplots()
 
         if axis_type == "loglog":
@@ -628,10 +642,27 @@ class PlotProj:
             time.sleep(0.1)
 
     def _plot_all_spectra(self, axis_type):
-
+        stime_trim = etime_trim = None
         self.fig_spec, self.ax_spec = plt.subplots()
 
-        for trace in self.displayed_traces:
+        st = Stream(self.displayed_traces)
+
+        try:
+            stime_trim = st[0].stats.references[0]
+        except:
+            print("Not starttime set")
+
+        try:
+            etime_trim = st[0].stats.references[1]
+        except:
+            print("Not endtime set")
+
+        if stime_trim is not None and etime_trim is not None:
+            print("Spectrum window: ", stime_trim, etime_trim)
+            st.trim(starttime=stime_trim, endtime=etime_trim)
+
+
+        for trace in st:
             spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
             if axis_type == "loglog":
                 self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)

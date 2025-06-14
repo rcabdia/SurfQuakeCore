@@ -220,6 +220,9 @@ class AnalysisEvents:
         if hasattr(self, "time_segment_end") and isinstance(self.time_segment_end, str):
             self.time_segment_end = UTCDateTime(self.time_segment_end)
 
+        if isinstance(self.surf_projects, SurfProject):
+            self.surf_projects = [self.surf_projects]
+
         for i, project in enumerate(self.surf_projects):
             while True:
                 print(f"[INFO] Processing subproject {i} (daily stream)")
