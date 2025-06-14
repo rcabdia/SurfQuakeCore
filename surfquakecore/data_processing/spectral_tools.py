@@ -7,12 +7,13 @@ spectral_tools
 import math
 import numpy as np
 # from spectrum import pmtm # might be for the future
-import nitime.algorithms as tsa # awesome !!!
+import nitime.algorithms as tsa  # awesome !!!
+
 
 class SpectrumTool:
 
     @staticmethod
-    def compute_spectrum(data, delta):
+    def compute_spectrum(data, delta, mode="multitaper"):
         """
         Return the amplitude spectrum using multitaper and compare with FFT.
 
@@ -41,17 +42,27 @@ class SpectrumTool:
         taper = np.hanning(N)
         data_tapered = data * taper
 
-        # Compute FFT amplitude spectrum for comparison
-        amplitude = (2.0 / N) * np.abs(np.fft.rfft(data_tapered))
-        amplitude[0] = amplitude[0] / 2
-        if N % 2 == 0:
-            amplitude[-1] = amplitude[-1] / 2
-        freq = np.fft.rfftfreq(N, d=delta)
+        if mode == "multitaper":
+            # Compute multitaper PSD
+            freq, psd, _ = tsa.multi_taper_psd(data, 1 / delta, adaptive=True, jackknife=False, low_bias=True)
+            df = freq[1] - freq[0]  # Frequency bin width
+
+            # Convert PSD to amplitude spectrum
+            amplitude = np.sqrt(psd * df)
+        else:
+
+            # Compute FFT amplitude spectrum for comparison
+            amplitude = (2.0 / N) * np.abs(np.fft.rfft(data_tapered))
+            amplitude[0] = amplitude[0] / 2
+            if N % 2 == 0:
+                amplitude[-1] = amplitude[-1] / 2
+            freq = np.fft.rfftfreq(N, d=delta)
+
         return amplitude, freq
 
     @staticmethod
     def compute_spectrogram(data, win, dt, linf, lsup, step_percentage=0.5):
-        #Sxx = spectrogram(data, fs=1/delta, nperseg=time_window/delta)
+        # Sxx = spectrogram(data, fs=1/delta, nperseg=time_window/delta)
 
         # win -- samples
         # Ensure nfft is a power of 2
@@ -71,8 +82,8 @@ class SpectrumTool:
             data1 = data[n:nfft + n]
             data1 = data1 - np.mean(data1)
             freq, spec, _ = tsa.multi_taper_psd(data1, fs, adaptive=True, jackknife=False, low_bias=True)
-            #spec, weights, eigenvalues = pmtm(data1, NW=2.5, k=4, show=False)
-            #spec = np.mean(spec * np.transpose(weights), axis=0)
+            # spec, weights, eigenvalues = pmtm(data1, NW=2.5, k=4, show=False)
+            # spec = np.mean(spec * np.transpose(weights), axis=0)
             S[:, idx] = spec
 
         freq = np.fft.rfftfreq(nfft, d=dt)
@@ -80,7 +91,6 @@ class SpectrumTool:
         value2, freq2 = SpectrumTool.find_nearest(freq, lsup)
 
         spectrum = S[value1:value2, :]
-
 
         t = np.linspace(0, len(data) * dt, spectrum.shape[1])
         f = np.linspace(linf, lsup, spectrum.shape[0])

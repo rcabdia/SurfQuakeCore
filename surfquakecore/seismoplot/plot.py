@@ -123,6 +123,7 @@ class PlotProj:
 
         for i in range(0, n_traces, traces_per_fig):
             sub_traces = traces[i:i + traces_per_fig]
+            self.displayed_traces = sub_traces
             max_traces = min(8, 2 * len(sub_traces))
             self.fig, self.axs = plt.subplots(len(sub_traces), 1, figsize=(12, max_traces),
                 sharex=True, sharey=self.plot_config["sharey"],
@@ -210,29 +211,17 @@ class PlotProj:
 
                 if self.enable_command_prompt:
 
-                    # plt.show(block=False)
-                    # # Simulate a non-blocking wait for GUI responsiveness
-                    # print("[INFO] Waiting for GUI to be responsive...")
-                    # start_time = time.time()
-                    # while not plt.fignum_exists(self.fig.number):
-                    #     plt.pause(0.10)
-                    #     if time.time() - start_time > 25:  # Timeout failsafe
-                    #         print("[WARNING] GUI did not become active.")
-                    #         break
-                    #
-                    # # Give it one last short pause to fully draw
-                    # plt.pause(0.5)
-
                     plt.show(block=False)
                     self.fig.canvas.draw_idle()  # schedule a draw
                     plt.pause(0.5)  # give time for GUI to process at least one frame
 
                     # Then launch prompt
-                    print("[INFO] Type 'command parameter' or 'q' to next set of traces'")
+                    print("[INFO] Type 'command parameter', 'help', 'q' to next set of traces' or "
+                          "'p' to return picking mode")
                     prompt = PlotCommandPrompt(self)
                     result = prompt.run()
 
-                    if result == "pick":
+                    if result == "p":
                         # Go back to interactive picking for this figure only
                         plt.show(block=True)
                 else:
@@ -502,23 +491,31 @@ class PlotProj:
 
     def _redraw_picks(self):
         """Redraw all pick lines only on their corresponding axes."""
-        # Remove all existing pick lines
+
+        # Clear previous lines
         for lines in self.pick_lines.values():
             for line, label in lines:
                 line.remove()
                 label.remove()
         self.pick_lines = {}
 
-        for tr_idx, trace in enumerate(self.trace_list):
-            trace_id = trace.id
-            if trace_id in self.picks:
-                ax = self.axs[tr_idx]
-                for pick in self.picks[trace_id]:
-                    if len(pick) == 4:
-                        pt, _, _, _ = pick
-                    else:
-                        pt, _, _ = pick
-                    self._draw_pick_lines(trace_id, ax, pt)
+        # Sanity check
+        if not hasattr(self, "displayed_traces") or self.axs is None:
+            return
+
+        # Build map from trace ID → axis
+        trace_id_to_ax = {
+            tr.id: ax for tr, ax in zip(self.displayed_traces, self.axs)
+        }
+
+        # Redraw picks for visible traces
+        for trace_id, pick_list in self.picks.items():
+            ax = trace_id_to_ax.get(trace_id)
+            if ax is None:
+                continue  # Not shown in current figure
+            for pick in pick_list:
+                pt = pick[0]
+                self._draw_pick_lines(trace_id, ax, pt)
 
         self.fig.canvas.draw()
 
@@ -602,18 +599,26 @@ class PlotProj:
         else:
             print("[INFO] No reference times found to remove.")
 
-    def _plot_single_spectrum(self, idx):
+    def _plot_single_spectrum(self, idx, axis_type):
 
-        trace = self.trace_list[idx]
+        trace = self.displayed_traces[idx]
         spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
 
         self.fig_spec, self.ax_spec = plt.subplots()
-        self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+
+        if axis_type == "loglog":
+            self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+        elif axis_type == "xlog":
+            self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
+        elif axis_type == "ylog":
+            self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
+
         self.ax_spec.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
         self.ax_spec.set_xlabel("Frequency (Hz)")
         self.ax_spec.set_ylabel("Amplitude")
         self.ax_spec.set_title(f"Spectrum for {trace.id}")
         self.ax_spec.legend()
+        plt.grid(True, which="both", ls="-", color='grey')
         plt.tight_layout()
         plt.show(block=False)
 
@@ -622,17 +627,23 @@ class PlotProj:
             plt.pause(0.2)
             time.sleep(0.1)
 
-    def _plot_all_spectra(self):
+    def _plot_all_spectra(self, axis_type):
 
         self.fig_spec, self.ax_spec = plt.subplots()
 
-        for trace in self.trace_list:
+        for trace in self.displayed_traces:
             spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
-            self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+            if axis_type == "loglog":
+                self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+            elif axis_type == "xlog":
+                self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
+            elif axis_type == "ylog":
+                self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
 
         self.ax_spec.set_xlabel("Frequency (Hz)")
         self.ax_spec.set_ylabel("Amplitude")
         self.ax_spec.legend(fontsize=6)
+        plt.grid(True, which="both", ls="-", color='grey')
         plt.tight_layout()
         plt.show(block=False)
 
@@ -643,7 +654,21 @@ class PlotProj:
 
     def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0):
 
-        trace = self.trace_list[idx]
+        trace = self.displayed_traces[idx]
+        try:
+            stime = trace.stats.references[0]
+        except:
+            stime = trace.stats.starttime
+
+        try:
+            etime = trace.stats.references[1]
+        except:
+            etime = trace.stats.endtime
+
+        print("Spectrogram window: ", stime, etime)
+
+        trace.trim(starttime=stime, endtime=etime)
+
         spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(
             trace.data,
             win=int(win_sec * trace.stats.sampling_rate),
@@ -699,12 +724,26 @@ class PlotProj:
             wavelet_type = "Paul"
 
         param = float(param)
-        tr = self.trace_list[idx]
+        tr = self.displayed_traces[idx]
         f_min = kwargs.pop("fmin", 0.5)
         f_max = kwargs.pop("fmax", tr.stats.sampling_rate//2)
 
+        try:
+            stime = tr.stats.references[0]
+        except:
+            stime = tr.stats.starttime
+
+        try:
+            etime = tr.stats.references[1]
+        except:
+            etime = tr.stats.endtime
+
+        print("CWT window: ", stime, etime)
+
+        tr.trim(starttime=stime, endtime=etime)
+
         cw = ConvolveWaveletScipy(tr)
-        tt = int(tr.stats.sampling_rate/ f_min)
+        tt = int(tr.stats.sampling_rate/f_min)
         cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=f_min, fmax=f_max, nf=80,
                          use_wavelet=wavelet_type, m=param, decimate=False)
         scalogram2 = cw.scalogram_in_dbs()
@@ -733,7 +772,7 @@ class PlotProj:
 
         # --- Plot waveform ---
         ax_waveform.plot(tr.times(), tr.data, linewidth=0.75)
-        ax_waveform.set_title(f"Spectrogram for {tr.id}")
+        ax_waveform.set_title(f"CWT Scalogram for {tr.id}")
         ax_waveform.tick_params(labelbottom=False)
 
         # --- Plot scalogram ---
@@ -778,7 +817,7 @@ class PlotProj:
         try:
             etime = self.trace_list[0].stats.references[1]
         except:
-            etime = self.trace_list[0].stats.stats.endtime
+            etime = self.trace_list[0].stats.endtime
 
         print("FK window: ", stime, etime)
         traces = Stream(self.trace_list)

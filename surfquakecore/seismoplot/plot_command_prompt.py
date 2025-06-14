@@ -16,7 +16,7 @@ class PlotCommandPrompt:
             "spectrum": self._cmd_spectrum,
             "sp": self._cmd_spectrum,
             "cwt": self._cmd_cwt,
-            "pick": self._cmd_pick,
+            "p": self._cmd_pick,
             "fk": self._cmd_fk,
             "help": self._cmd_help
         }
@@ -60,7 +60,7 @@ class PlotCommandPrompt:
     def _cmd_pick(self, args):
         print("[INFO] Returning to picking mode...")
         self.prompt_active = False
-        self._exit_code = "pick"
+        self._exit_code = "p"
 
     def _cmd_next(self, args):
         self.prompt_active = False
@@ -75,14 +75,17 @@ class PlotCommandPrompt:
             print("Usage: spectrogram <index> [<win_sec> <overlap%>]")
 
     def _cmd_spectrum(self, args):
-        if len(args) != 2:
-            print("Usage: spectrum <index>|all")
+        if len(args) < 2 or len(args) > 3:
+            print("Usage: spectrum <index>|all [axis_type]")
             return
-        arg = args[1]
-        if arg == "all":
-            self.plot_proj._plot_all_spectra()
-        elif arg.isdigit():
-            self.plot_proj._plot_single_spectrum(int(arg))
+
+        target = args[1]
+        axis_type = args[2] if len(args) == 3 else 'loglog'
+
+        if target == "all":
+            self.plot_proj._plot_all_spectra(axis_type=axis_type)
+        elif target.isdigit():
+            self.plot_proj._plot_single_spectrum(int(target), axis_type=axis_type)
         else:
             print("[ERROR] Invalid spectrum command")
 
@@ -133,17 +136,18 @@ class PlotCommandPrompt:
                     return
 
         print(f"[INFO] Running FK with parameters: {params}")
-        #try:
-        self.plot_proj._run_fk(**params)
-        # except Exception as e:
-        #     print(f"[ERROR] FK run failed: {e}")
-
+        try:
+            self.plot_proj._run_fk(**params)
+        except Exception as e:
+             print(f"[ERROR] FK run failed: {e}")
 
 
     def _cmd_help(self, args):
         print("Available commands:")
-        print("  pick                Return to interactive picking mode")
-        print("  spectrum <idx|all>  Show amplitude spectrum")
-        print("  spectrogram <idx> [win overlap]  Plot spectrogram")
-        print("  cwt <idx> <wavelet> <param> [fmin fmax]  Plot wavelet")
-        print("  n                   Next / exit prompt")
+        print("  p                   Return to interactive picking mode")
+        print("  spectrum <index>|all [axis_type[loglog,xlog,ylog]. Example: >>sp 0 | >>sp all")
+        print("  spec <idx> [win overlap]  Plot spectrogram. Example: >>spec 0")
+        print("  cwt <idx> <wavelet[cm,mh,pa]> <param> [fmin fmax]  Plot wavelet. Example: >>cwt 0 cm 6 0.5 8")
+        print("  fk --fmin  <fmin> --fmax <fmax> [--slow_grid --timewindow overlap]. Example: >> fk --fmin 0.8 --fmax "
+              "2.0")
+        print("  n                   Next set of traces / exit prompt")
