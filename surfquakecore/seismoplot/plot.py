@@ -48,7 +48,8 @@ class PlotProj:
         """
         self.trace_list = list(stream)
         self.inventory = kwargs.pop("inventory", None)
-
+        self.__selector = {}  # Use single underscore to avoid name mangling
+        self.__selected_ax_index = 0
         # Default plotting configuration
         self.plot_config = {
             "traces_per_fig": 6,
@@ -212,7 +213,7 @@ class PlotProj:
 
             plt.ion()
             plt.tight_layout()
-            self._register_span_selector()
+
             if self.plot_config["autosave"]:
                 os.makedirs(self.plot_config["save_folder"], exist_ok=True)
                 fig_path = os.path.join(self.plot_config["save_folder"], f"waveform_plot_{i // traces_per_fig + 1}.png")
@@ -235,9 +236,11 @@ class PlotProj:
 
                     if result == "p":
                         # Go back to interactive picking for this figure only
+                        self.enable_command_prompt = False
+                        self._register_span_selector()
                         plt.show(block=True)
                 else:
-
+                    self._register_span_selector()
                     plt.show(block=True)
 
 
@@ -973,10 +976,19 @@ class PlotProj:
         self._redraw_all_reference_lines()
 
     def __on_enter_axes(self, event):
+        ax = event.inaxes
         try:
-            self.__selected_ax_index = list(self.axs).index(event.inaxes)
-        except ValueError:
+            self.__selected_ax_index = list(self.axs).index(ax)
+        except:
             self.__selected_ax_index = -1
+
+        for selector in self.__selector.values():
+            selector.set_visible(False)
+            selector.clear()
+            selector.clear_subplot()
+            selector.new_axes(ax)
+            selector.update_background(event)
+            selector.set_sub_axes(self.axs)
 
     def _register_span_selector(self):
         """
@@ -986,19 +998,41 @@ class PlotProj:
         def on_select(xmin, xmax):
             print(f"[DEBUG] on_select triggered — current ax idx: {self.__selected_ax_index}")
             print("Selection occurred:", xmin, xmax)
-            self.utc_start = UTCDateTime(mdt.num2date(xmin))
-            self.utc_end = UTCDateTime(mdt.num2date(xmax))
-            print(f"[INFO] Selected time window: {self.utc_start} to {self.utc_end}")
+            utc_start = UTCDateTime(mdt.num2date(xmin))
+            utc_end = UTCDateTime(mdt.num2date(xmax))
+            print(f"[INFO] Selected time window: {utc_start} to {utc_end}")
+
+            # Clear previous vertical lines and labels
+            for ax in self.axs:
+                lines_to_remove = [
+                    line for line in ax.lines
+                    if line.get_linestyle() == '--' and line.get_color() == 'blue'
+                ]
+                for line in lines_to_remove:
+                    line.remove()
+
+                texts_to_remove = [
+                    txt for txt in ax.texts
+                    if txt.get_text() in ('Start', 'End')
+                ]
+                for txt in texts_to_remove:
+                    txt.remove()
 
             # Store in trace headers
-            if hasattr(self, "displayed_traces"):
-                for tr in self.displayed_traces:
-                    tr.stats.references = [self.utc_start, self.utc_end]
-
+            # if hasattr(self, "displayed_traces"):
+            #     for tr in self.displayed_traces:
+            #         tr.stats.references = [utc_start, utc_end]
+            self.utc_start = utc_start
+            self.utc_end = utc_end
             # Visual feedback
             for ax in self.axs:
                 ax.axvline(x=xmin, color='blue', linestyle='--', alpha=0.5)
                 ax.axvline(x=xmax, color='blue', linestyle='--', alpha=0.5)
+            self.axs[0].text(xmin, self.axs[0].get_ylim()[1] * 0.95, 'Start', color='blue', fontsize=8,
+                        ha='left', va='top', bbox=dict(fc='white', alpha=0.6))
+            self.axs[0].text(xmax, self.axs[0].get_ylim()[1] * 0.95, 'End', color='blue', fontsize=8,
+                        ha='right', va='top', bbox=dict(fc='white', alpha=0.6))
+
             self.fig.canvas.draw_idle()
 
         # Make sure self.axs is a flat list
@@ -1015,22 +1049,4 @@ class PlotProj:
             sharex=True
         )
         self._span_selector.set_sub_axes(axs)
-
-    def _on_span_selection(self, ax_index, xmin, xmax):
-        self.starttime = UTCDateTime(mdt.num2date(xmin))
-        self.endtime = UTCDateTime(mdt.num2date(xmax))
-        print(f"[SELECT] Axis {ax_index} — {self.starttime} to {self.endtime}")
-
-        for tr in self.displayed_traces:
-            tr.stats.references = [self.starttime, self.endtime]
-
-        for ax in self.axs:
-            ax.axvline(x=xmin, color='blue', linestyle='--', alpha=0.6)
-            ax.axvline(x=xmax, color='blue', linestyle='--', alpha=0.6)
-            ax.text(xmin, ax.get_ylim()[1] * 0.95, 'Start', color='blue', fontsize=8,
-                    ha='left', va='top', bbox=dict(fc='white', alpha=0.6))
-            ax.text(xmax, ax.get_ylim()[1] * 0.95, 'End', color='blue', fontsize=8,
-                    ha='right', va='top', bbox=dict(fc='white', alpha=0.6))
-
-        self.fig.canvas.draw_idle()
 
