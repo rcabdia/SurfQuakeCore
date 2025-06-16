@@ -49,6 +49,7 @@ class PlotProj:
         self.inventory = kwargs.pop("inventory", None)
         self.__selector = {}  # Use single underscore to avoid name mangling
         self.__selected_ax_index = 0
+        self.current_page = 0  # to track which subplot page is currently shown
         # Default plotting configuration
         self.plot_config = {
             "traces_per_fig": 6,
@@ -88,159 +89,158 @@ class PlotProj:
         except Exception:
             return float('inf'), float('inf')
 
-    def plot(self):
+    def plot(self, page=0):
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         elif platform.system() == 'Linux':
             mplt.use("TkAgg")
 
+        self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
 
         if plot_type == "record":
             self._plot_record_section()
+
         elif plot_type == "overlay":
             self._plot_overlay_traces()
-        else:
-            self._plot_standard_traces()
+
+        elif plot_type == "standard":
+
+            self._plot_standard_traces(page=page)
 
         return self.trace_list  # Return modified trace list
 
-    def _plot_standard_traces(self):
-
+    def _plot_standard_traces(self, page):
         plt.close(self.fig)
 
         formatter_pow = ScalarFormatter(useMathText=True)
-        formatter_pow.set_powerlimits((0, 0))  # Forces scientific notation always
+        formatter_pow.set_powerlimits((0, 0))  # Force scientific notation
 
-        traces = self.trace_list
-        if self.plot_config["sort_by"] == 'distance':
-            traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
-        elif self.plot_config["sort_by"] == 'backazimuth':
-            traces.sort(key=lambda tr: self._get_geodetic_info(tr)[1])
-
-        n_traces = len(traces)
-        if n_traces == 0:
+        if not self.trace_list:
             print("No traces to plot.")
             return
 
+        traces = self.trace_list.copy()
+        sort_mode = self.plot_config.get("sort_by")
+        if sort_mode == 'distance':
+            traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
+        elif sort_mode == 'backazimuth':
+            traces.sort(key=lambda tr: self._get_geodetic_info(tr)[1])
+
         traces_per_fig = self.plot_config["traces_per_fig"]
+        n_traces = len(traces)
+        i = page * traces_per_fig
 
-        for i in range(0, n_traces, traces_per_fig):
-            sub_traces = traces[i:i + traces_per_fig]
-            self.displayed_traces = sub_traces
-            max_traces = min(8, 2 * len(sub_traces))
-            self.fig, self.axs = plt.subplots(len(sub_traces), 1, figsize=(12, max_traces),
-                sharex=True, sharey=self.plot_config["sharey"],
-                gridspec_kw={'hspace': self.plot_config["vspace"]}
-            )
+        if i >= n_traces:
+            print("[INFO] No more traces to display.")
+            return
 
-            # Register enter event only once
-            if not hasattr(self, "_entered_hook"):
-                self.fig.canvas.mpl_connect("axes_enter_event", self.__on_enter_axes)
-                self._entered_hook = True
-            self.__selected_ax_index = 0
+        sub_traces = traces[i:i + traces_per_fig]
+        self.displayed_traces = sub_traces
+
+        max_traces = min(8, 2 * len(sub_traces))
+        self.fig, self.axs = plt.subplots(
+            len(sub_traces), 1, figsize=(12, max_traces),
+            sharex=True, sharey=self.plot_config["sharey"],
+            gridspec_kw={'hspace': self.plot_config["vspace"]}
+        )
+
+        # Ensure axs is always a list
+        if len(sub_traces) == 1:
+            self.axs = [self.axs]
+
+        # Connect enter event once
+        if not hasattr(self, "_entered_hook"):
             self.fig.canvas.mpl_connect("axes_enter_event", self.__on_enter_axes)
+            self._entered_hook = True
+        self.__selected_ax_index = 0
 
-            if len(sub_traces) == 1:
-                self.axs = [self.axs]
-
-            if self.plot_config.get("show_crosshair", True):
-                self.cursors = []
-                for ax in self.axs:
-                    cursor = BlittedCursor(ax, self.axs)
-                    ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
-                    self.cursors.append(cursor)
-
-            self._setup_pick_interaction()
-            self._restore_state()
-
-            # Inside your plot() method, after ax.plot(...)
-            for i, (ax, tr) in enumerate(zip(self.axs, sub_traces)):
-                t = tr.times("matplotlib")
-
-                if self.plot_config["sort_by"]:
-
-                    dist, baz = self._get_geodetic_info(tr)
-                    ax.plot(t, tr.data, linewidth=0.75,
-                            label=f"{tr.id} | Dist: {dist:.1f} km | Baz: {baz:.1f}°")
-                else:
-                    ax.plot(t, tr.data, linewidth=0.75, label = tr.id)
-
-
-                if self.plot_config["show_legend"] and len(self.axs) <= 9:
-                    ax.legend()
-
-                    # Add starttime info box in top-left of each subplot
-                    starttime = tr.stats.starttime
-                    julday = starttime.julday
-                    year = starttime.year
-                    date_str = starttime.strftime("%Y-%m-%d")
-
-                    textstr = f"JD {julday} / {year}\n{date_str}"
-                    ax.text(0.01, 0.95, textstr,
-                            transform=ax.transAxes,
-                            fontsize=8, va='top', ha='left',
-                            bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
-
-                # Set x-axis to datetime format
-                ax.xaxis_date()
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-                ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-
-                # Hide x-axis ticks and bottom spine if not last
-                if i < len(self.axs) - 1:
-                    ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
-                    ax.spines['bottom'].set_visible(False)
-                else:
-                    ax.tick_params(axis='x', which='both', labelbottom=True, bottom=True)
-                    ax.spines['bottom'].set_visible(True)
-
-                for spine in ['top', 'right']:
-                    ax.spines[spine].set_visible(False)
-
-                ax.tick_params(axis='x')
-                ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
-                ax.yaxis.set_major_formatter(formatter_pow)
-                ax.yaxis.get_offset_text().set_visible(True)
-
-            auto_start = min(tr.times("matplotlib")[0] for tr in sub_traces)
-            auto_end = max(tr.times("matplotlib")[-1] for tr in sub_traces)
-
-
+        # Crosshair cursor
+        if self.plot_config.get("show_crosshair", True):
+            self.cursors = []
             for ax in self.axs:
-                ax.set_xlim(auto_start, auto_end)
+                cursor = BlittedCursor(ax, self.axs)
+                ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
+                self.cursors.append(cursor)
 
-            plt.ion()
-            plt.tight_layout()
+        self._setup_pick_interaction()
+        self._restore_state()
 
-            if self.plot_config["autosave"]:
-                os.makedirs(self.plot_config["save_folder"], exist_ok=True)
-                fig_path = os.path.join(self.plot_config["save_folder"], f"waveform_plot_{i // traces_per_fig + 1}.png")
-                plt.savefig(fig_path, dpi=150)
-                print(f"[INFO] Plot saved to {fig_path}")
+        # Plot each trace
+        for ax_idx, (ax, tr) in enumerate(zip(self.axs, sub_traces)):
+            t = tr.times("matplotlib")
 
+            if sort_mode:
+                dist, baz = self._get_geodetic_info(tr)
+                label = f"{tr.id} | Dist: {dist:.1f} km | Baz: {baz:.1f}°"
             else:
+                label = tr.id
 
-                if self.enable_command_prompt:
+            ax.plot(t, tr.data, linewidth=0.75, label=label)
 
-                    plt.show(block=False)
-                    self.fig.canvas.draw_idle()  # schedule a draw
-                    plt.pause(0.5)  # give time for GUI to process at least one frame
+            if self.plot_config["show_legend"] and len(self.axs) <= 9:
+                ax.legend()
 
-                    # Then launch prompt
-                    print("[INFO] Type 'command parameter', 'help', 'q' to next set of traces' or "
-                          "'p' to return picking mode")
-                    prompt = PlotCommandPrompt(self)
-                    result = prompt.run()
+            # Annotate with date
+            starttime = tr.stats.starttime
+            date_str = starttime.strftime("%Y-%m-%d")
+            textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
+            ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=8,
+                    va='top', ha='left',
+                    bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
 
-                    if result == "p":
-                        # Go back to interactive picking for this figure only
-                        self.enable_command_prompt = False
-                        self._register_span_selector()
-                        plt.show(block=True)
-                else:
+            # Format x-axis
+            ax.xaxis_date()
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+            ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+
+            # Hide bottom ticks except for last subplot
+            if ax_idx < len(self.axs) - 1:
+                ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
+                ax.spines['bottom'].set_visible(False)
+            else:
+                ax.tick_params(axis='x', which='both', labelbottom=True, bottom=True)
+                ax.spines['bottom'].set_visible(True)
+
+            for spine in ['top', 'right']:
+                ax.spines[spine].set_visible(False)
+
+            ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+            ax.yaxis.set_major_formatter(formatter_pow)
+            ax.yaxis.get_offset_text().set_visible(True)
+
+        # Set x-limits across all axes
+        auto_start = min(tr.times("matplotlib")[0] for tr in sub_traces)
+        auto_end = max(tr.times("matplotlib")[-1] for tr in sub_traces)
+        for ax in self.axs:
+            ax.set_xlim(auto_start, auto_end)
+
+        plt.ion()
+        plt.tight_layout()
+
+        if self.plot_config["autosave"]:
+            os.makedirs(self.plot_config["save_folder"], exist_ok=True)
+            fig_path = os.path.join(
+                self.plot_config["save_folder"],
+                f"waveform_plot_{page + 1}.png"
+            )
+            plt.savefig(fig_path, dpi=150)
+            print(f"[INFO] Plot saved to {fig_path}")
+        else:
+            if self.enable_command_prompt:
+                plt.show(block=False)
+                self.fig.canvas.draw_idle()
+                plt.pause(0.5)
+                print("[INFO] Type 'command parameter', 'help', 'q' to next, 'b' to previous, 'p' for picking mode")
+                prompt = PlotCommandPrompt(self)
+                result = prompt.run()
+                if result == "p":
+                    self.enable_command_prompt = False
                     self._register_span_selector()
                     plt.show(block=True)
+            else:
+                self._register_span_selector()
+                plt.show(block=True)
 
 
     def _plot_record_section(self):
@@ -519,6 +519,22 @@ class PlotProj:
                     if not tr.stats.picks:
                         del tr.stats.picks
 
+        elif event.key == 'n':
+            # Go to next page
+            if (self.current_page + 1) * self.plot_config["traces_per_fig"] < len(self.trace_list):
+                self.current_page += 1
+                self._plot_standard_traces(self.current_page)
+            else:
+                print("[INFO] Already at last page.")
+
+        elif event.key == 'b':
+            # Go back to previous page
+            if self.current_page > 0:
+                self.current_page -= 1
+                self._plot_standard_traces(self.current_page)
+            else:
+                print("[INFO] Already at first page.")
+
             self._redraw_picks()
             self._update_info_box()
             self.current_pick = None
@@ -548,8 +564,9 @@ class PlotProj:
             self._remove_last_reference()
 
         elif event.key == 'v':
+
             self.enable_command_prompt = True
-            self.plot()
+            self.plot(page=self.current_page)
 
     def _redraw_picks(self):
         """Redraw all pick lines only on their corresponding axes."""
