@@ -134,6 +134,15 @@ class AnalysisEvents:
                 if not arrivals:
                     raise ValueError("No valid arrivals returned by TauPyModel.")
 
+                arrivals_info = []
+                for arr in arrivals:
+                    arrivals_info.append({
+                        "phase": arr.name,
+                        "time": origin + arr.time,
+                        "ray_param": arr.ray_param_sec_degree,
+                        "incident_angle": arr.incident_angle
+                    })
+
                 incidence_angle = arrivals[0].incident_angle
                 first_arrival = origin + arrivals[0].time
                 t1 = first_arrival - cut_start
@@ -155,7 +164,8 @@ class AnalysisEvents:
                     tr = sd.run_analysis(self.config)
                 if self.reference == "event_time":
                     tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
-                                         incidence_angle=incidence_angle, otime=origin, lat=lat, lon=lon, depth=depth)
+                                         incidence_angle=incidence_angle, otime=origin, lat=lat, lon=lon, depth=depth,
+                                         arrivals=arrivals_info)
                 traces.append(tr)
 
             return traces
@@ -191,13 +201,15 @@ class AnalysisEvents:
             else:
                 print("Writting Complete, check output", self.output)
 
-    def _set_header(self, tr, distance_km, BAZ, AZ, incidence_angle, otime, lat, lon, depth):
-
-        tr.stats['geodetic'] = {'otime': otime, 'geodetic': [distance_km, AZ, BAZ, incidence_angle],
-                                'event': [lat, lon, depth]}
+    def _set_header(self, tr, distance_km, BAZ, AZ, incidence_angle, otime, lat, lon, depth, arrivals=None):
+        tr.stats['geodetic'] = {
+            'otime': otime,
+            'geodetic': [distance_km, AZ, BAZ, incidence_angle],
+            'event': [lat, lon, depth],
+            'arrivals': arrivals or []  # ← store arrivals here
+        }
         tr.stats.back_azimuth = BAZ
         tr.stats.inclination = incidence_angle
-
         return tr
 
     def _clean_traces(self, traces: List[Trace]) -> Stream:
@@ -451,17 +463,67 @@ class AnalysisEvents:
             print(f"[WARNING] Failed station processing: {e}")
             return []
 
-def _safe_plot_worker(stream, plot_config, inventory, interactive, queue):
-    try:
-        from surfquakecore.seismoplot.plot import PlotProj  # import locally to isolate
-        plotter = PlotProj(stream, plot_config=plot_config, interactive=interactive, inventory=inventory)
-        modified = plotter.plot()
-        queue.put(modified)
-    except Exception as e:
-        import traceback
-        print("[ERROR] Plotting subprocess crashed:", e)
-        traceback.print_exc()
-        queue.put(None)
+# def _safe_plot_worker(stream, plot_config, inventory, interactive, queue):
+#     try:
+#         from surfquakecore.seismoplot.plot import PlotProj  # import locally to isolate
+#         plotter = PlotProj(stream, plot_config=plot_config, interactive=interactive, inventory=inventory)
+#         modified = plotter.plot()
+#         queue.put(modified)
+#     except Exception as e:
+#         import traceback
+#         print("[ERROR] Plotting subprocess crashed:", e)
+#         traceback.print_exc()
+#         queue.put(None)
+#
+#     def compute_theoretical_arrivals(self, phases=None, model_name='ak135', npoints=25):
+#         """
+#         Compute theoretical arrival times for selected phases and distances.
+#
+#         Returns
+#         -------
+#         dict[str, list[tuple[float, float]]]
+#             phase name → list of (matplotlib_time, distance_km)
+#         """
+#         from obspy.taup import TauPyModel
+#
+#         model = TauPyModel(model_name)
+#         distances_km = [self._get_geodetic_info(tr)[0] for tr in self.trace_list]
+#         otime = self.trace_list[0].stats['geodetic']['otime']
+#         depth = self.trace_list[0].stats['geodetic']['event'][2]
+#
+#         min_dist = min(distances_km)
+#         max_dist = max(distances_km)
+#         dist_km_array = np.linspace(min_dist, max_dist, npoints)
+#         dist_deg_array = dist_km_array / 111.19
+#
+#         phase_curves = {}
+#
+#         for dist_km, dist_deg in zip(dist_km_array, dist_deg_array):
+#             try:
+#                 if phases is not None:
+#                     arrivals = model.get_travel_times(
+#                         source_depth_in_km=depth,
+#                         distance_in_degree=dist_deg,
+#                         phase_list=phases
+#                     )
+#                 else:
+#                     arrivals = model.get_travel_times(
+#                         source_depth_in_km=depth,
+#                         distance_in_degree=dist_deg
+#                     )
+#                 if arrivals is None:
+#                     print(f"[DEBUG] No arrivals at dist={dist_km:.1f} km for model={model_name}")
+#                 for arr in arrivals:
+#                     arr_time = otime + arr.time
+#                     if arr.name not in phase_curves:
+#                         phase_curves[arr.name] = []
+#                     phase_curves[arr.name].append((mdt.date2num(arr_time.datetime), dist_km))
+#             except Exception as e:
+#                 print(f"[WARNING] TauPy error at dist={dist_km:.1f} km: {e}")
+#         del model
+#         gc.collect()
+#         return phase_curves
+
 
 
 
