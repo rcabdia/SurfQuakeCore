@@ -18,6 +18,7 @@ class PlotCommandPrompt:
             "cwt": self._cmd_cwt,
             "p": self._cmd_pick,
             "fk": self._cmd_fk,
+            "ttimes": self._cmd_ttimes,
             "help": self._cmd_help
         }
 
@@ -141,6 +142,19 @@ class PlotCommandPrompt:
         except Exception as e:
              print(f"[ERROR] FK run failed: {e}")
 
+    def _cmd_ttimes(self, args):
+        """
+        Usage: ttimes [phases...]
+        """
+        try:
+            phases = args[1:] if len(args) > 1 else None
+            print(f"[INFO] Computing theoretical arrivals with model 'ak135'...")
+
+            curves = self.plot_proj.compute_theoretical_arrivals(phases=phases)
+            self.plot_proj.plot_arrival_curves_on_record(curves)
+
+        except Exception as e:
+            print(f"[ERROR] Could not plot theoretical arrivals: {e}")
 
     def _cmd_help(self, args):
         print("Available commands:")

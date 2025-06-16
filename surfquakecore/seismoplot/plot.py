@@ -9,7 +9,8 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & Cristina Palacios
 # Email: rcabdia@roa.es
 """
-
+#import os
+#os.environ["OBSPY_TAUP_PARALLEL"] = "0"
 import math
 import os
 import platform
@@ -31,9 +32,8 @@ from surfquakecore.seismoplot.crosshair import BlittedCursor
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
-from matplotlib.widgets import SpanSelector
 from matplotlib.backend_bases import MouseButton
-
+import gc
 # Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:
@@ -246,6 +246,8 @@ class PlotProj:
 
     def _plot_record_section(self):
 
+        plt.close(self.fig)
+
         cfg = self.plot_config
         traces = self.trace_list
 
@@ -257,6 +259,9 @@ class PlotProj:
         # Compute global start time for alignment
         #t0 = min(tr.stats.starttime for tr in traces)
         fig, ax = plt.subplots(figsize=(12, 8))
+        self.fig = fig  # ensure fig is accessible throughout
+        #self.axs = [ax]  # mimic structure used in standard plot
+        self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
 
         for tr, dist in zip(traces, distances):
             # Normalize trace to its max amplitude
@@ -280,8 +285,20 @@ class PlotProj:
             fig_path = os.path.join(cfg["save_folder"], f"record_section.png")
             plt.savefig(fig_path, dpi=150)
             print(f"[INFO] Record section saved to {fig_path}")
+
+        if self.enable_command_prompt:
+            plt.show(block=False)
+            self.fig.canvas.draw_idle()
+            plt.pause(0.5)
+
+            print("[INFO] Type 'command parameter', 'help', 'q' to exit or 'p' to return to picking mode")
+            prompt = PlotCommandPrompt(self)
+            result = prompt.run()
+
+            if result == "p":
+                self.enable_command_prompt = False
+                plt.show(block=True)
         else:
-            plt.tight_layout()
             plt.show(block=True)
 
     def _plot_overlay_traces(self):
@@ -1050,3 +1067,90 @@ class PlotProj:
         )
         self._span_selector.set_sub_axes(axs)
 
+    def compute_theoretical_arrivals(self, phases=None, model_name='ak135', npoints=25):
+        """
+        Compute theoretical arrival times for selected phases and distances.
+
+        Returns
+        -------
+        dict[str, list[tuple[float, float]]]
+            phase name → list of (matplotlib_time, distance_km)
+        """
+        from obspy.taup import TauPyModel
+
+        model = TauPyModel(model_name)
+        distances_km = [self._get_geodetic_info(tr)[0] for tr in self.trace_list]
+        otime = self.trace_list[0].stats['geodetic']['otime']
+        depth = self.trace_list[0].stats['geodetic']['event'][2]
+
+        min_dist = min(distances_km)
+        max_dist = max(distances_km)
+        dist_km_array = np.linspace(min_dist, max_dist, npoints)
+        dist_deg_array = dist_km_array / 111.19
+
+        phase_curves = {}
+
+        for dist_km, dist_deg in zip(dist_km_array, dist_deg_array):
+            try:
+                if phases is not None:
+                    arrivals = model.get_travel_times(
+                        source_depth_in_km=depth,
+                        distance_in_degree=dist_deg,
+                        phase_list=phases
+                    )
+                else:
+                    arrivals = model.get_travel_times(
+                        source_depth_in_km=depth,
+                        distance_in_degree=dist_deg
+                    )
+                if arrivals is None:
+                    print(f"[DEBUG] No arrivals at dist={dist_km:.1f} km for model={model_name}")
+                for arr in arrivals:
+                    arr_time = otime + arr.time
+                    if arr.name not in phase_curves:
+                        phase_curves[arr.name] = []
+                    phase_curves[arr.name].append((mdt.date2num(arr_time.datetime), dist_km))
+            except Exception as e:
+                print(f"[WARNING] TauPy error at dist={dist_km:.1f} km: {e}")
+        del model
+        gc.collect()
+        return phase_curves
+
+    def plot_arrival_curves_on_record(self, phase_curves, model_name="ak135"):
+        """
+        Plot record section and overlay travel-time curves from precomputed phase_curves.
+        """
+        fig, ax = plt.subplots(figsize=(12, 8))
+        self.fig = fig
+        self.axs = [ax]
+        #self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
+
+        scale = self.plot_config.get("scale_factor", 1.0)
+        for tr in self.trace_list:
+            dist = self._get_geodetic_info(tr)[0]
+            norm_data = tr.data / np.max(np.abs(tr.data)) if np.max(np.abs(tr.data)) != 0 else tr.data
+            t = tr.times("matplotlib")
+            ax.plot(t, norm_data * scale + dist, linewidth=0.5, alpha=0.6)
+
+        for phase, points in phase_curves.items():
+            if len(points) < 2:
+                continue
+            times, dists = zip(*points)
+            ax.plot(times, dists, label=phase, linestyle='--', linewidth=1.0, alpha=0.8)
+
+        ax.set_title(f"Record Section + Travel-Time Curves ({model_name})")
+        ax.set_xlabel("Time (UTC)")
+        ax.set_ylabel("Distance (km)")
+        ax.xaxis_date()
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+
+        if self.plot_config.get("show_legend", True):
+            ax.legend(fontsize=6)
+
+        plt.tight_layout()
+        plt.show(block=False)
+
+        while plt.fignum_exists(fig.number):
+            plt.pause(0.2)
+
+        plt.close(fig)

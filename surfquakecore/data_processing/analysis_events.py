@@ -7,6 +7,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & C. Palacios
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
+import traceback
 
 import yaml
 from obspy import read_inventory, UTCDateTime
@@ -321,89 +322,98 @@ class AnalysisEvents:
 
             for j, event in enumerate(events):
                 while True:
-                    print(f"[INFO] Cutting traces for subproject {i}, event {j} at {event['origin_time']}")
+                    try:
+                        print(f"[INFO] Cutting traces for subproject {i}, event {j} at {event['origin_time']}")
 
-                    # --- Prepare station-wise file groups ---
-                    station_files = defaultdict(list)
-                    for trace_list in project.project.values():
-                        for trace_path, stats in trace_list:
-                            station_key = f"{stats.network}.{stats.station}"
-                            station_files[station_key].append((trace_path, stats))
+                        # --- Prepare station-wise file groups ---
+                        station_files = defaultdict(list)
+                        for trace_list in project.project.values():
+                            for trace_path, stats in trace_list:
+                                station_key = f"{stats.network}.{stats.station}"
+                                station_files[station_key].append((trace_path, stats))
 
-                    # --- Create tasks for each station ---
-                    tasks = []
-                    for file_group in station_files.values():
-                        tasks.append((
-                            file_group, event, self.model, cut_start, cut_end,
-                            self.inventory, self._set_header
-                        ))
+                        # --- Create tasks for each station ---
+                        tasks = []
+                        for file_group in station_files.values():
+                            tasks.append((
+                                file_group, event, self.model, cut_start, cut_end,
+                                self.inventory, self._set_header
+                            ))
 
-                    # --- Process stations (parallel if no post-script) ---
-                    if self.post_script_func:
-                        print("[INFO] Using sequential mode due to post-script")
-                        results = [self._process_station_traces(task) for task in tasks]
-                    else:
-                        with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                            results = pool.map(self._process_station_traces, tasks)
-
-                    # --- Gather and clean traces ---
-                    all_traces = [tr for sub in results for tr in sub if tr is not None]
-                    full_stream = self._clean_traces(all_traces)
-
-                    del all_traces
-                    del results
-                    gc.collect()
-
-                    sp = StreamProcessing(full_stream, self.config)
-                    full_stream = sp.run_stream_processing()
-
-                    print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
-
-                    # --- Plot if requested ---
-                    if full_stream is not None and plot and len(full_stream) > 0:
-                        plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive,
-                                           inventory=self.inventory)
-                        full_stream = plotter.plot()
-
-                        for tr in full_stream:
-                            if hasattr(tr.stats, "picks"):
-                                print(f"Picks found for {tr.id}: {tr.stats.picks}")
-
-                    # --- Post-script (optional) --- # Might be user has edited the header of full_stream traces
-                    if self.post_script_func:
-                        try:
-                            full_stream = self.post_script_func(full_stream, self.inventory, event=event)
-                        except Exception as e:
-                            print(f"[WARNING] Post-script failed: {e}, mandatory input stream, inventory and event")
-
-                    # --- Save output if requested ---
-                    if self.output:
-                        self._write_files(full_stream)
-
-                    # --- User prompt for next action ---
-                    if plot:
-                        user_choice = input(
-                            f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
-                            f"'redo' to reprocess this event, or 'exit': "
-                        ).strip().lower()
-
-                        if user_choice == "c":
-                            break  # Exit the while-loop → go to next event
-
-                        elif user_choice == "redo":
-                            print(f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
-                            self.config = self.load_analysis_configuration(self.config_file)
-                            continue  # Rerun same event
-
-                        elif user_choice == "exit":
-                            print("[INFO] Exiting waveform cutting by user request.")
-                            return  # Exit entire `run_waveform_cutting`
-
+                        # --- Process stations (parallel if no post-script) ---
+                        if self.post_script_func:
+                            print("[INFO] Using sequential mode due to post-script")
+                            results = [self._process_station_traces(task) for task in tasks]
                         else:
-                            print("[WARN] Unknown command. Assuming 'next'.")
-                            break
-                    else:
-                        break  # No prompt: go to next event
+                            with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                                results = pool.map(self._process_station_traces, tasks)
+
+                        # --- Gather and clean traces ---
+                        all_traces = [tr for sub in results for tr in sub if tr is not None]
+                        full_stream = self._clean_traces(all_traces)
+
+                        del all_traces
+                        del results
+                        gc.collect()
+
+                        sp = StreamProcessing(full_stream, self.config)
+                        full_stream = sp.run_stream_processing()
+
+                        print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
+
+                        # --- Plot if requested ---
+                        if full_stream is not None and plot and len(full_stream) > 0:
+                            plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive,
+                                               inventory=self.inventory)
+                            try:
+                                full_stream = plotter.plot()
+                            except Exception as e:
+                                print(f"[ERROR] Plotting failed: {e},")
+
+                            for tr in full_stream:
+                                if hasattr(tr.stats, "picks"):
+                                    print(f"Picks found for {tr.id}: {tr.stats.picks}")
+
+                        # --- Post-script (optional) --- # Might be user has edited the header of full_stream traces
+                        if self.post_script_func:
+                            try:
+                                full_stream = self.post_script_func(full_stream, self.inventory, event=event)
+                            except Exception as e:
+                                print(f"[WARNING] Post-script failed: {e}, mandatory input stream, inventory and event")
+
+                        # --- Save output if requested ---
+                        if self.output:
+                            self._write_files(full_stream)
+
+                        # --- User prompt for next action ---
+                        if plot:
+                            user_choice = input(
+                                f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
+                                f"'redo' to reprocess this event, or 'exit': "
+                            ).strip().lower()
+
+                            if user_choice == "c":
+                                break  # Exit the while-loop → go to next event
+
+                            elif user_choice == "redo":
+                                print(f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
+                                self.config = self.load_analysis_configuration(self.config_file)
+                                continue  # Rerun same event
+
+                            elif user_choice == "exit":
+                                print("[INFO] Exiting waveform cutting by user request.")
+                                return  # Exit entire `run_waveform_cutting`
+
+                            else:
+                                print("[WARN] Unknown command. Assuming 'next'.")
+                                break
+                        else:
+                            break  # No prompt: go to next event
+                    except Exception as e:
+                        print(f"[ERROR] Exception in subproject {i}, event {j}: {e}")
+                        traceback.print_exc()
+                        print("[INFO] Skipping to next event...")
+                        break  # go to next event despite the error
 
     def _process_station_analysis(self, args):
 
@@ -440,4 +450,18 @@ class AnalysisEvents:
         except Exception as e:
             print(f"[WARNING] Failed station processing: {e}")
             return []
+
+def _safe_plot_worker(stream, plot_config, inventory, interactive, queue):
+    try:
+        from surfquakecore.seismoplot.plot import PlotProj  # import locally to isolate
+        plotter = PlotProj(stream, plot_config=plot_config, interactive=interactive, inventory=inventory)
+        modified = plotter.plot()
+        queue.put(modified)
+    except Exception as e:
+        import traceback
+        print("[ERROR] Plotting subprocess crashed:", e)
+        traceback.print_exc()
+        queue.put(None)
+
+
 
