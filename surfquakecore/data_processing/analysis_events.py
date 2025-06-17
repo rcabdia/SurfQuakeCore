@@ -222,7 +222,11 @@ class AnalysisEvents:
                 stream.append(tr)
         return stream
 
-    def run_waveform_analysis(self, plot: bool = False, interactive: bool = False):
+    def run_waveform_analysis(self, auto: bool = False):
+
+        plot = not auto
+        interactive = not auto
+
         if self.surf_projects is None:
             print("No subprojects to process.")
             return
@@ -238,87 +242,93 @@ class AnalysisEvents:
 
         for i, project in enumerate(self.surf_projects):
             while True:
-                print(f"[INFO] Processing subproject {i} (daily stream)")
+                try:
+                    print(f"[INFO] Processing subproject {i} (daily stream)")
 
-                station_files = defaultdict(list)
-                for trace_list in project.project.values():
-                    for trace_path, stats in trace_list:
-                        key = f"{stats.network}.{stats.station}"
-                        station_files[key].append((trace_path, stats))
+                    station_files = defaultdict(list)
+                    for trace_list in project.project.values():
+                        for trace_path, stats in trace_list:
+                            key = f"{stats.network}.{stats.station}"
+                            station_files[key].append((trace_path, stats))
 
-                tasks = []
-                for file_group in station_files.values():
-                    tasks.append((
-                        file_group,
-                        None,  # No event
-                        None,  # No model
-                        0, 0,  # No cut
-                        self.inventory,
-                        self._set_header
-                    ))
+                    tasks = []
+                    for file_group in station_files.values():
+                        tasks.append((
+                            file_group,
+                            None,  # No event
+                            None,  # No model
+                            0, 0,  # No cut
+                            self.inventory,
+                            self._set_header
+                        ))
 
-                with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                    results = pool.map(self._process_station_analysis, tasks)
+                    with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                        results = pool.map(self._process_station_analysis, tasks)
 
-                all_traces = [tr for group in results for tr in group if tr is not None]
-                full_stream = self._clean_traces(all_traces)
+                    all_traces = [tr for group in results for tr in group if tr is not None]
+                    full_stream = self._clean_traces(all_traces)
 
-                # save memory for further usage
-                del all_traces
-                del results
-                gc.collect()
+                    # save memory for further usage
+                    del all_traces
+                    del results
+                    gc.collect()
 
-                sp = StreamProcessing(full_stream, self.config)
-                full_stream = sp.run_stream_processing()
+                    sp = StreamProcessing(full_stream, self.config)
+                    full_stream = sp.run_stream_processing()
 
-                print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
+                    print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
 
-                # --- Plot if requested ---
-                if full_stream is not None and plot and len(full_stream) > 0:
-                    plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
-                    full_stream = plotter.plot()
+                    # --- Plot if requested ---
+                    if full_stream is not None and plot and len(full_stream) > 0:
+                        plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
+                        full_stream = plotter.plot()
 
-                    for tr in full_stream:
-                        if hasattr(tr.stats, "picks"):
-                            print(f"Picks found for {tr.id}: {tr.stats.picks}")
+                        for tr in full_stream:
+                            if hasattr(tr.stats, "picks"):
+                                print(f"Picks found for {tr.id}: {tr.stats.picks}")
 
-                # --- Post-script (optional) --- # Might be user has edited the header of full_stream traces
-                if self.post_script_func:
-                    try:
-                        full_stream = self.post_script_func(full_stream, self.inventory)
-                    except Exception as e:
-                        print(f"[WARNING] Post-script failed: {e}")
+                    if self.post_script_func:
+                        try:
+                            full_stream = self.post_script_func(full_stream, self.inventory)
+                        except Exception as e:
+                            print(f"[WARNING] Post-script failed: {e}")
 
-                if self.output:
-                    self._write_files(full_stream)
-                    # --- User prompt for next action ---
+                    # Save output only in auto mode
+                    if auto and self.output:
+                        self._write_files(full_stream)
 
-                if plot:
-                    user_choice = input(
-                        f"\n[Prompt] Finished subproject {i}. Type 'n' to continue, "
-                        f"'redo' to reprocess this event, or 'exit': "
-                    ).strip().lower()
+                    # Prompt only in interactive mode
+                    if interactive:
+                        user_choice = input(
+                            f"\n[Prompt] Finished subproject {i}. Type 'n' to continue, "
+                            f"'redo' to reprocess this event, or 'exit': "
+                        ).strip().lower()
 
-                    if user_choice == "c":
-                        break  # Exit the while-loop → go to next event
-
-                    elif user_choice == "redo":
-                        print(f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
-                        self.config = self.load_analysis_configuration(self.config_file)
-                        continue  # Rerun same event
-
-                    elif user_choice == "exit":
-                        print("[INFO] Exiting waveform cutting by user request.")
-                        return  # Exit entire `run_waveform_cutting`
-
+                        if user_choice == "c":
+                            break
+                        elif user_choice == "redo":
+                            print(f"[INFO] Reloading config and reprocessing subproject {i}...")
+                            self.config = self.load_analysis_configuration(self.config_file)
+                            continue
+                        elif user_choice == "exit":
+                            print("[INFO] Exiting waveform analysis by user request.")
+                            return
+                        else:
+                            print("[WARN] Unknown command. Assuming 'next'.")
+                            break
                     else:
-                        print("[WARN] Unknown command. Assuming 'next'.")
-                        break
-                else:
-                    break  # No prompt: go to next event
+                        break  # automatic mode just continues
 
-    def run_waveform_cutting(self, cut_start: float, cut_end: float, plot=True, reference="events",
-                             interactive=False):
+                except Exception as e:
+                    print(f"[ERROR] Exception in subproject {i}, event {j}: {e}")
+                    traceback.print_exc()
+                    print("[INFO] Skipping to next event...")
+                    break  # go to next event despite the error
+
+    def run_waveform_cutting(self, cut_start: float, cut_end: float, auto=False):
+
+        plot = not auto
+        interactive = not auto
 
         if self.surf_projects is None:
             print("No projects to process.")
@@ -380,7 +390,7 @@ class AnalysisEvents:
                             try:
                                 full_stream = plotter.plot()
                             except Exception as e:
-                                print(f"[ERROR] Plotting failed: {e},")
+                                print(f"[ERROR] Plotting failed: {e}")
 
                             for tr in full_stream:
                                 if hasattr(tr.stats, "picks"):
@@ -394,7 +404,7 @@ class AnalysisEvents:
                                 print(f"[WARNING] Post-script failed: {e}, mandatory input stream, inventory and event")
 
                         # --- Save output if requested ---
-                        if self.output:
+                        if auto and self.output:
                             self._write_files(full_stream)
 
                         # --- User prompt for next action ---
@@ -421,6 +431,7 @@ class AnalysisEvents:
                                 break
                         else:
                             break  # No prompt: go to next event
+
                     except Exception as e:
                         print(f"[ERROR] Exception in subproject {i}, event {j}: {e}")
                         traceback.print_exc()

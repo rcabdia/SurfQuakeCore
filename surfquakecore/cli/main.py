@@ -10,7 +10,7 @@
 
 import os
 import sys
-from argparse import ArgumentParser
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from dataclasses import dataclass
 from dateutil import parser
 from multiprocessing import freeze_support
@@ -98,21 +98,33 @@ def _project():
     Command-line interface for creating a seismic project.
     """
 
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} project", description="Create a seismic project by storing "
-                                                                                 "the paths to seismogram files and "
-                                                                                 "their metadata.")
-
-    arg_parse.epilog = """
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} project",
+        description="Create a seismic project by indexing seismogram files and storing their metadata.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    
     Overview:
-      This command allows you to create a seismic project, which is essentially a dictionary
-      storing the paths to seismogram files along with their corresponding metadata.
-    
-    Usage:
-      surfquake project -d [path to data files] -s [path to save directory] -n [project name] --verbose
-    
+        This command creates a seismic project — a file-based database that stores paths
+        to waveform files and their associated metadata. Projects simplify later processing.
+
+    Usage Example:
+        surfquake project \\
+            -d ./data_directory \\
+            -s ./projects \\
+            -n my_project \\
+            --verbose
+
+    Key Arguments:
+        -d, --data           Path to waveform data directory (or file pattern)
+        -s, --save_path      Directory to save the project file
+        -n, --name           Name of the project (e.g., "my_experiment")
+        --verbose            Print detailed file discovery and indexing logs
+
     Documentation:
-      https://projectisp.github.io/surfquaketutorial.github.io/
+        https://projectisp.github.io/surfquaketutorial.github.io/
     """
+    )
 
     arg_parse.add_argument("-d", "--data_dir", help="Path to data files directory", type=str, required=True)
 
@@ -138,24 +150,40 @@ def _project():
 def _pick():
     from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
 
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} pick", description="Use Phasenet Neural Network to estimate "
-                                                                              "body waves arrival times")
-    arg_parse.epilog = """
-            Overview:
-              The Picking algorythm uses the Deep Neural Network of Phasenet to estimate 
-              the arrival times of P- and S-wave in regional and local seismic events.
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} pick",
+        description="Use PhaseNet deep learning model to pick P- and S-wave arrivals.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        This command applies the PhaseNet deep neural network to estimate the arrival times
+        of P- and S-waves in local and regional seismic events.
 
-            Usage:
-              surfquake pick -f [path to your project file] -d [path to your pick saving directory] -p 
-              [P-wave threshoold] -s [S-wave threshold] --verbose"
+        Picks are automatically generated from your project traces and saved to the specified directory.
 
-            Reference:              
-              Zhu and Beroza, 2019. PhaseNet: a deep-neural-network-based seismic arrival-time picking method, 
-              Geophysical Journal International.
+    Usage Example:
+        surfquake pick \\
+            -f ./my_project.json \\
+            -d ./picks_output \\
+            -p 0.3 \\
+            -s 0.3 \\
+            --verbose
 
-            Documentation:
-              https://projectisp.github.io/surfquaketutorial.github.io/
-            """
+    Key Arguments:
+        -f, --project_file        Path to your seismic project file
+        -d, --output_dir          Directory to save pick results
+        -p, --p_thresh            Threshold for P-wave probability (0–1)
+        -s, --s_thresh            Threshold for S-wave probability (0–1)
+        --verbose                 Enable detailed logging
+
+    Reference:
+        Zhu & Beroza (2019). PhaseNet: A Deep-Neural-Network-Based Seismic Arrival-Time Picking Method,
+        Geophysical Journal International.
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+    """
+    )
 
     arg_parse.usage = ("Run picker: -f [path to your project file] "
                        "-d [path to your pick saving directory] -p [P-wave threshoold] -s [S-wave threshold] --verbose")
@@ -197,25 +225,47 @@ def _pick():
 
 
 def _associate():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} associator", description="Use Associator to group correctly "
-                                                                                    "phase picks to unique seismic "
-                                                                                    "events")
-    arg_parse.epilog = """
-        Overview:
-          You can correlate picks with the corresponding unique seismic events by using this command. 
-          The association was performed using REAL algorithm. 
 
-        Usage: surfquake associate -i [inventory_file_path] -p [path to data picking folder] -c [path to 
-        real_config_file.ini] -w [work directory] -s [path to directory where associates picks will be saved] --verbose
-          
-        Reference: Zhang et al. 2019, Rapid Earthquake Association and Location, Seismol. Res. Lett. 
-        https://doi.org/10.1785/0220190052
-            
-        Documentation:
-          https://projectisp.github.io/surfquaketutorial.github.io/
-          # Time file is based on https://github.com/Dal-mzhang/LOC-FLOW/blob/main/LOCFLOW-CookBook.pdf
-          # reference for structs: https://github.com/Dal-mzhang/REAL/blob/master/REAL_userguide_July2021.pdf
-        """
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} associator",
+        description="Use REAL to associate phase picks into unique seismic events.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        This command runs the REAL (Rapid Earthquake Association and Location) algorithm
+        to group previously detected phase picks into seismic events.
+
+        Picks should be organized per station/channel in standard format.
+
+    Usage Example:
+        surfquake associator \\
+            -i inventory.xml \\
+            -p ./picks_folder \\
+            -c real_config.ini \\
+            -w ./working_dir \\
+            -s ./associated_output \\
+            --verbose
+
+    Key Arguments:
+        -i, --inventory_file     Path to station metadata (XML or RESP)
+        -p, --picks_folder       Folder containing station pick files
+        -c, --config_file        Path to REAL .ini configuration file
+        -w, --work_dir           Working directory for REAL intermediate output
+        -s, --save_dir           Output directory for associated pick results
+        --verbose                Enable detailed logging
+
+    Reference:
+        Zhang et al. (2019), Rapid Earthquake Association and Location,
+        Seismological Research Letters, https://doi.org/10.1785/0220190052
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+
+        Additional Info:
+          - Time file format: https://github.com/Dal-mzhang/LOC-FLOW/blob/main/LOCFLOW-CookBook.pdf
+          - REAL guide: https://github.com/Dal-mzhang/REAL/blob/master/REAL_userguide_July2021.pdf
+    """
+    )
 
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
                            type=str,
@@ -250,27 +300,48 @@ def _associate():
 
 
 def _locate():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} locate seismic event", description=" Locate seismic event")
-    arg_parse.epilog = """
-        
-        Overview:
-          surfQuake uses a non-linear approach (NonLinLoc) to locate a seismic event. 
-          Inputs are the pick file in NonLinLoc format, and the time folder with the traveltimes generated in 
-          pre-locate subprogram.
-          Further details can be found in formats section http://alomax.free.fr/nlloc/:
-            
-        Usage: surfquake locate -i [inventory_file_path] -c [config_file_path] -o [path_to output_path] 
-        -g [if travel_time_generation needed] -s [if stations_corrections need] -n 
-        [If you want to iterate number of iterations]
 
-        Reference: Lomax, A., A. Michelini, A. Curtis, 2009. Earthquake Location, Direct, Global-Search Methods, in 
-        Complexity In Encyclopedia of Complexity and System Science, Part 5, Springer, New York, pp. 2449-2473, 
-        doi:10.1007/978-0-387-30440-3.
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} locate seismic event",
+        description="Locate a seismic event using NonLinLoc methodology.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        surfQuake uses a non-linear, global-search approach (NonLinLoc) to locate seismic events.
+        The main inputs are:
+            • A pick file in NonLinLoc format
+            • A travel-time 'time' folder generated with the `pre-locate` step
 
-        Documentation:
-          https://projectisp.github.io/surfquaketutorial.github.io/
-          Complete description of input files http://alomax.free.fr/nlloc/
-        """
+        For details on input formats, visit: http://alomax.free.fr/nlloc/
+
+    Usage Example:
+        surfquake locate \\
+            -i inventory.xml \\
+            -c locate_config.ini \\
+            -o ./output_locations \\
+            -g \\
+            -s \\
+            -n 10
+
+    Key Arguments:
+        -i, --inventory_file      Station metadata (XML, RESP)
+        -c, --config_file         Path to NonLinLoc .ini configuration
+        -o, --output_dir          Directory where location results will be saved
+        -g, --generate_tt         Generate travel time files before location
+        -s, --apply_station_corr  Apply station corrections (if configured)
+        -n, --iterations          Number of global search iterations (int)
+
+    Reference:
+        Lomax, A., Michelini, A., Curtis, A. (2009).
+        Earthquake Location: Direct, Global-Search Methods.
+        Encyclopedia of Complexity and System Science, Springer.
+        DOI: https://doi.org/10.1007/978-0-387-30440-3
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+        http://alomax.free.fr/nlloc/ (input format and model description)
+    """
+    )
 
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
                            type=str, required=True)
@@ -321,25 +392,46 @@ def _locate():
 
 
 def _source():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} source parameters estimation",
-                               description="source parameters estimation")
 
-    arg_parse.epilog = """
-
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} source parameters estimation",
+        description="Estimate source parameters using P- and S-wave spectra.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
     Overview:
-      surfQuake uses the spectra P- and S-waves to estimate source parameters (Stress Drop, attenuation, source radius 
-       radiated energy) and magnitudes ML and Mw.
+        surfQuake estimates source parameters such as:
+            • Stress Drop
+            • Attenuation (Q)
+            • Source radius
+            • Radiated energy
+            • Local (ML) and moment (Mw) magnitudes
 
-    Usage: surfquake source -i [inventory file path] - p [path to project file] -c [path to 
-      source_config_file] -l [path to nll hyp files] -o [path to output folder]
+        It uses spectral fitting of P- and/or S-wave displacement spectra, following SourceSpec methodology.
 
-    Reference: Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave 
-    displacement spectra (X.Y). doi: 10.5281/ZENODO.3688587.
+    Usage Example:
+        surfquake source \\
+            -i inventory.xml \\
+            -p my_project.json \\
+            -c source_config.yaml \\
+            -l ./nlloc_outputs \\
+            -o ./source_results
+
+    Key Arguments:
+        -i, --inventory_file     Path to station metadata (XML, RESP)
+        -p, --project_file       Path to project file containing waveform picks
+        -c, --config_file        YAML configuration for SourceSpec
+        -l, --hypocenter_dir     Directory containing NonLinLoc .hyp files
+        -o, --output_folder      Output folder for source parameter results
+
+    Reference:
+        Satriano, C. (2023). SourceSpec – Earthquake source parameters from
+        P- or S-wave displacement spectra. DOI: https://doi.org/10.5281/ZENODO.3688587
 
     Documentation:
-      https://projectisp.github.io/surfquaketutorial.github.io/
-      https://sourcespec.readthedocs.io/en/stable/index.html
+        https://projectisp.github.io/surfquaketutorial.github.io/
+        https://sourcespec.readthedocs.io/en/stable/index.html
     """
+    )
 
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
                            type=str, required=True)
@@ -386,24 +478,39 @@ def _source():
 
 
 def _mti():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Moment Tensor Inversion",
-                               description="Moment Tensor Inversion")
 
-    arg_parse.epilog = """
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} Moment Tensor Inversion",
+        description="Estimate seismic moment tensors using Bayesian inversion.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        surfQuake provides a simple interface to estimate moment tensors for pre-located earthquakes
+        using a Bayesian inversion approach, based on the Bayesian ISOLA method.
 
-        Overview:
-          surfQuake provides an easy way to estimate the Moment Tensor from pre-located earthquakes using a 
-          bayesian inversion.
+    Usage Example:
+        surfquake mti \\
+            -i inventory.xml \\
+            -p my_project.json \\
+            -c mti_config.ini \\
+            -o ./mti_output \\
+            -s
 
-        Usage: surfquake mti -i [inventory_file_path] -p [path_to_project] -c [path to mti_config_file.ini] 
-        -o [output_path]  -s [if save plots]
+    Key Arguments:
+        -i, --inventory_file     Path to station metadata (XML, RESP)
+        -p, --project_file       Path to the project file with waveforms and event metadata
+        -c, --config_file        INI configuration file for inversion settings
+        -o, --output_dir         Output directory for inversion results
+        -s, --save_plots         If set, saves plots of MT solutions and fits
 
-        Reference: Vackář, J., Burjánek, J., Gallovič, F., Zahradník, J., & Clinton, J. (2017). Bayesian ISOLA: 
-        new tool for automated centroid moment tensor inversion. Geophysical Journal International, 210(2), 693-705.
+    Reference:
+        Vackář et al. (2017). Bayesian ISOLA: New Tool for Automated Centroid Moment Tensor Inversion,
+        Geophysical Journal International, 210(2), 693–705. https://doi.org/10.1093/gji/ggx180
 
-        Documentation:
-          https://projectisp.github.io/surfquaketutorial.github.io/
-        """
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+    """
+    )
 
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
                            type=str, required=True)
@@ -443,21 +550,36 @@ def _mti():
 
 
 def _csv2xml():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Convert csv file to stations.xml",
-                               description="Convert csv file to stations.xml")
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} Convert CSV to StationXML",
+        description="Convert a CSV file of station metadata to a StationXML file.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        Convert a CSV station table to StationXML format.
 
-    arg_parse.epilog = """
+        Required CSV columns:
+            Net, Station, Lat, Lon, Elevation, Start_Date, StartTime, End_Date, EndTime
 
-            Overview:
-              Convert csv file to stations.xml: 
-              Net Station Lat Lon elevation start_date starttime end_date endtime
-              date format = '%Y-%m-%d %H:%M:%S'
-              
-            Usage: surfquake csv2xml -c [csv_file_path] -r [resp_files_path] -o [output_path] -n [stations_xml_name]
+        Date format must follow: '%Y-%m-%d %H:%M:%S'
 
-            Documentation:
-              https://projectisp.github.io/surfquaketutorial.github.io/
-            """
+    Usage Example:
+        surfquake csv2xml \\
+            -c ./stations.csv \\
+            -r ./resp_files/ \\
+            -o ./output_dir \\
+            -n my_stations.xml
+
+    Key Arguments:
+        -c, --csv_file         Path to input CSV file containing station metadata
+        -r, --resp_dir         Path to RESP files for each station (optional if included in CSV)
+        -o, --output_dir       Directory where the StationXML will be saved
+        -n, --output_name      Desired filename for the output StationXML
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+    """
+    )
 
     arg_parse.add_argument("-c", "--csv_file_path", help="Net Station Lat Lon elevation "
                                                          "start_date starttime end_date endtime", type=str,
@@ -484,22 +606,37 @@ def _csv2xml():
 
 
 def _buildcatalog():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Convert csv file to stations.xml",
-                               description="Convert csv file to stations.xml")
 
-    arg_parse.epilog = """
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} Convert CSV file to stations.xml",
+        description="Build a seismic event catalog by combining SurfQuake outputs.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        The `buildcatalog` tool combines results from SurfQuake modules (e.g., event picks, MTI, and source parameters)
+        into a unified ObsPy-compatible catalog that can be exported to various formats.
 
-            Overview:
-              buildcatalog class helps to join information from all surfquake outputs and create a catalog
-    
-            Usage: surfquake buildcatalog -e [path_event_files_folder] -s [path_source_summary_file] -m 
-            [path_mti_summary_file] -f [catalog_format] -o [path_to_output_folder]
-    
-            Documentation:
-              https://projectisp.github.io/surfquaketutorial.github.io/utils/
-              catalog formats info: https://docs.obspy.org/packages/autogen/obspy.core.event.Catalog.
-              write.html#obspy.core.event.Catalog.write
-            """
+    Usage Example:
+        surfquake buildcatalog \\
+            -e ./events_folder \\
+            -s ./source_summary.csv \\
+            -m ./mti_summary.csv \\
+            -f quakeml \\
+            -o ./final_catalog
+
+    Key Arguments:
+        -e, --event_folder       Folder containing individual event XML or pick files
+        -s, --source_summary     CSV file summarizing source parameter results
+        -m, --mti_summary        CSV file summarizing MTI results
+        -f, --format             Output catalog format (e.g., quakeml, nordic, sc3ml, etc.)
+        -o, --output_dir         Directory to write the resulting catalog file
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/utils/
+        ObsPy catalog format info:
+        https://docs.obspy.org/packages/autogen/obspy.core.event.Catalog.write.html
+    """
+    )
 
     arg_parse.add_argument("-e", "--path_event_files_folder", help="Net Station Lat Lon elevation "
                                                                    "start_date starttime end_date endtime", type=str,
@@ -548,17 +685,52 @@ def _buildmticonfig():
                                     f"a mti_config template",
                                description="mti_config files building command")
 
-    arg_parse.epilog = """
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} Create mti_config.ini from catalog and template",
+        description="Automatically generate MTI config files from a catalog query.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        The `buildmticonfig` tool creates multiple `mti_config.ini` files using:
+            - A catalog file (e.g., QuakeML or ObsPy Catalog)
+            - A template configuration file for MTI
+            - Optional filters (time, location, magnitude, depth)
 
-        Overview:
-          buildmticonfig can automatically create an mti_config.ini from a catalog query and a mti_config template.
-        Usage: surfquake buildmticonfig -c [catalog_file_path] -t [mti_config_template] -o [output_folder] -s [if starttime] 
-        -e [if endtime] -l [if lat_min] -a [ if lat_max] -d [if lon_min] -k [if lon_max] -w [if depth_min] 
-        -f [depth_max] -g [if mag_min] -p [if mag_max]
-        Warning, starttime and endtime format is format %d/%m/%Y, %H:%M:%S.%f
-        Documentation:
-          https://projectisp.github.io/surfquaketutorial.github.io/utils/
-        """
+        This is useful to prepare inversion configs for multiple events in batch.
+
+    Usage Example:
+        surfquake buildmticonfig \\
+            -c ./catalog.xml \\
+            -t ./mti_template.ini \\
+            -o ./generated_configs \\
+            -s "01/01/2024, 00:00:00.000" \\
+            -e "01/02/2024, 00:00:00.000" \\
+            -l 34.0 -a 36.0 \\
+            -d -118.0 -k -116.0 \\
+            -w 0 -f 20 \\
+            -g 2.5 -p 6.0
+
+    Key Arguments:
+        -c, --catalog_file       Path to input event catalog file (QuakeML or ObsPy)
+        -t, --template_file      Path to MTI config template (.ini)
+        -o, --output_dir         Directory where MTI configs will be written
+
+    Optional Filters:
+        -s, --start_time         Start date (format: %d/%m/%Y, %H:%M:%S.%f)
+        -e, --end_time           End date (same format)
+        -l, --lat_min            Minimum latitude
+        -a, --lat_max            Maximum latitude
+        -d, --lon_min            Minimum longitude
+        -k, --lon_max            Maximum longitude
+        -w, --depth_min          Minimum depth (km)
+        -f, --depth_max          Maximum depth (km)
+        -g, --mag_min            Minimum magnitude
+        -p, --mag_max            Maximum magnitude
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/utils/
+    """
+    )
 
     arg_parse.add_argument("-c", "--catalog_file_path", help="file to catalog.pkl file", type=str,
                            required=True)
@@ -630,22 +802,52 @@ def _buildmticonfig():
 
 
 def _processing():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing waveforms associated to events. ",
-                               description="Processing waveforms associated to events command")
 
-    arg_parse.epilog = """
-            Overview:
-                Proces waveforms or cut traces associated to events and apply processing to the waveforms. 
-                You can perform either or both of these operations
-                Usage: surfquake processing -p [project_file] -w [path_to_waveform files] -o [output_folder] -i [inventory_file] -c [config_file]
-                -e [event_file] -n [net] -s [station] -ch [channel] -cs [cut_start_time]
-                -ce [cut_end_time] -t [cut_time] -l [if interactive plot seismograms] 
-                --plot_config [Path to optional plotting configuration file (.yaml) 
-                --post_script [Path to Python script to apply to each event stream]
-            """
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} surfquake processing",
+        description="Process or cut waveforms associated with seismic events.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    
+    Overview:
+        Process or cut waveforms associated with seismic events.
+        You can:
+            - Cut traces using event times and headers
+            - Apply processing steps (filtering, normalization, etc.)
+            - Optionally, visualize the waveforms interactively
+
+    Modes:
+        Default : Interactive mode (plotting + user prompts)
+        --auto  : Non-interactive mode (no plotting, auto save)
+
+    Usage Example:
+        surfquake processing \\
+            -w "./waveforms/*Z" \\
+            -i inventory.xml \\
+            -e events.xml \\
+            -c config.yaml \\
+            -o ./output_folder \\
+            --plot_config plot_settings.yaml \\
+            --post_script custom_postproc.py
+
+    Key Arguments:
+        -p, --project_file     Path to a saved project file
+        -w, --wave_files       Path or glob pattern to waveform files
+        -i, --inventory_file   Station metadata file (XML, RESP, etc.)
+        -e, --event_file       Event catalog in QuakeML format
+        -c, --config_file      Optional waveform processing config (YAML)
+        -a, --auto             Run in automatic processing mode
+        --plot_config          Optional plotting configuration (YAML)
+        --post_script          Python script for post-processing per event
+    """
+    )
 
     arg_parse.add_argument("-p", "--project_file", help="absolute path to project file", type=str,
                            required=False)
+
+    arg_parse.add_argument(
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true"
+    )
 
     arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
 
@@ -691,13 +893,8 @@ def _processing():
 
     parsed_args = arg_parse.parse_args()
 
-    # 1. Check if config or event files are not None
 
-    # Not mandatory we try to make it more flexible to process simple files
-    # if parsed_args.config_file is None and parsed_args.event_file is None:
-    #     raise ValueError("Error: the command will do nothing. config_file and/or event_file are required")
-
-    # Calculate start and end time
+    # 1. Estimate the start and end time
     if parsed_args.cut_start_time is not None:
         start = parsed_args.cut_start_time
         end = parsed_args.cut_end_time if parsed_args.cut_end_time is not None else 300
@@ -757,39 +954,70 @@ def _processing():
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp_sub_projects, post_script=parsed_args.post_script,
                             plot_config_file=parsed_args.plot_config, reference=parsed_args.reference)
-        sd.run_waveform_cutting(cut_start=start, cut_end=end, plot=parsed_args.plots)
+        sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
     else:
 
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp, post_script=parsed_args.post_script, plot_config_file=parsed_args.plot_config,
                             reference=parsed_args.reference)
-        sd.run_waveform_analysis(plot=parsed_args.plots)
+        sd.run_waveform_analysis(auto=parsed_args.auto)
 
 
 def _processing_daily():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} processing continous waveforms. ",
-                               description="Processing continous waveforms command")
-    arg_parse.epilog = """
-                Overview:
-                    Cut seismograms and apply processing to continous waveforms. You can perform either or both of these operations
-                    Usage: surfquake processing -p [project_file] -o [output_folder] -i [inventory_file] -c [config_file]
-                    -n [net] -s [station] -ch [channel] --min_date [Start time YYYY-MM-DD HH:MM:SS.sss] 
-                    --max_date [End time YYYY-MM-DD HH:MM:SS.sss] -l [if interactive plot seismograms] 
-                    --plot_config [Path to optional plotting configuration file (.yaml)]
-                """
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} processing continuous waveforms",
+        description="Process and cut continuous waveform data",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        Cut seismograms and apply processing to continuous waveforms.
+        You can perform either or both of these operations.
+
+    Modes:
+        Default : Interactive mode (with plotting and prompts)
+        --auto  : Non-interactive (no plots, no prompts, automatic output)
+
+    Usage Example:
+        surfquake processing \\
+            -w "./waveforms/*Z" \\
+            -i inventory.xml \\
+            -c config.yaml \\
+            -o ./output_folder \\
+            --min_date "2024-01-01 00:00:00" \\
+            --max_date "2024-01-02 00:00:00" \\
+            --plot_config plot_settings.yaml
+
+    Key Arguments:
+        -p, --project_file      Path to a saved project file
+        -w, --wave_files        Path or glob pattern to waveform files
+        -o, --output_folder     Directory for processed output
+        -i, --inventory_file    Station metadata (XML/RESP)
+        -c, --config_file       Processing configuration (YAML)
+        -a, --auto              Run in automatic mode
+        -n, --net               Network code filter
+        -s, --station           Station code filter
+        -ch, --channel          Channel filter
+        --min_date              Start date (format: YYYY-MM-DD HH:MM:SS)
+        --max_date              End date   (format: YYYY-MM-DD HH:MM:SS)
+        --plot_config           Optional plotting configuration (YAML)
+    """
+    )
 
     arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
 
     arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
+
+    arg_parse.add_argument(
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true"
+    )
 
     arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
 
     arg_parse.add_argument("-i", "--inventory_file", required=True, help="stations metadata file")
 
     arg_parse.add_argument("-c", "--config_file", help="YAML config for processing")
-
-    arg_parse.add_argument("-l", "--plot", action="store_true", help="Enable plotting")
 
     arg_parse.add_argument("--plot_config", help="YAML file for plot customization")
 
