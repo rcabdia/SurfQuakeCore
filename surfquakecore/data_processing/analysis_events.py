@@ -25,6 +25,7 @@ from collections import defaultdict
 import importlib.util
 import gc
 
+
 class AnalysisEvents:
 
     def __init__(self, output: Optional[str] = None,
@@ -70,7 +71,6 @@ class AnalysisEvents:
             else:
                 print("Traces will be process and might be plot: ", self.output)
                 self.output = None
-
 
         # Load plotting config
         self.plot_config = None
@@ -154,12 +154,11 @@ class AnalysisEvents:
             traces = []
             for tr in st:
                 if self.config:
-                    sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
-                    tr = sd.run_analysis(self.config)
-                if self.reference == "event_time":
-                    tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
-                                         incidence_angle=incidence_angle, otime=origin, lat=lat, lon=lon, depth=depth,
-                                         arrivals=arrivals_info)
+                    tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
+                    if tr is not None and self.reference == "event_time":
+                        tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
+                                             incidence_angle=incidence_angle, otime=origin, lat=lat, lon=lon,
+                                             depth=depth, arrivals=arrivals_info)
                 traces.append(tr)
 
             return traces
@@ -167,7 +166,6 @@ class AnalysisEvents:
         except Exception as e:
             print(f"[WARNING] Station group failed: {e}")
             return []
-
 
     def _write_files(self, full_stream):
         errors = False
@@ -233,6 +231,7 @@ class AnalysisEvents:
 
         if isinstance(self.surf_projects, SurfProject):
             self.surf_projects = [self.surf_projects]
+
 
         for i, project in enumerate(self.surf_projects):
             while True:
@@ -325,7 +324,6 @@ class AnalysisEvents:
                     traceback.print_exc()
                     print("[INFO] Skipping to next event...")
                     break  # go to next event despite the error
-
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, auto=False):
 
@@ -465,13 +463,12 @@ class AnalysisEvents:
                 return []
 
             stats = file_group[0][1]
-            net, sta = stats.network, stats.station
+            # net, sta = stats.network, stats.station
 
             traces = []
             for tr in st:
                 if self.config:
-                    sd = SeismogramData(Stream(tr), inventory, fill_gaps=True)
-                    tr = sd.run_analysis(self.config)
+                    tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
 
                 tr = set_header_func(tr, distance_km=-1, BAZ=-1, AZ=-1, incidence_angle=-1,
                                      otime=None, lat=None, lon=None, depth=None)
@@ -500,7 +497,6 @@ class AnalysisEvents:
                 print(f"[WARNING] Script {script_path} must define a callable `run(stream, inventory, event=None)`")
         except Exception as e:
             print(f"[ERROR] Failed to import post-script {script_path}: {e}")
-
 
 # def _safe_plot_worker(stream, plot_config, inventory, interactive, queue):
 #     try:
@@ -562,7 +558,3 @@ class AnalysisEvents:
 #         del model
 #         gc.collect()
 #         return phase_curves
-
-
-
-

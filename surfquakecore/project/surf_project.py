@@ -214,6 +214,11 @@ class SurfProject:
 
         return new_project
 
+    def add_files(self):
+        if isinstance(self.root_path, str):
+            self.data_files = glob.glob(self.root_path, recursive=True)
+            print(f"[INFO] Found {len(self.data_files)} files using glob pattern: {self.root_path}")
+
     def search_files(self, format="NONE", verbose=True, use_glob: bool = False, **kwargs):
 
         """

@@ -1,6 +1,5 @@
 from obspy import Stream, Trace, UTCDateTime
 import numpy as np
-from surfquakecore.Structures.structures import TracerStatsAnalysis, TracerStats
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, whiten_new
@@ -11,185 +10,183 @@ from surfquakecore.data_processing.seismicUtils import SeismicUtils
 
 
 class SeismogramData:
-    def __init__(self, st, inventory=None, **kwargs):
 
-        self.inventory = inventory
-        self.config_keys = None
-        fill_gaps = kwargs.pop("fill_gaps", True)
-        self.st = st
+    @staticmethod
+    def run_analysis(tr_input, config, inventory=None, fill_gaps=True):
 
-        if fill_gaps:
-            gaps = self.st.get_gaps()
+        """
+        Process a trace or 1-trace stream using a config dict.
 
-            if len(gaps) > 0:
-                self.st.print_gaps()
-                self.st.merge(fill_value="interpolate")
-                self.__tracer = self.st[0]
+        Parameters
+        ----------
+        tr_input : obspy.Trace or obspy.Stream
+            The input trace or single-trace stream.
+        config : list of dict
+            List of processing steps, e.g. from YAML.
+        inventory : obspy.Inventory, optional
+            For response removal.
+        fill_gaps : bool
+            Whether to merge gaps using interpolation.
+
+        Returns
+        -------
+        obspy.Trace
+        Processed trace.
+        """
+
+        try:
+            # --- Ensure input is a valid Stream or Trace ---
+            if isinstance(tr_input, Trace):
+                st = Stream([tr_input])
+            elif isinstance(tr_input, Stream):
+                st = tr_input.copy()
             else:
-                self.__tracer = self.st[0]
-        else:
-            self.__tracer = self.st[0]
+                print("[WARNING] Invalid trace input type, skipping.")
+                return None
 
-        self.stats = TracerStatsAnalysis.from_dict(self.tracer.stats)
+            # --- Handle gaps and merging ---
+            if fill_gaps:
+                try:
+                    gaps = st.get_gaps()
+                    if gaps:
+                        print("[INFO] Gaps found, merging trace with interpolation...")
+                        st.merge(method=1, fill_value='interpolate')
+                    else:
+                        st.merge(method=1)
+                except Exception as e:
+                    print(f"[WARNING] Failed to check/merge gaps: {e}")
+                    return None
+            else:
+                st.merge(method=1)
 
-    @classmethod
-    def from_tracer(cls, tracer):
-        sd = cls(None)
-        sd.set_tracer(tracer)
-        return sd
+            if len(st) == 0:
+                print("[WARNING] Stream is empty after merging, skipping.")
+                return None
 
-    @property
-    def tracer(self):
-        return self.__tracer
-
-    def set_tracer(self, tracer):
-        self.__tracer = tracer
-        self.stats = TracerStats.from_dict(self.__tracer.stats)
+            tr = st[0]
 
 
+            for i in range(len(config)):
+                _config = config[i]
+                _keys = config[i]
 
-    def run_analysis(self, config, **kwargs):
+                if _config['name'] == 'rmean':
+                    if _config['method'] in ['linear, simple', 'demean']:
+                        tr.detrend(type=_config['method'])
+                    elif _config['method'] == 'polynomial':
+                        tr.detrend(type=_config['method'], order=_config['order'])
+                    elif _config['method'] == 'spline':
+                        tr.detrend(type=_config['method'], order=_config['order'], dspline=_config['dspline'])
 
-        """
-        This method loop over config dictionary.
-        config dictionary contain the primary key with the processing step and the parameters or that key processing
+                if _config['name'] == 'taper':
+                    tr.taper(max_percentage=_config['max_percentage'], type=_config['method'],
+                             max_length=_config['max_length'], side=_config['side'])
 
-        Previously it is needed to load the project and metadata.
+                if _config['name'] == 'normalize':
+                    if isinstance(_config['norm'], bool):
+                        tr.normalize()
+                    else:
+                        tr.normalize(norm=_config['norm'])
 
-        Args:
-            analysis_config: a .yaml file
+                if _config['name'] == 'differentiate':
+                    if _config['method'] == "spectral":
+                        tr = spectral_derivative(tr)
+                    else:
+                        tr.differentiate(method=_config['method'])
 
-        Returns:
-        """
+                if _config['name'] == 'integrate':
+                    if _config['method'] == "spectral":
+                        tr = spectral_integration(tr)
+                    else:
+                        tr.integrate(method=_config['method'])
 
-        start_time = kwargs.get("start_time", self.stats.StartTime)
-        end_time = kwargs.get("end_time", self.stats.EndTime)
-        trace_number = kwargs.get("trace_number", 0)
-        tr = self.tracer
+                if _config['name'] == 'filter':
 
-        tr.trim(starttime=start_time, endtime=end_time)
+                    tr = filter_trace(tr, _config['type'], _config['fmin'], _config['fmax'],
+                                      zerophase=_config['zerophase'], corners=_config['corners'])
 
-        for i in range(len(config)):
-            _config = config[i]
-            _keys = config[i]
+                if _config['name'] == 'wiener_filter':
+                    tr = wiener_filter(tr, time_window=_config['time_window'],
+                                       noise_power=_config['noise_power'])
 
-            if _config['name'] == 'rmean':
-                if _config['method'] in ['linear, simple', 'demean']:
-                    tr.detrend(type=_config['method'])
-                elif _config['method'] == 'polynomial':
-                    tr.detrend(type=_config['method'], order=_config['order'])
-                elif _config['method'] == 'spline':
-                    tr.detrend(type=_config['method'], order=_config['order'], dspline=_config['dspline'])
-
-            if _config['name'] == 'taper':
-                tr.taper(max_percentage=_config['max_percentage'], type=_config['method'],
-                         max_length=_config['max_length'], side=_config['side'])
-
-            if _config['name'] == 'normalize':
-                if isinstance(_config['norm'], bool):
-                    tr.normalize()
-                else:
-                    tr.normalize(norm=_config['norm'])
-
-            if _config['name'] == 'differentiate':
-                if _config['method'] == "spectral":
-                    tr = spectral_derivative(tr)
-                else:
-                    tr.differentiate(method=_config['method'])
-
-            if _config['name'] == 'integrate':
-                if _config['method'] == "spectral":
-                    tr = spectral_integration(tr)
-                else:
-                    tr.integrate(method=_config['method'])
-
-            if _config['name'] == 'filter':
-
-                tr = filter_trace(tr, _config['type'], _config['fmin'], _config['fmax'],
-                                  zerophase=_config['zerophase'], corners=_config['corners'])
-
-            if _config['name'] == 'wiener_filter':
-                tr = wiener_filter(tr, time_window=_config['time_window'],
-                                   noise_power=_config['noise_power'])
-
-            # if _config['name'] == 'shift':
-            #     shifts = _config['time_shifts']
-            #     for i in range(0, len(shifts)-1):
-            #         tr.stats.starttime = tr.stats.starttime + shifts[i]
-
-            if _config['name'] == 'remove_response':
-                if _config['units'] != "Wood Anderson":
-                    try:
-                        tr.remove_response(inventory=self.inventory, pre_filt=_config['pre_filt'],
-                                           output=_config['units'], water_level=_config['water_level'])
-                    except:
-                        print("Coudn't deconvolve", tr.stats)
-                        tr.data = np.array([])
-
-                elif _config['units'] == "Wood Anderson":
-                    # print("Simulating Wood Anderson Seismograph")
-                    if self.inventory is not None:
-                        resp = self.inventory.get_response(tr.id, tr.stats.starttime)
-
-                        resp = resp.response_stages[0]
-                        paz_wa = {'sensitivity': 2800, 'zeros': [0j], 'gain': 1,
-                                  'poles': [-6.2832 - 4.7124j, -6.2832 + 4.7124j]}
-
-                        paz_mine = {'sensitivity': resp.stage_gain * resp.normalization_factor, 'zeros': resp.zeros,
-                                    'gain': resp.stage_gain, 'poles': resp.poles}
-
+                if _config['name'] == 'remove_response':
+                    if _config['units'] != "Wood Anderson":
                         try:
-                            tr.simulate(paz_remove=paz_mine, paz_simulate=paz_wa,
-                                        water_level=_config['water_level'])
+                            tr.remove_response(inventory=inventory, pre_filt=_config['pre_filt'],
+                                               output=_config['units'], water_level=_config['water_level'])
                         except:
                             print("Coudn't deconvolve", tr.stats)
                             tr.data = np.array([])
 
-            if _config['name'] == 'add_noise':
-                tr = add_frequency_domain_noise(tr, noise_type=_config['noise_type'], SNR_dB=_config['SNR_dB'])
+                    elif _config['units'] == "Wood Anderson":
+                        # print("Simulating Wood Anderson Seismograph")
+                        if inventory is not None:
+                            resp = inventory.get_response(tr.id, tr.stats.starttime)
 
-            if _config['name'] == 'whitening':
-                #tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
-                tr = whiten_new(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
+                            resp = resp.response_stages[0]
+                            paz_wa = {'sensitivity': 2800, 'zeros': [0j], 'gain': 1,
+                                      'poles': [-6.2832 - 4.7124j, -6.2832 + 4.7124j]}
 
-            if _config['name'] == 'remove_spikes':
+                            paz_mine = {'sensitivity': resp.stage_gain * resp.normalization_factor, 'zeros': resp.zeros,
+                                        'gain': resp.stage_gain, 'poles': resp.poles}
 
-                filtered, outliers, medians, mads, thresholds = (
-                    hampel(tr.data, _config['window_size'] * tr.stats.sampling_rate, _config['sigma']))
-                tr.data = filtered
+                            try:
+                                tr.simulate(paz_remove=paz_mine, paz_simulate=paz_wa,
+                                            water_level=_config['water_level'])
+                            except:
+                                print("Coudn't deconvolve", tr.stats)
+                                tr.data = np.array([])
 
-            if _config['name'] == 'time_normalization':
-                if 'norm_win' in _config.keys():
-                    tr = normalize(tr, norm_win=_config['norm_win'], norm_method=_config['method'])
-                else:
-                    tr = normalize(tr, norm_method=_config['method'])
+                if _config['name'] == 'add_noise':
+                    tr = add_frequency_domain_noise(tr, noise_type=_config['noise_type'], SNR_dB=_config['SNR_dB'])
 
-            if _config['name'] == 'wavelet_denoise':
-                tr = wavelet_denoise(tr, dwt=_config['dwt'], threshold=_config['threshold'])
+                if _config['name'] == 'whitening':
+                    #tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
+                    tr = whiten_new(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
 
-            if _config['name'] == 'resample':
-                if tr.stats.sampling_rate < _config['sampling_rate']:
-                    tr.resample(sampling_rate=_config['sampling_rate'], window='hanning',
-                                no_filter=_config['pre_filter'])
-                elif tr.stats.sampling_rate > _config['sampling_rate']:
-                    tr = safe_downsample(tr, _config['sampling_rate'], pre_filter=_config['pre_filter'])
-                else:
-                    pass
+                if _config['name'] == 'remove_spikes':
 
-            if _config['name'] == 'fill_gaps':
-                st = Stream(tr)
-                st.merge(fill_value=_config['method'])
-                tr = st[0]
+                    filtered, outliers, medians, mads, thresholds = (
+                        hampel(tr.data, _config['window_size'] * tr.stats.sampling_rate, _config['sigma']))
+                    tr.data = filtered
 
-            if _config['name'] == 'smoothing':
-                tr = smoothing(tr, type=_config['method'], k=_config['time_window'], fwhm=_config['FWHM'])
+                if _config['name'] == 'time_normalization':
+                    if 'norm_win' in _config.keys():
+                        tr = normalize(tr, norm_win=_config['norm_win'], norm_method=_config['method'])
+                    else:
+                        tr = normalize(tr, norm_method=_config['method'])
 
-            if _config['name'] == 'envelope':
-                if _config['method'] == "SMOOTH" and "corner_freq" in _config.keys():
-                    tr = trace_envelope(tr, method=_config['method'], corner_freq=_config['corner_freq'])
-                else:
-                    tr = trace_envelope(tr, method=_config['method'])
-        return tr
+                if _config['name'] == 'wavelet_denoise':
+                    tr = wavelet_denoise(tr, dwt=_config['dwt'], threshold=_config['threshold'])
+
+                if _config['name'] == 'resample':
+                    if tr.stats.sampling_rate < _config['sampling_rate']:
+                        tr.resample(sampling_rate=_config['sampling_rate'], window='hanning',
+                                    no_filter=_config['pre_filter'])
+                    elif tr.stats.sampling_rate > _config['sampling_rate']:
+                        tr = safe_downsample(tr, _config['sampling_rate'], pre_filter=_config['pre_filter'])
+                    else:
+                        pass
+
+                if _config['name'] == 'fill_gaps':
+                    st = Stream(tr)
+                    st.merge(fill_value=_config['method'])
+                    tr = st[0]
+
+                if _config['name'] == 'smoothing':
+                    tr = smoothing(tr, type=_config['method'], k=_config['time_window'], fwhm=_config['FWHM'])
+
+                if _config['name'] == 'envelope':
+                    if _config['method'] == "SMOOTH" and "corner_freq" in _config.keys():
+                        tr = trace_envelope(tr, method=_config['method'], corner_freq=_config['corner_freq'])
+                    else:
+                        tr = trace_envelope(tr, method=_config['method'])
+
+            return tr
+
+        except Exception as e:
+            print(f"[ERROR] Trace processing failed: {e}")
+            return None
 
 class StreamProcessing:
     """
