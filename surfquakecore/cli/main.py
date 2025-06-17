@@ -802,23 +802,28 @@ def _buildmticonfig():
 
 
 def _processing():
-
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} surfquake processing",
         description="Process or cut waveforms associated with seismic events.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
     Overview:
         Process or cut waveforms associated with seismic events.
         You can:
             - Cut traces using event times and headers
             - Apply processing steps (filtering, normalization, etc.)
-            - Optionally, visualize the waveforms interactively
+            - Optionally visualize the waveforms (interactive mode)
+            - Apply a user-defined post-processing script before or after plotting
 
     Modes:
-        Default : Interactive mode (plotting + user prompts)
-        --auto  : Non-interactive mode (no plotting, auto save)
+        Default  : Interactive mode (plotting + user prompts)
+        --auto   : Non-interactive mode (no plots, no prompts, outputs written automatically)
+
+    Post-Script Logic:
+        Use `--post_script` to apply a custom script to each event stream.
+        Use `--post_script_stage` to control **when** it runs:
+            • before : script runs before plotting (good for filtering, editing headers)
+            • after  : script runs after plotting (good if picks or metadata are added)
 
     Usage Example:
         surfquake processing \\
@@ -828,17 +833,20 @@ def _processing():
             -c config.yaml \\
             -o ./output_folder \\
             --plot_config plot_settings.yaml \\
-            --post_script custom_postproc.py
+            --post_script custom_postproc.py \\
+            --post_script_stage after
 
     Key Arguments:
-        -p, --project_file     Path to a saved project file
-        -w, --wave_files       Path or glob pattern to waveform files
-        -i, --inventory_file   Station metadata file (XML, RESP, etc.)
-        -e, --event_file       Event catalog in QuakeML format
-        -c, --config_file      Optional waveform processing config (YAML)
-        -a, --auto             Run in automatic processing mode
-        --plot_config          Optional plotting configuration (YAML)
-        --post_script          Python script for post-processing per event
+        -p, --project_file         Path to an existing project file
+        -w, --wave_files           Path or glob pattern to waveform files
+        -i, --inventory_file       Station metadata file (XML, RESP)
+        -e, --event_file           Event catalog in QuakeML format
+        -c, --config_file          Processing configuration file (YAML)
+        -o, --output_folder        Folder where processed files are saved
+        -a, --auto                 Run in automatic mode (no plotting or prompts)
+        --plot_config              Optional plot configuration file (YAML)
+        --post_script              Python script to apply per event stream
+        --post_script_stage        When to apply the post-script: before | after (default: after)
     """
     )
 
@@ -888,8 +896,18 @@ def _processing():
     arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)",
                            type=str)
 
-    arg_parse.add_argument("--post_script", help="Path to Python script to apply to each event stream",
-                           type=str)
+    arg_parse.add_argument(
+        "--post_script",
+        help="Path to Python script to apply to each event stream",
+        type=str
+    )
+
+    arg_parse.add_argument(
+        "--post_script_stage",
+        help="When to apply the post-script: 'before' or 'after' plotting",
+        choices=["before", "after"],
+        default="after"
+    )
 
     parsed_args = arg_parse.parse_args()
 
@@ -953,13 +971,15 @@ def _processing():
                                                  cut_end_time=end, verbose=True)
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp_sub_projects, post_script=parsed_args.post_script,
+                            post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=parsed_args.plot_config, reference=parsed_args.reference)
         sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
     else:
 
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                            sp, post_script=parsed_args.post_script, plot_config_file=parsed_args.plot_config,
+                            sp, post_script=parsed_args.post_script, post_script_stage=parsed_args.post_script_stage,
+                            plot_config_file=parsed_args.plot_config,
                             reference=parsed_args.reference)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
@@ -977,7 +997,13 @@ def _processing_daily():
 
     Modes:
         Default : Interactive mode (with plotting and prompts)
-        --auto  : Non-interactive (no plots, no prompts, automatic output)
+        --auto  : Non-interactive mode (no plots, no prompts, automatic output)
+
+    Post-Script Logic:
+        Use --post_script to apply a custom script per station/day stream.
+        Use --post_script_stage to control when the script is applied:
+            • before : apply script before plotting (e.g., for filtering or cleanup)
+            • after  : apply script after plotting (e.g., to act on manual picks)
 
     Usage Example:
         surfquake processing \\
@@ -987,21 +1013,25 @@ def _processing_daily():
             -o ./output_folder \\
             --min_date "2024-01-01 00:00:00" \\
             --max_date "2024-01-02 00:00:00" \\
-            --plot_config plot_settings.yaml
+            --plot_config plot_settings.yaml \\
+            --post_script my_custom.py \\
+            --post_script_stage after
 
     Key Arguments:
-        -p, --project_file      Path to a saved project file
-        -w, --wave_files        Path or glob pattern to waveform files
-        -o, --output_folder     Directory for processed output
-        -i, --inventory_file    Station metadata (XML/RESP)
-        -c, --config_file       Processing configuration (YAML)
-        -a, --auto              Run in automatic mode
-        -n, --net               Network code filter
-        -s, --station           Station code filter
-        -ch, --channel          Channel filter
-        --min_date              Start date (format: YYYY-MM-DD HH:MM:SS)
-        --max_date              End date   (format: YYYY-MM-DD HH:MM:SS)
-        --plot_config           Optional plotting configuration (YAML)
+        -p, --project_file        Path to a saved project file
+        -w, --wave_files          Path or glob pattern to waveform files
+        -o, --output_folder       Directory for processed output
+        -i, --inventory_file      Station metadata (XML/RESP)
+        -c, --config_file         Processing configuration (YAML)
+        -a, --auto                Run in automatic mode
+        -n, --net                 Network code filter
+        -s, --station             Station code filter
+        -ch, --channel            Channel filter
+        --min_date                Start date (format: YYYY-MM-DD HH:MM:SS)
+        --max_date                End date   (format: YYYY-MM-DD HH:MM:SS)
+        --plot_config             Optional plotting configuration (YAML)
+        --post_script             Path to Python script for custom post-processing
+        --post_script_stage       When to apply the post-script: before | after (default: after)
     """
     )
 
@@ -1039,6 +1069,19 @@ def _processing_daily():
     arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
 
     arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+
+    arg_parse.add_argument(
+        "--post_script",
+        help="Path to Python script to apply to each event stream",
+        type=str
+    )
+
+    arg_parse.add_argument(
+        "--post_script_stage",
+        help="When to apply the post-script: 'before' or 'after' plotting",
+        choices=["before", "after"],
+        default="after"
+    )
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
@@ -1105,9 +1148,11 @@ def _processing_daily():
         surf_projects=subprojects,
         plot_config_file=parsed_args.plot_config,
         time_segment_start=parsed_args.min_date,
-        time_segment_end=parsed_args.max_date
+        time_segment_end=parsed_args.max_date,
+        post_script=parsed_args.post_script,
+        post_script_stage=parsed_args.post_script_stage
     )
-    ae.run_waveform_analysis(plot=parsed_args.plot)
+    ae.run_waveform_analysis(auto=parsed_args.auto)
 
 
 def resolve_path(path: Optional[str]) -> Optional[str]:

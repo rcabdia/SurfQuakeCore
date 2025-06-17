@@ -31,7 +31,8 @@ class AnalysisEvents:
     def __init__(self, output: Optional[str] = None,
                  inventory_file: Optional[str] = None, config_file: Optional[str] = None,
                  surf_projects: List[SurfProject] = None, plot_config_file: Optional[str] = None,
-                 post_script: Optional[str] = None, time_segment_start: Optional[str] = None,
+                 post_script: Optional[str] = None,
+                 post_script_stage: Optional[str] = "before", time_segment_start: Optional[str] = None,
                  time_segment_end: Optional[str] = None, reference: Optional[str] = None):
 
         self.model = TauPyModel("iasp91")
@@ -45,6 +46,7 @@ class AnalysisEvents:
         # Store user-specified time segment (as string or UTCDateTime)
         self.time_segment_start = time_segment_start
         self.time_segment_end = time_segment_end
+        self.post_script_stage = post_script_stage
 
         if inventory_file:
             try:
@@ -69,27 +71,19 @@ class AnalysisEvents:
                 print("Traces will be process and might be plot: ", self.output)
                 self.output = None
 
-        self.plot_config = None
-        if plot_config_file is not None and os.path.exists(plot_config_file):
-            with open(plot_config_file, 'r') as f:
-                try:
-                    self.plot_config = yaml.safe_load(f).get("plotting", {})
-                except Exception as e:
-                    print(f"[WARNING] Plot config not loaded: {e}")
 
-        self.post_script_func = None
-        if post_script and os.path.exists(post_script):
-            spec = importlib.util.spec_from_file_location("post_module", post_script)
-            post_module = importlib.util.module_from_spec(spec)
+        # Load plotting config
+        self.plot_config = None
+        if plot_config_file and os.path.exists(plot_config_file):
             try:
-                spec.loader.exec_module(post_module)
-                if hasattr(post_module, "run") and callable(post_module.run):
-                    self.post_script_func = post_module.run
-                    print(f"[INFO] Post-script loaded: {post_script}")
-                else:
-                    print(f"[WARNING] Script {post_script} must define a `run(stream, event)` function")
+                with open(plot_config_file, "r") as f:
+                    self.plot_config = yaml.safe_load(f).get("plotting", {})
             except Exception as e:
-                print(f"[ERROR] Failed to import script {post_script}: {e}")
+                print(f"[WARNING] Plot config not loaded: {e}")
+
+        # Load post-processing script
+        if post_script:
+            self._load_post_script(post_script)
 
     def load_analysis_configuration(self, config_file: str):
         with open(config_file, 'r') as file:
@@ -278,6 +272,13 @@ class AnalysisEvents:
 
                     print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
 
+                    # If post-script is to run BEFORE plotting
+                    if self.post_script_func and self.post_script_stage == "before":
+                        try:
+                            full_stream = self.post_script_func(full_stream, self.inventory)
+                        except Exception as e:
+                            print(f"[WARNING] Post-script (before plotting) failed: {e}")
+
                     # --- Plot if requested ---
                     if full_stream is not None and plot and len(full_stream) > 0:
                         plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
@@ -287,11 +288,11 @@ class AnalysisEvents:
                             if hasattr(tr.stats, "picks"):
                                 print(f"Picks found for {tr.id}: {tr.stats.picks}")
 
-                    if self.post_script_func:
+                    if self.post_script_func and self.post_script_stage == "after":
                         try:
                             full_stream = self.post_script_func(full_stream, self.inventory)
                         except Exception as e:
-                            print(f"[WARNING] Post-script failed: {e}")
+                            print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
                     # Save output only in auto mode
                     if auto and self.output:
@@ -383,6 +384,13 @@ class AnalysisEvents:
 
                         print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
 
+                        # If post-script is to run BEFORE plotting
+                        if self.post_script_func and self.post_script_stage == "before":
+                            try:
+                                full_stream = self.post_script_func(full_stream, self.inventory, event=event)
+                            except Exception as e:
+                                print(f"[WARNING] Post-script (before plotting) failed: {e}")
+
                         # --- Plot if requested ---
                         if full_stream is not None and plot and len(full_stream) > 0:
                             plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive,
@@ -397,11 +405,11 @@ class AnalysisEvents:
                                     print(f"Picks found for {tr.id}: {tr.stats.picks}")
 
                         # --- Post-script (optional) --- # Might be user has edited the header of full_stream traces
-                        if self.post_script_func:
+                        if self.post_script_func and self.post_script_stage == "after":
                             try:
                                 full_stream = self.post_script_func(full_stream, self.inventory, event=event)
                             except Exception as e:
-                                print(f"[WARNING] Post-script failed: {e}, mandatory input stream, inventory and event")
+                                print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
                         # --- Save output if requested ---
                         if auto and self.output:
@@ -473,6 +481,24 @@ class AnalysisEvents:
         except Exception as e:
             print(f"[WARNING] Failed station processing: {e}")
             return []
+
+    def _load_post_script(self, script_path: str):
+        if not os.path.exists(script_path):
+            print(f"[WARNING] Post-script file not found: {script_path}")
+            return
+
+        try:
+            spec = importlib.util.spec_from_file_location("post_module", script_path)
+            post_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(post_module)
+
+            if hasattr(post_module, "run") and callable(post_module.run):
+                self.post_script_func = post_module.run
+                print(f"[INFO] Post-script loaded successfully from: {script_path}")
+            else:
+                print(f"[WARNING] Script {script_path} must define a callable `run(stream, inventory, event=None)`")
+        except Exception as e:
+            print(f"[ERROR] Failed to import post-script {script_path}: {e}")
 
 # def _safe_plot_worker(stream, plot_config, inventory, interactive, queue):
 #     try:
