@@ -71,7 +71,9 @@ def _create_actions():
             name="processing", run=_processing, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "processing_daily": _CliActions(
-            name="processing_daily", run=_processing_daily, description=f"Type {__entry_point_name} -h for help.\n")
+            name="processing_daily", run=_processing_daily, description=f"Type {__entry_point_name} -h for help.\n"),
+        "quick": _CliActions(
+            name="processing_quick", run=_quickproc, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -1153,6 +1155,85 @@ def _processing_daily():
         post_script_stage=parsed_args.post_script_stage
     )
     ae.run_waveform_analysis(auto=parsed_args.auto)
+
+def _quickproc():
+
+    parser = ArgumentParser(
+        prog="surfquake quick",
+        description="Quick waveform processing. Designed for rapid, raw file-based workflows.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Examples:
+            Process waveform files with a config and plot interactively:
+                surfquake quickproc \\
+                    -w "./data/*.mseed" \\
+                    -c ./config.yaml \\
+                    -i ./inventory.xml \\
+                    -o ./out \\
+                    --plot_config plot.yaml
+
+        Key Arguments:
+            -w, --wave_files         [REQUIRED] Glob pattern or path to waveform files
+            -c, --config_file        [OPTIONAL] YAML config defining processing steps
+            -i, --inventory_file     [OPTIONAL] Station metadata (StationXML or RESP)
+            -o, --output_folder      [OPTIONAL] Directory to save processed traces
+            -a, --auto               Run in automatic (non-interactive) mode
+            --plot_config            [OPTIONAL] Plotting settings YAML
+            --post_script            [OPTIONAL] Python script to apply to each stream
+            --post_script_stage      When to run post-script: 'before' or 'after' (default: after)
+        """
+    )
+
+    parser.add_argument("-w", "--wave_files", type=str, required=True)
+    parser.add_argument(
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true"
+    )
+    parser.add_argument("-c", "--config_file", type=str, required=False)
+    parser.add_argument("-i", "--inventory_file", type=str, required=False)
+    parser.add_argument("-o", "--output_folder", type=str, required=False)
+    parser.add_argument("--plot_config", type=str)
+    parser.add_argument(
+        "--post_script",
+        help="Path to Python script to apply to each event stream",
+        type=str
+    )
+
+    parser.add_argument(
+        "--post_script_stage",
+        help="When to apply the post-script: 'before' or 'after' plotting",
+        choices=["before", "after"],
+        default="after"
+    )
+
+    parsed_args = parser.parse_args()
+    print(parsed_args)
+
+    if "," in parsed_args.wave_files:
+        # Explicit list of files
+        wave_paths = [make_abs(f.strip()) for f in parsed_args.wave_files.split(",") if f.strip()]
+
+    else:
+        # Wildcard path
+        wave_paths = make_abs(parsed_args.wave_files)
+
+
+     # Build project on-the-fly using wildcard path
+    sp = SurfProject(root_path=wave_paths)
+    sp.add_files()
+
+    # --- Run processing workflow ---
+    ae = AnalysisEvents(
+        output=parsed_args.output_folder,
+        inventory_file=parsed_args.inventory_file,
+        config_file=parsed_args.config_file,
+        surf_projects=[sp],
+        plot_config_file=parsed_args.plot_config,
+        post_script=parsed_args.post_script,
+        post_script_stage=parsed_args.post_script_stage
+    )
+
+    ae.run_fast_waveform_analysis(sp.data_files, auto=False)
+
 
 
 def resolve_path(path: Optional[str]) -> Optional[str]:

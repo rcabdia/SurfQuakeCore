@@ -919,65 +919,66 @@ class PlotProj:
         self.smax = kwargs.pop("smax", 0.3)
         self.slow_grid = kwargs.pop("slow_grid", 0.05)
 
-        try:
-            stime = self.trace_list[0].stats.references[0]
-        except:
-            stime = self.trace_list[0].stats.starttime
-        try:
-            etime = self.trace_list[0].stats.references[1]
-        except:
-            etime = self.trace_list[0].stats.endtime
 
-        print("FK window: ", stime, etime)
-        traces = Stream(self.trace_list)
+        if self.utc_start is not None and self.utc_end is not None:
+            try:
+                stime = self.utc_start
+                etime = self.utc_end
 
-        traces_fk = traces.copy()
-        selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
-        wavenumber = array_analysis.array()
-        self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces_fk, selection, stime, etime,
-                                                                                     self.fmin, self.fmax, self.smax,
-                                                                                     self.slow_grid,
-                                                                                     self.timewindow, self.overlap)
+                print("FK window: ", stime, etime)
+                traces = Stream(self.trace_list)
+                traces_fk = traces.copy()
+                traces_fk.trim(starttime=stime, endtime=etime)
+                selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
+                wavenumber = array_analysis.array()
+                self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces_fk, selection, stime, etime,
+                                                                                             self.fmin, self.fmax, self.smax,
+                                                                                             self.slow_grid,
+                                                                                             self.timewindow, self.overlap)
 
-        # --- Create grid layout with reserved space for colorbar ---
-        self.fig_fk = plt.figure(figsize=(9, 6))
-        self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
-        gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
-                               wspace=0.02)
+                # --- Create grid layout with reserved space for colorbar ---
+                self.fig_fk = plt.figure(figsize=(9, 6))
+                self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
+                gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
+                                       wspace=0.02)
 
-        # Create subplots
-        ax0 = self.fig_fk.add_subplot(gs[0, 0])
-        ax1 = self.fig_fk.add_subplot(gs[1, 0], sharex=ax0)
-        ax2 = self.fig_fk.add_subplot(gs[2, 0], sharex=ax0)
-        ax_cbar = self.fig_fk.add_subplot(gs[:, 1])  # colorbar takes all rows
+                # Create subplots
+                ax0 = self.fig_fk.add_subplot(gs[0, 0])
+                ax1 = self.fig_fk.add_subplot(gs[1, 0], sharex=ax0)
+                ax2 = self.fig_fk.add_subplot(gs[2, 0], sharex=ax0)
+                ax_cbar = self.fig_fk.add_subplot(gs[:, 1])  # colorbar takes all rows
 
-        # Scatter plots
-        sc0 = ax0.scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
-        sc1 = ax1.scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
-        sc2 = ax2.scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
+                # Scatter plots
+                sc0 = ax0.scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
+                sc1 = ax1.scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
+                sc2 = ax2.scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
 
-        # Labels and formatting
-        ax0.set_ylabel("Rel. Power")
-        ax1.set_ylabel("Slowness\n(s/km)")
-        ax2.set_ylabel("BackAzimuth")
-        ax2.set_xlabel("Time (UTC)")
-        ax0.set_title("FK Analysis - Relative Power")
+                # Labels and formatting
+                ax0.set_ylabel("Rel. Power")
+                ax1.set_ylabel("Slowness\n(s/km)")
+                ax2.set_ylabel("BackAzimuth")
+                ax2.set_xlabel("Time (UTC)")
+                ax0.set_title("FK Analysis - Relative Power")
 
-        formatter = mdates.DateFormatter('%H:%M:%S')
-        ax2.xaxis.set_major_formatter(formatter)
-        ax2.tick_params(axis='x', rotation=0)
+                formatter = mdates.DateFormatter('%H:%M:%S')
+                ax2.xaxis.set_major_formatter(formatter)
+                ax2.tick_params(axis='x', rotation=0)
 
-        # Add colorbar
-        cbar = self.fig_fk.colorbar(sc2, cax=ax_cbar)
-        cbar.set_label("Relative Power")
+                # Add colorbar
+                cbar = self.fig_fk.colorbar(sc2, cax=ax_cbar)
+                cbar.set_label("Relative Power")
 
-        plt.tight_layout()
-        plt.show(block=False)
+                plt.tight_layout()
+                plt.show(block=False)
 
-        # Keep figure open
-        while plt.fignum_exists(self.fig_fk.number):
-            plt.pause(0.2)
-            time.sleep(0.1)
+                # Keep figure open
+                while plt.fignum_exists(self.fig_fk.number):
+                    plt.pause(0.2)
+                    time.sleep(0.1)
+            except:
+                print("annot compute fk analysis, please review the inventory and parameter values")
+        else:
+            print("A time window span needs to be selected")
 
     def _on_fk_doubleclick(self, event):
         """On double-click, show time and plot slowness map at that moment."""

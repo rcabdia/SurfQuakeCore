@@ -445,6 +445,76 @@ class AnalysisEvents:
                         print("[INFO] Skipping to next event...")
                         break  # go to next event despite the error
 
+    def run_fast_waveform_analysis(self, data_files, auto: bool = True):
+
+        """
+        Lightweight waveform analysis for raw file-based input using self.data_files.
+        Skips event/model logic, cuts, and segment filters.
+        """
+
+        plot = not auto
+        interactive = False
+
+        station_files = defaultdict(list)
+
+        for file_path in data_files:
+            try:
+                st = read(file_path)
+                for tr in st:
+                    key = f"{tr.stats.network}.{tr.stats.station}"
+                    station_files[key].append((file_path, tr.stats))
+            except Exception as e:
+                print(f"[WARNING] Failed to read file {file_path}: {e}")
+                continue
+
+        tasks = [
+            (file_group, None, None, 0, 0, self.inventory, self._set_header)
+            for file_group in station_files.values()
+        ]
+
+        try:
+            with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                results = pool.map(self._process_station_analysis, tasks)
+
+            all_traces = [tr for group in results for tr in group if tr is not None]
+            full_stream = self._clean_traces(all_traces)
+
+            del all_traces, results
+            gc.collect()
+
+            sp = StreamProcessing(full_stream, self.config)
+            full_stream = sp.run_stream_processing()
+
+            print(f"[INFO] Fast mode: {len(full_stream)} traces processed")
+
+            if self.post_script_func and self.post_script_stage == "before":
+                try:
+                    full_stream = self.post_script_func(full_stream, self.inventory)
+                except Exception as e:
+                    print(f"[WARNING] Post-script (before plotting) failed: {e}")
+
+            if full_stream and plot:
+                plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
+                full_stream = plotter.plot()
+
+                for tr in full_stream:
+                    if hasattr(tr.stats, "picks"):
+                        print(f"Picks found for {tr.id}: {tr.stats.picks}")
+
+            if self.post_script_func and self.post_script_stage == "after":
+                try:
+                    full_stream = self.post_script_func(full_stream, self.inventory)
+                except Exception as e:
+                    print(f"[WARNING] Post-script (after plotting) failed: {e}")
+
+            if auto and self.output:
+                self._write_files(full_stream)
+
+        except Exception as e:
+            print(f"[ERROR] Exception during fast waveform analysis: {e}")
+            import traceback
+            traceback.print_exc()
+
     def _process_station_analysis(self, args):
 
         file_group, _, _, _, _, inventory, set_header_func = args
