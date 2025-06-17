@@ -10,7 +10,8 @@ class PlotCommandPrompt:
         self.plot_proj = plot_proj
         self.prompt_active = False
         self.commands = {
-            "q": self._cmd_next,
+            "n": self._cmd_next,
+            "b": self._cmd_prev,
             "spectrogram": self._cmd_spectrogram,
             "spec": self._cmd_spectrogram,
             "spectrum": self._cmd_spectrum,
@@ -32,6 +33,7 @@ class PlotCommandPrompt:
             - 'next': User typed 'n' to continue
             - 'pick': User wants to return to picking mode
         """
+        
         if self.prompt_active:
             return "next"  # Prevent re-entry
 
@@ -63,7 +65,11 @@ class PlotCommandPrompt:
         self._exit_code = "p"
 
     def _cmd_next(self, args):
-        self.prompt_active = False
+        print("[INFO] Advancing to next subplot set...")
+        self.plot_proj.current_page += 1  # advance page
+        self.plot_proj.clear_plot()  # clear figure
+        self.plot_proj.plot(page=self.plot_proj.current_page)  # replot
+        # Do not set prompt_active = False; stay in prompt!
 
     def _cmd_spectrogram(self, args):
         if len(args) >= 2:
@@ -140,6 +146,15 @@ class PlotCommandPrompt:
             self.plot_proj._run_fk(**params)
         except Exception as e:
              print(f"[ERROR] FK run failed: {e}")
+
+    def _cmd_prev(self, args):
+        if self.plot_proj.current_page > 0:
+            print("[INFO] Returning to previous subplot set...")
+            self.plot_proj.current_page -= 1
+            self.plot_proj.clear_plot()
+            self.plot_proj.plot(page=self.plot_proj.current_page)
+        else:
+            print("[INFO] Already at the first page.")
 
     def _cmd_help(self, args):
         print("Available commands:")

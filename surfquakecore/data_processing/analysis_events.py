@@ -8,7 +8,6 @@
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
 import traceback
-
 import yaml
 from obspy import read_inventory, UTCDateTime
 from obspy.taup import TauPyModel
@@ -39,6 +38,7 @@ class AnalysisEvents:
         self.output = output
         self._exist_folder = False
         self.inventory = None
+        self.post_script_func = None
         self.reference = reference
         self.all_traces = []
         self.surf_projects = surf_projects
@@ -219,7 +219,7 @@ class AnalysisEvents:
     def run_waveform_analysis(self, auto: bool = False):
 
         plot = not auto
-        interactive = not auto
+        interactive = False
 
         if self.surf_projects is None:
             print("No subprojects to process.")
@@ -321,15 +321,16 @@ class AnalysisEvents:
                         break  # automatic mode just continues
 
                 except Exception as e:
-                    print(f"[ERROR] Exception in subproject {i}, event {j}: {e}")
+                    print(f"[ERROR] Exception in subproject {i}, {e}")
                     traceback.print_exc()
                     print("[INFO] Skipping to next event...")
                     break  # go to next event despite the error
 
+
     def run_waveform_cutting(self, cut_start: float, cut_end: float, auto=False):
 
         plot = not auto
-        interactive = not auto
+        interactive = False
 
         if self.surf_projects is None:
             print("No projects to process.")
@@ -499,6 +500,7 @@ class AnalysisEvents:
                 print(f"[WARNING] Script {script_path} must define a callable `run(stream, inventory, event=None)`")
         except Exception as e:
             print(f"[ERROR] Failed to import post-script {script_path}: {e}")
+
 
 # def _safe_plot_worker(stream, plot_config, inventory, interactive, queue):
 #     try:

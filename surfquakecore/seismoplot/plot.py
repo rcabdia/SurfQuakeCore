@@ -105,7 +105,6 @@ class PlotProj:
             self._plot_overlay_traces()
 
         elif plot_type == "standard":
-
             self._plot_standard_traces(page=page)
 
         return self.trace_list  # Return modified trace list
@@ -231,7 +230,7 @@ class PlotProj:
                 plt.show(block=False)
                 self.fig.canvas.draw_idle()
                 plt.pause(0.5)
-                print("[INFO] Type 'command parameter', 'help', 'q' to next, 'b' to previous, 'p' for picking mode")
+                print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' for picking mode")
                 prompt = PlotCommandPrompt(self)
                 result = prompt.run()
                 if result == "p":
@@ -1111,4 +1110,9 @@ class PlotProj:
             sharex=True
         )
         self._span_selector.set_sub_axes(axs)
+
+    def clear_plot(self):
+        if self.fig:
+            plt.close(self.fig)
+            self.fig = None
 
