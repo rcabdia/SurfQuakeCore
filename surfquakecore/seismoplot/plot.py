@@ -38,6 +38,7 @@ from matplotlib.backend_bases import MouseButton
 class PlotProj:
     def __init__(self, stream,
                  plot_config: Optional[dict] = None, **kwargs):
+
         """
         Parameters
         ----------
@@ -45,6 +46,7 @@ class PlotProj:
         plot_config : dict, optional
             Dictionary of plotting preferences.
         """
+
         self.trace_list = list(stream)
         self.inventory = kwargs.pop("inventory", None)
         self.__selector = {}  # Use single underscore to avoid name mangling
@@ -57,13 +59,12 @@ class PlotProj:
             "vspace": 0.05,
             "title_fontsize": 9,
             "show_legend": True,
-            "autosave": False,
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
-            "save_folder": "./plots",
             "pick_output_file": "./picks.csv",
             "sharey": False,
             "show_crosshair": False}
 
+        self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
         # Override defaults with user config if provided
         if plot_config:
@@ -217,29 +218,21 @@ class PlotProj:
         plt.ion()
         plt.tight_layout()
 
-        if self.plot_config["autosave"]:
-            os.makedirs(self.plot_config["save_folder"], exist_ok=True)
-            fig_path = os.path.join(
-                self.plot_config["save_folder"],
-                f"waveform_plot_{page + 1}.png"
-            )
-            plt.savefig(fig_path, dpi=150)
-            print(f"[INFO] Plot saved to {fig_path}")
-        else:
-            if self.enable_command_prompt:
-                plt.show(block=False)
-                self.fig.canvas.draw_idle()
-                plt.pause(0.5)
-                print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' for picking mode")
-                prompt = PlotCommandPrompt(self)
-                result = prompt.run()
-                if result == "p":
-                    self.enable_command_prompt = False
-                    self._register_span_selector()
-                    plt.show(block=True)
-            else:
+
+        if self.enable_command_prompt:
+            plt.show(block=False)
+            self.fig.canvas.draw_idle()
+            plt.pause(0.5)
+            print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' for picking mode")
+            prompt = PlotCommandPrompt(self)
+            result = prompt.run()
+            if result == "p":
+                self.enable_command_prompt = False
                 self._register_span_selector()
                 plt.show(block=True)
+        else:
+            self._register_span_selector()
+            plt.show(block=True)
 
 
     def _plot_record_section(self):
@@ -307,12 +300,6 @@ class PlotProj:
         if cfg["show_legend"]:
             ax.legend(fontsize=6)
 
-        if cfg["autosave"]:
-            os.makedirs(cfg["save_folder"], exist_ok=True)
-            fig_path = os.path.join(cfg["save_folder"], f"record_section.png")
-            plt.savefig(fig_path, dpi=150)
-            print(f"[INFO] Record section saved to {fig_path}")
-
         if self.enable_command_prompt:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
@@ -350,14 +337,8 @@ class PlotProj:
         if self.plot_config["show_legend"]:
             ax.legend(fontsize=6)
 
-        if self.plot_config["autosave"]:
-            os.makedirs(self.plot_config["save_folder"], exist_ok=True)
-            fig_path = os.path.join(self.plot_config["save_folder"], "overlay_plot.png")
-            plt.savefig(fig_path, dpi=150)
-            print(f"[INFO] Overlay plot saved to {fig_path}")
-        else:
-            plt.tight_layout()
-            plt.show(block=True)
+        plt.tight_layout()
+        plt.show(block=True)
 
     def _setup_pick_interaction(self):
         def filtered_doubleclick(event):

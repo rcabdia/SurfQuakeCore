@@ -19,6 +19,9 @@ class PlotCommandPrompt:
             "cwt": self._cmd_cwt,
             "p": self._cmd_pick,
             "fk": self._cmd_fk,
+            "plot_type": self._cmd_type,
+            "cut": self._cmd_cut,
+            "write": self._cmd_write,
             "help": self._cmd_help
         }
 
@@ -156,12 +159,283 @@ class PlotCommandPrompt:
         else:
             print("[INFO] Already at the first page.")
 
+    def _cmd_type(self, args):
+        """
+        Change the plotting mode.
+        Usage: mode <plot_mode>
+        Example: mode time | mode filtered | mode summary
+        """
+        if len(args) != 2:
+            print("Usage: mode <plot_type>")
+            return
+
+        new_mode = args[1].lower()
+        if new_mode not in self.plot_proj.available_modes:
+            print(f"[ERROR] Unknown mode '{new_mode}'. Available plot types: {', '.join(self.plot_proj.available_types)}")
+            return
+
+        self.plot_proj.plot_config["plot_type"] = new_mode
+        print(f"[INFO] Plot type changed to '{new_mode}'")
+        self.plot_proj.clear_plot()
+        self.plot_proj.plot(page=self.plot_proj.current_page)
+
+    def _cmd_write(self, args):
+
+        """
+        Write currently displayed traces to disk in HDF5 format.
+
+        Usage:
+            write --folder_path <output_folder>
+        """
+
+        import os
+        folder_path = None
+
+        # Parse argument for folder path
+        it = iter(args[1:])
+        for arg in it:
+            if arg == "--folder_path":
+                try:
+                    folder_path = next(it)
+                except StopIteration:
+                    print("[ERROR] Missing value after --folder_path")
+                    return
+
+        if not folder_path:
+            print("[ERROR] --folder_path must be specified")
+            return
+
+        # Ensure the output directory exists
+        if not os.path.exists(folder_path):
+            try:
+                os.makedirs(folder_path)
+                print(f"[INFO] Created folder: {folder_path}")
+            except Exception as e:
+                print(f"[ERROR] Failed to create folder '{folder_path}': {e}")
+                return
+
+        # Get displayed traces only
+        displayed_traces = getattr(self.plot_proj, "displayed_traces", None)
+        if not displayed_traces:
+            print("[WARN] No traces currently displayed to write.")
+            return
+
+        try:
+            self._write_files(displayed_traces, folder_path)
+        except Exception as e:
+            print(f"[ERROR] Failed to write displayed traces: {e}")
+
+    def _write_files(self, stream, output_folder):
+        """
+        Write each trace in the stream to a unique file in HDF5 format.
+
+        Parameters
+        ----------
+        stream : obspy.Stream
+            Stream to be written.
+        output_folder : str
+            Folder where files should be written.
+        """
+        import os
+
+        errors = False
+
+        for tr in stream:
+            try:
+                t1 = tr.stats.starttime
+                base_name = f"{tr.id}.D.{t1.year}.{t1.julday}"
+                path_output = os.path.join(output_folder, base_name)
+
+                counter = 1
+                while os.path.exists(path_output + ".h5"):
+                    path_output = os.path.join(output_folder, f"{base_name}_{counter}")
+                    counter += 1
+
+                path_output += ".h5"
+
+                print(f"[INFO] {tr.id} - Writing to {path_output}")
+                tr.write(path_output, format="H5")
+
+            except Exception as e:
+                errors = True
+                print(f"[ERROR] Could not write {tr.id}: {e}")
+
+        if errors:
+            print(f"[WARN] Writing finished with some errors.")
+        else:
+            print(f"[INFO] All traces written successfully to: {output_folder}")
+
+    def _cmd_cut(self, args):
+        """
+        Cut traces around a phase or reference time.
+
+        Usage:
+            cut --phase <phase_name> <t_before> <t_after>
+            cut --reference <t_before> <t_after>
+        """
+
+        if "--phase" in args:
+            try:
+                i = args.index("--phase")
+                phase_name = args[i + 1]
+                t_before = float(args[i + 2])
+                t_after = float(args[i + 3])
+            except (IndexError, ValueError):
+                print("[ERROR] Usage: cut --phase <name> <t_before> <t_after>")
+                return
+
+            new_traces = []
+            for tr in self.plot_proj.trace_list:
+                phase_time = tr.stats.get(phase_name)
+                if not phase_time:
+                    print(f"[WARN] Trace {tr.id} missing phase '{phase_name}' — skipped.")
+                    continue
+                t1 = phase_time - t_before
+                t2 = phase_time + t_after
+                try:
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+
+        elif "--reference" in args:
+            try:
+                i = args.index("--reference")
+                t_before = float(args[i + 1])
+                t_after = float(args[i + 2])
+            except (IndexError, ValueError):
+                print("[ERROR] Usage: cut --reference <t_before> <t_after>")
+                return
+
+            ref_time = getattr(self.plot_proj, "last_reference", None)
+            if not ref_time:
+                print("[ERROR] No reference time found. Cannot cut.")
+                return
+
+            t1 = ref_time - t_before
+            t2 = ref_time + t_after
+
+            new_traces = []
+            for tr in self.plot_proj.trace_list:
+                try:
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+        else:
+            print("[ERROR] You must specify --phase or --reference")
+            return
+
+        if not new_traces:
+            print("[WARN] No traces were successfully cut.")
+            return
+
+        # Apply cuts to plot_proj
+        self.plot_proj.trace_list = new_traces
+        self.plot_proj.current_page = 0
+        self.plot_proj.clear_plot()
+        self.plot_proj.plot(page=0)
+        print(f"[INFO] Cutting complete. {len(new_traces)} traces updated and replotted.")
+
+    def _cmd_cut(self, args):
+        """
+        Trim traces based on either a named phase or the last reference time.
+
+        Usage:
+            cut --phase <phase_name> <t_before> <t_after>
+            cut --reference <t_before> <t_after>
+        """
+        from obspy import UTCDateTime
+
+        # Detect mode
+        if "--phase" in args:
+            try:
+                idx = args.index("--phase")
+                phase_name = args[idx + 1]
+                t_before = float(args[idx + 2])
+                t_after = float(args[idx + 3])
+            except (IndexError, ValueError):
+                print("[ERROR] Usage: cut --phase <name> <t_before> <t_after>")
+                return
+
+            new_traces = []
+            for tr in self.plot_proj.trace_list:
+                phase_time = None
+                if hasattr(tr.stats, "picks"):
+                    for pick in tr.stats.picks:
+                        if pick.get("phase") == phase_name:
+                            phase_time = pick.get("time")
+                            break
+
+                if phase_time is None:
+                    print(f"[WARN] {tr.id}: phase '{phase_name}' not found.")
+                    continue
+
+                try:
+                    t1 = phase_time - t_before
+                    t2 = phase_time + t_after
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Failed to trim {tr.id}: {e}")
+
+        elif "--reference" in args:
+            try:
+                idx = args.index("--reference")
+                t_before = float(args[idx + 1])
+                t_after = float(args[idx + 2])
+            except (IndexError, ValueError):
+                print("[ERROR] Usage: cut --reference <t_before> <t_after>")
+                return
+
+            new_traces = []
+            for tr in self.plot_proj.trace_list:
+                ref_list = getattr(tr.stats, "references", [])
+                if not ref_list:
+                    print(f"[WARN] {tr.id}: no reference times found.")
+                    continue
+
+                ref_time = ref_list[-1]  # Use the most recent one
+                try:
+                    t1 = ref_time - t_before
+                    t2 = ref_time + t_after
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Failed to trim {tr.id}: {e}")
+        else:
+            print("[ERROR] Specify either --phase or --reference.")
+            return
+
+        if not new_traces:
+            print("[WARN] No traces were trimmed successfully.")
+            return
+
+        # Update trace list and reset plot
+        self.plot_proj.trace_list = new_traces
+        self.plot_proj.current_page = 0
+        self.plot_proj.clear_plot()
+        self.plot_proj.plot(page=0)
+        print(f"[INFO] Trimmed {len(new_traces)} traces and reloaded plot.")
+
     def _cmd_help(self, args):
         print("Available commands:")
-        print("  p                   Return to interactive picking mode")
-        print("  spectrum <index>|all [axis_type[loglog,xlog,ylog]. Example: >>sp 0 | >>sp all")
-        print("  spec <idx> [win overlap]  Plot spectrogram. Example: >>spec 0")
-        print("  cwt <idx> <wavelet[cm,mh,pa]> <param> [fmin fmax]  Plot wavelet. Example: >>cwt 0 cm 6 0.5 8")
-        print("  fk --fmin  <fmin> --fmax <fmax> [--slow_grid --timewindow overlap]. Example: >> fk --fmin 0.8 --fmax "
-              "2.0")
-        print("  n                   Next set of traces / exit prompt")
+        print("  p                             Return to interactive picking mode")
+        print("  n                             Next set of traces / exit prompt")
+        print("  b                             Previous set of traces")
+        print("  spectrum <index>|all [type]  Plot amplitude spectrum (type: loglog, xlog, ylog).")
+        print("                               Example: >> sp 0 | >> sp all ylog")
+        print("  spec <idx> [win overlap]     Plot spectrogram for one trace.")
+        print("                               Example: >> spec 0 5.0 50")
+        print("  cwt <idx> <wavelet> <param> [fmin fmax]  Continuous wavelet transform.")
+        print("                               Wavelets: cm (Morlet), mh, pa")
+        print("                               Example: >> cwt 0 cm 6 0.5 8")
+        print("  fk [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>]")
+        print("                               Run FK analysis. Example: >> fk --fmin 0.8 --fmax 2.0")
+        print("  plot_type <type>             Change plot mode. Types: standard, record, overlay")
+        print("                               Example: >> plot_type overlay")
+        print("  cut --phase <name> <before> <after>     Trim traces using phase picks (e.g., 'P', 'S')")
+        print("  cut --reference <before> <after>        Trim traces using last reference time")
+        print("  write --folder_path <path>   Write current traces to folder in HDF5 format.")
+        print("                               Example: >> write --folder_path ./output")
+        print("  help                          Show this help message")
