@@ -2,7 +2,7 @@ from obspy import Stream, Trace, UTCDateTime
 import numpy as np
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
-    trace_envelope, whiten_new
+    trace_envelope, whiten_new, trim_trace
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
@@ -182,6 +182,9 @@ class SeismogramData:
                     else:
                         tr = trace_envelope(tr, method=_config['method'])
 
+                if _config['name'] == 'cut':
+                    tr = trim_trace(tr, _config['mode'], _config['t1'], _config['t2'])
+
             return tr
 
         except Exception as e:
@@ -227,6 +230,8 @@ class StreamProcessing:
                     self.stream = self.apply_shift(step)
                 elif method_name == "synch":
                     self.stream = self.apply_synch(step)
+                elif method_name == "concat":
+                    self.stream = self.apply_concat()
 
             return self.stream
 
@@ -348,4 +353,7 @@ class StreamProcessing:
 
         return self.stream
 
+    def apply_concat(self):
+        self.stream.merge(method=1, fill_value='interpolate')
+        return self.stream
 

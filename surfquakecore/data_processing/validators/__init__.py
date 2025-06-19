@@ -1,3 +1,4 @@
+from .cut import validate_cut
 from .rmean import validate_rmean
 from .stack import validate_stack
 from .synch import validate_synch
@@ -44,7 +45,8 @@ CHECK_DISPATCH = {
     'cross_correlate': validate_cross_correlate,
     'stack': validate_stack,
     'synch': validate_synch,
-    'envelope': validate_envelope
+    'envelope': validate_envelope,
+    'cut': validate_cut
 }
 
 def validate_step(step_type, config):

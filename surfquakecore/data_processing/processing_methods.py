@@ -9,6 +9,7 @@ import copy
 import scipy, numpy as np
 import math
 import pywt
+from obspy import UTCDateTime
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheby1, sosfilt
 from surfquakecore.utils.obspy_utils import Filters
@@ -601,4 +602,76 @@ def safe_downsample(trace, target_rate, max_factor=10, pre_filter=True, toleranc
         tr.resample(new_rate)
 
     return tr
+
+def trim_trace(trace, mode: str, *args):
+
+    """
+    Trim a single trace based on a mode: 'reference', 'phase', or 'absolute'.
+
+    Parameters
+    ----------
+    trace : obspy.Trace
+        The trace to be trimmed.
+
+    mode : str
+        One of: 'reference', 'phase', or 'absolute'.
+
+    *args : tuple
+        - If mode == 'reference': (time_before, time_after)
+        - If mode == 'phase': (phase_name, time_before, time_after)
+        - If mode == 'absolute': (start_time_str, end_time_str)
+    example_usage:
+        trimmed = trim_trace(tr, "reference", 10, 30)
+        trimmed = trim_trace(tr, "phase", "P", 5, 20)
+        trimmed = trim_trace(tr, "absolute", "2025-06-19 12:00:00", "2025-06-19 12:03:00")
+
+    Returns
+    -------
+    obspy.Trace
+        A trimmed copy of the original trace.
+
+    Raises
+    ------
+    ValueError if mode or arguments are invalid, or trimming cannot be done.
+    """
+
+    if mode == "reference":
+        if len(args) != 2:
+            raise ValueError("Expected: trim_trace(trace, 'reference', time_before, time_after)")
+        time_before, time_after = float(args[0]), float(args[1])
+        references = getattr(trace.stats, "references", [])
+        if not references:
+            raise ValueError("No references found in trace.stats.references")
+        ref_time = references[-1]
+        t1 = ref_time - time_before
+        t2 = ref_time + time_after
+
+    elif mode == "phase":
+        if len(args) != 3:
+            raise ValueError("Expected: trim_trace(trace, 'phase', phase_name, time_before, time_after)")
+        phase_name = args[0]
+        time_before, time_after = float(args[1]), float(args[2])
+        picks = getattr(trace.stats, "picks", [])
+        phase_time = next((p["time"] for p in picks if p.get("phase") == phase_name), None)
+        if not phase_time:
+            raise ValueError(f"Phase '{phase_name}' not found in trace.stats.picks")
+        t1 = phase_time - time_before
+        t2 = phase_time + time_after
+
+    elif mode == "absolute":
+        if len(args) != 2:
+            raise ValueError("Expected: trim_trace(trace, 'absolute', start_time_str, end_time_str)")
+        try:
+            t1 = UTCDateTime(args[0])
+            t2 = UTCDateTime(args[1])
+        except Exception as e:
+            raise ValueError(f"Invalid datetime format: {e}")
+
+    else:
+        raise ValueError(f"Unsupported mode: {mode}")
+
+    try:
+        return trace.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+    except Exception as e:
+        raise ValueError(f"Trimming failed: {e}")
 

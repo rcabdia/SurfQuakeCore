@@ -836,6 +836,7 @@ def _processing():
             -e events.xml \\
             -c config.yaml \\
             -o ./output_folder \\
+            --phases P,S,PcP \\
             --plot_config plot_settings.yaml \\
             --post_script custom_postproc.py \\
             --post_script_stage after
@@ -848,6 +849,7 @@ def _processing():
         -c, --config_file          Processing configuration file (YAML)
         -o, --output_folder        Folder where processed files are saved
         -a, --auto                 Run in automatic mode (no plotting or prompts)
+        --phases                   Comma-separated list of phases for arrival estimation (e.g., P,S)
         --plot_config              Optional plot configuration file (YAML)
         --post_script              Python script to apply per event stream
         --post_script_stage        When to apply the post-script: before | after (default: after)
@@ -922,6 +924,8 @@ def _processing():
     if parsed_args.phases:
         phase_list = [p.strip() for p in parsed_args.phases.split(",") if p.strip()]
         print(f"[INFO] Using phase list: {phase_list}")
+    else:
+        phase_list = None
 
     # 1. Estimate the start and end time
     if parsed_args.cut_start_time is not None:
@@ -983,7 +987,8 @@ def _processing():
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp_sub_projects, post_script=parsed_args.post_script,
                             post_script_stage=parsed_args.post_script_stage,
-                            plot_config_file=parsed_args.plot_config, reference=parsed_args.reference, phases=phase_list)
+                            plot_config_file=parsed_args.plot_config, reference=parsed_args.reference,
+                            phase_list=phase_list)
         sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
     else:
@@ -991,7 +996,7 @@ def _processing():
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp, post_script=parsed_args.post_script, post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=parsed_args.plot_config,
-                            reference=parsed_args.reference, phases=phase_list)
+                            reference=parsed_args.reference, phase_list=phase_list)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
 

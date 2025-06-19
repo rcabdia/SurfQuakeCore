@@ -31,6 +31,7 @@ class PlotCommandPrompt:
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
             "concat": self._cmd_concat,
+            "shift": self._cmd_shift,
             "write": self._cmd_write,
             "help": self._cmd_help,
             "exit": self._cmd_exit
@@ -474,6 +475,59 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Failed to concatenate traces: {e}")
 
+    def _cmd_shift(self, args):
+        """
+        Align traces by phase or reference.
+
+        Usage:
+            shift --phase <phase_name>
+            shift --reference
+        """
+        from obspy import UTCDateTime
+
+        if "--phase" in args:
+            try:
+                idx = args.index("--phase")
+                phase_name = args[idx + 1]
+            except (IndexError, ValueError):
+                print("[ERROR] Usage: shift --phase <phase_name>")
+                return
+
+            for tr in self.plot_proj.trace_list:
+                pick_time = None
+                picks = getattr(tr.stats, "picks", [])
+                for pick in picks:
+                    if pick.get("phase") == phase_name:
+                        pick_time = pick.get("time")
+                        break
+                if pick_time:
+                    shift_amount = pick_time - tr.stats.starttime
+                    tr.stats.starttime = UTCDateTime(0)  # align to zero
+                    tr.data = tr.data[int(shift_amount / tr.stats.delta):]  # rough alignment
+                else:
+                    print(f"[WARN] Phase '{phase_name}' not found in {tr.id}")
+
+        elif "--reference" in args:
+            for tr in self.plot_proj.trace_list:
+                references = getattr(tr.stats, "references", [])
+                if references:
+                    ref_time = references[-1]
+                    shift_amount = ref_time - tr.stats.starttime
+                    tr.stats.starttime = UTCDateTime(0)
+                    tr.data = tr.data[int(shift_amount / tr.stats.delta):]
+                else:
+                    print(f"[WARN] No reference found in {tr.id}")
+
+        else:
+            print("[ERROR] Must specify either --phase or --reference")
+            return
+
+        # Replot from beginning
+        self.plot_proj.current_page = 0
+        self.plot_proj.clear_plot()
+        self.plot_proj.plot(page=0)
+        print("[INFO] Traces shifted and replotted.")
+
     def _cmd_help(self, args):
 
         print("Available commands:")
@@ -492,6 +546,8 @@ class PlotCommandPrompt:
         print("  plot_type <type>             Change plot mode. Types: standard, record, overlay")
         print("                               Example: >> plot_type overlay")
         print("  concat                           Merge/concatenate traces with same ID using ObsPy")
+        print("  shift --phase <name>              Shift traces to align by phase pick (e.g., 'P')")
+        print("  shift --reference                 Shift traces to align by last reference time")
         print("  cut --phase <name> <before> <after>     Trim traces using phase picks (e.g., 'P', 'S')")
         print("  cut --reference <before> <after>        Trim traces using last reference time")
         print("  write --folder_path <path>   Write current traces to folder in HDF5 format.")
