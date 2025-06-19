@@ -33,7 +33,8 @@ class AnalysisEvents:
                  surf_projects: List[SurfProject] = None, plot_config_file: Optional[str] = None,
                  post_script: Optional[str] = None,
                  post_script_stage: Optional[str] = "before", time_segment_start: Optional[str] = None,
-                 time_segment_end: Optional[str] = None, reference: Optional[str] = None):
+                 time_segment_end: Optional[str] = None, reference: Optional[str] = None,
+                 phase_list: Optional[list] = None):
 
         self.model = TauPyModel("iasp91")
         self.output = output
@@ -48,6 +49,7 @@ class AnalysisEvents:
         self.time_segment_start = time_segment_start
         self.time_segment_end = time_segment_end
         self.post_script_stage = post_script_stage
+        self.phase_list = phase_list
 
         if inventory_file:
             try:
@@ -124,7 +126,11 @@ class AnalysisEvents:
                 distance_m, az, baz = gps2dist_azimuth(sta_coords[0], sta_coords[1], lat, lon)
                 distance_deg = distance_m / 1000 / 111.19
 
-                arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg)
+                if self.phase_list:
+                    arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg,
+                                                      phase_list=self.phase_list)
+                else:
+                    arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg)
                 if not arrivals:
                     raise ValueError("No valid arrivals returned by TauPyModel.")
 

@@ -804,11 +804,13 @@ def _buildmticonfig():
 
 
 def _processing():
+
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} surfquake processing",
         description="Process or cut waveforms associated with seismic events.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
+    
     Overview:
         Process or cut waveforms associated with seismic events.
         You can:
@@ -877,6 +879,9 @@ def _processing():
                                                      "needs to be estimated else pick time is the reference, default event",
                            type=str, required=False)
 
+    arg_parse.add_argument("--phases", help="Comma-separated list of phases to use for travel "
+                                            "time estimation (e.g., P,S,PcP)", type=str, required=False)
+
     arg_parse.add_argument("-n", "--net", help="project net filter", type=str, required=False)
 
     arg_parse.add_argument("-s", "--station", help="project station filter", type=str, required=False)
@@ -913,6 +918,10 @@ def _processing():
 
     parsed_args = arg_parse.parse_args()
 
+    # Parse phases if provided
+    if parsed_args.phases:
+        phase_list = [p.strip() for p in parsed_args.phases.split(",") if p.strip()]
+        print(f"[INFO] Using phase list: {phase_list}")
 
     # 1. Estimate the start and end time
     if parsed_args.cut_start_time is not None:
@@ -974,7 +983,7 @@ def _processing():
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp_sub_projects, post_script=parsed_args.post_script,
                             post_script_stage=parsed_args.post_script_stage,
-                            plot_config_file=parsed_args.plot_config, reference=parsed_args.reference)
+                            plot_config_file=parsed_args.plot_config, reference=parsed_args.reference, phases=phase_list)
         sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
     else:
@@ -982,7 +991,7 @@ def _processing():
         sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
                             sp, post_script=parsed_args.post_script, post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=parsed_args.plot_config,
-                            reference=parsed_args.reference)
+                            reference=parsed_args.reference, phases=phase_list)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
 
