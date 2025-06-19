@@ -701,6 +701,7 @@ class PlotProj:
             time.sleep(0.1)
 
     def _plot_all_spectra(self, axis_type):
+
         stime_trim = etime_trim = None
         self.fig_spec, self.ax_spec = plt.subplots()
 
@@ -717,30 +718,34 @@ class PlotProj:
             print("Not endtime set")
 
         if stime_trim is not None and etime_trim is not None:
+
             print("Spectrum window: ", stime_trim, etime_trim)
             st.trim(starttime=stime_trim, endtime=etime_trim)
 
 
-        for trace in st:
-            spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
-            if axis_type == "loglog":
-                self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
-            elif axis_type == "xlog":
-                self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
-            elif axis_type == "ylog":
-                self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
+            for trace in st:
+                spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
+                if axis_type == "loglog":
+                    self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+                elif axis_type == "xlog":
+                    self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
+                elif axis_type == "ylog":
+                    self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
 
-        self.ax_spec.set_xlabel("Frequency (Hz)")
-        self.ax_spec.set_ylabel("Amplitude")
-        self.ax_spec.legend(fontsize=6)
-        plt.grid(True, which="both", ls="-", color='grey')
-        plt.tight_layout()
-        plt.show(block=False)
+            self.ax_spec.set_xlabel("Frequency (Hz)")
+            self.ax_spec.set_ylabel("Amplitude")
+            self.ax_spec.legend(fontsize=6)
+            plt.grid(True, which="both", ls="-", color='grey')
+            plt.tight_layout()
+            plt.show(block=False)
 
-        # Poll until the figure is closed
-        while plt.fignum_exists(self.fig_spec.number):
-            plt.pause(0.2)
-            time.sleep(0.1)
+            # Poll until the figure is closed
+            while plt.fignum_exists(self.fig_spec.number):
+                plt.pause(0.2)
+                time.sleep(0.1)
+        else:
+            print("Please select set starttime and endtime using span selector, "
+                  "click right mouse and dragging it to the right")
 
     def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0):
 

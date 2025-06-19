@@ -3,12 +3,21 @@
 """
 plot_command_prompt.py
 """
-
+import os
+import readline
+import atexit
 
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
         self.plot_proj = plot_proj
         self.prompt_active = False
+        histfile = os.path.expanduser("~/.plot_command_history")
+        try:
+            readline.read_history_file(histfile)
+        except FileNotFoundError:
+            pass
+
+        atexit.register(readline.write_history_file, histfile)
         self.commands = {
             "n": self._cmd_next,
             "b": self._cmd_prev,
@@ -21,9 +30,27 @@ class PlotCommandPrompt:
             "fk": self._cmd_fk,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
+            "concat": self._cmd_concat,
             "write": self._cmd_write,
-            "help": self._cmd_help
+            "help": self._cmd_help,
+            "exit": self._cmd_exit
         }
+
+    def _cmd_exit(self, args):
+        """
+        Exit the plot and close the interactive session.
+        Usage: exit
+        """
+        import matplotlib.pyplot as plt
+
+        print("[INFO] Exiting interactive plotting session.")
+        self.prompt_active = False
+        self._exit_code = "exit"
+
+        try:
+            plt.close(self.plot_proj.fig)
+        except Exception:
+            pass  # In case fig is None or already closed
 
     def run(self) -> str:
         """
@@ -418,7 +445,37 @@ class PlotCommandPrompt:
         self.plot_proj.plot(page=0)
         print(f"[INFO] Trimmed {len(new_traces)} traces and reloaded plot.")
 
+    def _cmd_concat(self, args):
+        """
+        Concatenate traces by station/component using ObsPy's merge method.
+
+        Usage:
+            concat
+        Notes:
+            - This applies to all traces in trace_list.
+            - Overlapping segments are handled with default 'interpolate'.
+        """
+        from obspy import Stream
+
+        try:
+            st = Stream(self.plot_proj.trace_list)
+            print(f"[INFO] Merging {len(st)} trace segments...")
+
+            st.merge(method=1, fill_value='interpolate')  # method=1 = interpolate across gaps
+            self.plot_proj.trace_list = list(st)
+
+            # Reset plot
+            self.plot_proj.current_page = 0
+            self.plot_proj.clear_plot()
+            self.plot_proj.plot(page=0)
+
+            print(f"[INFO] Concatenation complete. Now {len(st)} traces after merge.")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to concatenate traces: {e}")
+
     def _cmd_help(self, args):
+
         print("Available commands:")
         print("  p                             Return to interactive picking mode")
         print("  n                             Next set of traces / exit prompt")
@@ -434,8 +491,10 @@ class PlotCommandPrompt:
         print("                               Run FK analysis. Example: >> fk --fmin 0.8 --fmax 2.0")
         print("  plot_type <type>             Change plot mode. Types: standard, record, overlay")
         print("                               Example: >> plot_type overlay")
+        print("  concat                           Merge/concatenate traces with same ID using ObsPy")
         print("  cut --phase <name> <before> <after>     Trim traces using phase picks (e.g., 'P', 'S')")
         print("  cut --reference <before> <after>        Trim traces using last reference time")
         print("  write --folder_path <path>   Write current traces to folder in HDF5 format.")
         print("                               Example: >> write --folder_path ./output")
+        print("  exit                            Close plot and exit interactive prompt")
         print("  help                          Show this help message")
