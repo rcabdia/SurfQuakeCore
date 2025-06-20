@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from dateutil import parser
 from multiprocessing import freeze_support
 from typing import Optional
+
+from matplotlib import pyplot as plt
+
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
@@ -1290,6 +1293,7 @@ Examples:
         print("hola")
         obj = TraceSpectrogramResult.from_pickle(args.file)
         obj.plot_spectrogram()
+
 
 def resolve_path(path: Optional[str]) -> Optional[str]:
     if path is None:

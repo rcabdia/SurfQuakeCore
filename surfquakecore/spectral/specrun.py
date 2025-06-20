@@ -1,16 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 spectools
 """
+
 import os
 import pickle
 import gzip
+import platform
 import numpy as np
 from matplotlib import gridspec
 from matplotlib.ticker import ScalarFormatter
 
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
+
 
 class TraceSpectrumResult:
     def __init__(self, trace, spectrum=None):
@@ -25,21 +29,28 @@ class TraceSpectrumResult:
 
         self.spectrum, self.freq = SpectrumTool.compute_spectrum(self.trace.data, self.trace.stats.delta,
                                                                  mode=method)
-        self.method=method
+        self.method = method
 
     def plot_spectrum(self, axis_type="loglog"):
-        import matplotlib.pyplot as plt
 
+        import matplotlib.pyplot as plt
+        import matplotlib as mplt
+
+        if platform.system() == 'Darwin':
+            mplt.use("MacOSX")
+        elif platform.system() == 'Linux':
+            mplt.use("TkAgg")
 
         fig, ax = plt.subplots()
+
         if axis_type == "loglog":
             ax.loglog(self.freq, self.spectrum, linewidth=0.75)
         elif axis_type == "xlog":
-            ax.semilogx(self.freq, self.spectrum)
+            ax.semilogx(self.freq, self.spectrum, linewidth=0.75)
         elif axis_type == "ylog":
-            ax.semilogy(self.freq, self.spectrum)
+            ax.semilogy(self.freq, self.spectrum, linewidth=0.75)
         else:
-            ax.plot(self.freq, self.spectrum)
+            print("No accepted axis_type: available loglog, xlog and ylog")
 
         ax.set_ylim(self.spectrum.min() / 10.0, self.spectrum.max() * 100.0)
         ax.set_xlabel("Frequency (Hz)")
@@ -88,7 +99,6 @@ class TraceSpectrumResult:
 
         print(f"[INFO] {self.trace.id} - Writing spectrum to {path_output}")
 
-
     @staticmethod
     def from_pickle(filepath: str, compress: bool = True):
         """
@@ -105,6 +115,7 @@ class TraceSpectrumResult:
 
         return obj
 
+
 class TraceSpectrogramResult:
     def __init__(self, trace, spectrogram=None):
         self.trace = trace
@@ -114,16 +125,20 @@ class TraceSpectrogramResult:
     def compute_spectrogram(self, win=5.0, overlap_percent=50.0, linf=0, lsup=None):
 
         if lsup is None:
-            lsup = int(self.trace.stats.sampling_rate//2)
+            lsup = int(self.trace.stats.sampling_rate // 2)
 
         step_percentage = (100 - overlap_percent) * 1E-2
         self.spectrogram, self.num_steps, self.time, self.freq = \
             SpectrumTool.compute_spectrogram(self.trace.data, int(win * self.trace.stats.sampling_rate),
                                              self.trace.stats.delta, linf, lsup, step_percentage)
 
-
     def plot_spectrogram(self):
         import matplotlib.pyplot as plt
+        import matplotlib as mplt
+        if platform.system() == 'Darwin':
+            mplt.use("MacOSX")
+        elif platform.system() == 'Linux':
+            mplt.use("TkAgg")
 
         self.fig_spec = plt.figure(figsize=(10, 5))
         gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
@@ -210,4 +225,3 @@ class TraceSpectrogramResult:
             raise TypeError("Pickle file does not contain a TraceSpectrogramResult object.")
 
         return obj
-
