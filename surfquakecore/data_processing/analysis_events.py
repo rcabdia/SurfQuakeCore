@@ -479,42 +479,69 @@ class AnalysisEvents:
         ]
 
         try:
-            with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                results = pool.map(self._process_station_analysis, tasks)
+            while True:
+                with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                    results = pool.map(self._process_station_analysis, tasks)
 
-            all_traces = [tr for group in results for tr in group if tr is not None]
-            full_stream = self._clean_traces(all_traces)
+                all_traces = [tr for group in results for tr in group if tr is not None]
+                full_stream = self._clean_traces(all_traces)
 
-            del all_traces, results
-            gc.collect()
+                del all_traces, results
+                gc.collect()
 
-            sp = StreamProcessing(full_stream, self.config)
-            full_stream = sp.run_stream_processing()
+                sp = StreamProcessing(full_stream, self.config)
+                full_stream = sp.run_stream_processing()
 
-            print(f"[INFO] Fast mode: {len(full_stream)} traces processed")
+                print(f"[INFO] Fast mode: {len(full_stream)} traces processed")
 
-            if self.post_script_func and self.post_script_stage == "before":
-                try:
-                    full_stream = self.post_script_func(full_stream, self.inventory)
-                except Exception as e:
-                    print(f"[WARNING] Post-script (before plotting) failed: {e}")
+                if self.post_script_func and self.post_script_stage == "before":
+                    try:
+                        full_stream = self.post_script_func(full_stream, self.inventory)
+                    except Exception as e:
+                        print(f"[WARNING] Post-script (before plotting) failed: {e}")
 
-            if full_stream and plot:
-                plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
-                full_stream = plotter.plot()
 
-                for tr in full_stream:
-                    if hasattr(tr.stats, "picks"):
-                        print(f"Picks found for {tr.id}: {tr.stats.picks}")
+                if full_stream and plot:
+                    plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
+                    full_stream = plotter.plot()
 
-            if self.post_script_func and self.post_script_stage == "after":
-                try:
-                    full_stream = self.post_script_func(full_stream, self.inventory)
-                except Exception as e:
-                    print(f"[WARNING] Post-script (after plotting) failed: {e}")
+                    for tr in full_stream:
+                        if hasattr(tr.stats, "picks"):
+                            print(f"Picks found for {tr.id}: {tr.stats.picks}")
 
-            if auto and self.output:
-                self._write_files(full_stream)
+                if self.post_script_func and self.post_script_stage == "after":
+                    try:
+                        full_stream = self.post_script_func(full_stream, self.inventory)
+                    except Exception as e:
+                        print(f"[WARNING] Post-script (after plotting) failed: {e}")
+
+                if auto and self.output:
+                    self._write_files(full_stream)
+
+                # --- User prompt for next action ---
+                if plot:
+                    user_choice = input(
+                        f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
+                        f"'redo' to reprocess this event, or 'exit': "
+                    ).strip().lower()
+
+                    if user_choice == "c":
+                        break  # Exit the while-loop → go to next event
+
+                    elif user_choice == "redo":
+                        print(f"[INFO] Loading parametrization and Reprocessing...")
+                        self.config = self.load_analysis_configuration(self.config_file)
+                        continue  # Rerun same event
+
+                    elif user_choice == "exit":
+                        print("[INFO] Exiting waveform cutting by user request.")
+                        return  # Exit entire `run_waveform_cutting`
+
+                    else:
+                        print("[WARN] Unknown command. Assuming 'next'.")
+                        break
+                else:
+                    break  # No prompt: go to next event
 
         except Exception as e:
             print(f"[ERROR] Exception during fast waveform analysis: {e}")
