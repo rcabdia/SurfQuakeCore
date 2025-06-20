@@ -1208,8 +1208,8 @@ def _quickproc():
 
     parser.add_argument("-w", "--wave_files", type=str, required=True)
     parser.add_argument(
-        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true"
-    )
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)",
+        action="store_true")
     parser.add_argument("-c", "--config_file", type=str, required=False)
     parser.add_argument("-i", "--inventory_file", type=str, required=False)
     parser.add_argument("-o", "--output_folder", type=str, required=False)
@@ -1257,6 +1257,7 @@ def _quickproc():
     ae.run_fast_waveform_analysis(sp.data_files, auto=False)
 
 def _specplot():
+
     parser = ArgumentParser(
         prog="surfquake specplot",
         description="Plot serialized spectral analysis (spectrum or spectrogram)",
@@ -1268,31 +1269,28 @@ Examples:
 
     Plot a saved spectrogram:
         surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --type spectrogram
+        
+    Save plot to a file:
+        surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec -t spectrogram --save_path output.png
 """
     )
 
-    parser.add_argument(
-        "--file", "-f",
-        required=True,
-        help="Path to the serialized .sp or .spec file"
-    )
-    parser.add_argument(
-        "--type", "-t",
-        required=True,
-        choices=["spectrum", "spectrogram"],
-        help="Type of spectral result to plot"
-    )
+    parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp or .spec file")
+
+    parser.add_argument("--type", "-t", required=True, choices=["spectrum", "spectrogram"],
+        help="Type of spectral result to plot")
+
+    parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
 
     args = parser.parse_args()
 
     if args.type == "spectrum":
         obj = TraceSpectrumResult.from_pickle(args.file)
-        obj.plot_spectrum()
+        obj.plot_spectrum(save_path=args.save_path)
 
     elif args.type == "spectrogram":
-        print("hola")
         obj = TraceSpectrogramResult.from_pickle(args.file)
-        obj.plot_spectrogram()
+        obj.plot_spectrogram(save_path=args.save_path)
 
 
 def resolve_path(path: Optional[str]) -> Optional[str]:

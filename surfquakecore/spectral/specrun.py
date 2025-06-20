@@ -31,7 +31,7 @@ class TraceSpectrumResult:
                                                                  mode=method)
         self.method = method
 
-    def plot_spectrum(self, axis_type="loglog"):
+    def plot_spectrum(self, axis_type="loglog", save_path: str = None):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
@@ -58,7 +58,12 @@ class TraceSpectrumResult:
         ax.set_title(f"Spectrum for {self.trace.id}")
         plt.grid(True, which='both', linestyle='--', alpha=0.4)
         plt.tight_layout()
-        plt.show()
+
+        if save_path:
+            self.fig_spec.savefig(save_path, dpi=300)
+            plt.close(self.fig_spec)
+        else:
+            plt.show()
 
     def to_pickle(self, folder_path: str, compress: bool = True):
         """
@@ -132,7 +137,7 @@ class TraceSpectrogramResult:
             SpectrumTool.compute_spectrogram(self.trace.data, int(win * self.trace.stats.sampling_rate),
                                              self.trace.stats.delta, linf, lsup, step_percentage)
 
-    def plot_spectrogram(self):
+    def plot_spectrogram(self, save_path: str = None):
         import matplotlib.pyplot as plt
         import matplotlib as mplt
         if platform.system() == 'Darwin':
@@ -169,7 +174,12 @@ class TraceSpectrogramResult:
         cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
         cbar.set_label("Power [dB]")
         plt.tight_layout()
-        plt.show()
+
+        if save_path:
+            self.fig_spec.savefig(save_path, dpi=300)
+            plt.close(self.fig_spec)
+        else:
+            plt.show()
 
     def to_pickle(self, folder_path: str, compress: bool = True):
         """
