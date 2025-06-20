@@ -7,6 +7,7 @@ from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
 from surfquakecore.data_processing.seismicUtils import SeismicUtils
+from surfquakecore.spectral.specrun import TraceSpectrumResult
 
 
 class SeismogramData:
@@ -184,6 +185,11 @@ class SeismogramData:
 
                 if _config['name'] == 'cut':
                     tr = trim_trace(tr, _config['mode'], _config['t1'], _config['t2'])
+
+                if _config['name'] == 'spectrum':
+                    spec = TraceSpectrumResult(tr)
+                    spec.compute_spectrum()
+                    spec.to_pickle(folder_path=_config['output_path'])
 
             return tr
 

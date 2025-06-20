@@ -1,5 +1,6 @@
 from .cut import validate_cut
 from .rmean import validate_rmean
+from .spectrum import validate_spectrum
 from .stack import validate_stack
 from .synch import validate_synch
 from .taper import validate_taper
@@ -46,7 +47,8 @@ CHECK_DISPATCH = {
     'stack': validate_stack,
     'synch': validate_synch,
     'envelope': validate_envelope,
-    'cut': validate_cut
+    'cut': validate_cut,
+    'spectrum': validate_spectrum
 }
 
 def validate_step(step_type, config):

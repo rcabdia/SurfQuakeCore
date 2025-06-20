@@ -293,16 +293,45 @@ class PlotCommandPrompt:
         else:
             print(f"[INFO] All traces written successfully to: {output_folder}")
 
+    from obspy import UTCDateTime
+    from datetime import datetime
+
     def _cmd_cut(self, args):
+
+        from datetime import datetime
+        from obspy import UTCDateTime
+
         """
-        Cut traces around a phase or reference time.
+        Cut traces based on a phase, reference, or absolute UTC start/end.
 
         Usage:
-            cut --phase <phase_name> <t_before> <t_after>
+            cut --phase <name> <t_before> <t_after>
             cut --reference <t_before> <t_after>
+            cut --start "YYYY-MM-DD HH:MM:SS" --end "YYYY-MM-DD HH:MM:SS"
         """
 
-        if "--phase" in args:
+        new_traces = []
+
+        # Case 1: Absolute time cut
+        if "--start" in args and "--end" in args:
+            try:
+                start_str = args[args.index("--start") + 1]
+                end_str = args[args.index("--end") + 1]
+                t1 = UTCDateTime(datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S"))
+                t2 = UTCDateTime(datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S"))
+            except Exception as e:
+                print(f"[ERROR] Invalid date format: {e}")
+                return
+
+            for tr in self.plot_proj.trace_list:
+                try:
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+
+        # Case 2: Phase-based cut
+        elif "--phase" in args:
             try:
                 i = args.index("--phase")
                 phase_name = args[i + 1]
@@ -312,20 +341,32 @@ class PlotCommandPrompt:
                 print("[ERROR] Usage: cut --phase <name> <t_before> <t_after>")
                 return
 
-            new_traces = []
             for tr in self.plot_proj.trace_list:
-                phase_time = tr.stats.get(phase_name)
-                if not phase_time:
+                phase_time = None
+
+                if hasattr(tr.stats, "picks"):
+                    matching_picks = [
+                        pick for pick in tr.stats.picks
+                        if pick.get("phase", "").lower() == phase_name.lower()
+                    ]
+                    if matching_picks:
+                        # Take the last one
+                        phase_time = UTCDateTime(float(matching_picks[-1]["time"]))
+
+                if phase_time is None:
                     print(f"[WARN] Trace {tr.id} missing phase '{phase_name}' — skipped.")
                     continue
-                t1 = phase_time - t_before
-                t2 = phase_time + t_after
+
                 try:
+                    phase_time = UTCDateTime(phase_time)
+                    t1 = phase_time - t_before
+                    t2 = phase_time + t_after
                     tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
                     new_traces.append(tr_cut)
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
 
+        # Case 3: Reference-based cut
         elif "--reference" in args:
             try:
                 i = args.index("--reference")
@@ -340,18 +381,23 @@ class PlotCommandPrompt:
                 print("[ERROR] No reference time found. Cannot cut.")
                 return
 
-            t1 = ref_time - t_before
-            t2 = ref_time + t_after
+            try:
 
-            new_traces = []
+                t1 = ref_time - t_before
+                t2 = ref_time + t_after
+            except Exception as e:
+                print(f"[ERROR] Invalid reference time: {e}")
+                return
+
             for tr in self.plot_proj.trace_list:
                 try:
                     tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
                     new_traces.append(tr_cut)
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
+
         else:
-            print("[ERROR] You must specify --phase or --reference")
+            print("[ERROR] You must specify --phase, --reference, or --start/--end")
             return
 
         if not new_traces:
@@ -364,87 +410,6 @@ class PlotCommandPrompt:
         self.plot_proj.clear_plot()
         self.plot_proj.plot(page=0)
         print(f"[INFO] Cutting complete. {len(new_traces)} traces updated and replotted.")
-
-    def _cmd_cut(self, args):
-        """
-        Trim traces based on either a named phase or the last reference time.
-
-        Usage:
-            cut --phase <phase_name> <t_before> <t_after>
-            cut --reference <t_before> <t_after>
-        """
-        from obspy import UTCDateTime
-
-        # Detect mode
-        if "--phase" in args:
-            try:
-                idx = args.index("--phase")
-                phase_name = args[idx + 1]
-                t_before = float(args[idx + 2])
-                t_after = float(args[idx + 3])
-            except (IndexError, ValueError):
-                print("[ERROR] Usage: cut --phase <name> <t_before> <t_after>")
-                return
-
-            new_traces = []
-            for tr in self.plot_proj.trace_list:
-                phase_time = None
-                if hasattr(tr.stats, "picks"):
-                    for pick in tr.stats.picks:
-                        if pick.get("phase") == phase_name:
-                            phase_time = pick.get("time")
-                            break
-
-                if phase_time is None:
-                    print(f"[WARN] {tr.id}: phase '{phase_name}' not found.")
-                    continue
-
-                try:
-                    t1 = phase_time - t_before
-                    t2 = phase_time + t_after
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
-                except Exception as e:
-                    print(f"[ERROR] Failed to trim {tr.id}: {e}")
-
-        elif "--reference" in args:
-            try:
-                idx = args.index("--reference")
-                t_before = float(args[idx + 1])
-                t_after = float(args[idx + 2])
-            except (IndexError, ValueError):
-                print("[ERROR] Usage: cut --reference <t_before> <t_after>")
-                return
-
-            new_traces = []
-            for tr in self.plot_proj.trace_list:
-                ref_list = getattr(tr.stats, "references", [])
-                if not ref_list:
-                    print(f"[WARN] {tr.id}: no reference times found.")
-                    continue
-
-                ref_time = ref_list[-1]  # Use the most recent one
-                try:
-                    t1 = ref_time - t_before
-                    t2 = ref_time + t_after
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
-                except Exception as e:
-                    print(f"[ERROR] Failed to trim {tr.id}: {e}")
-        else:
-            print("[ERROR] Specify either --phase or --reference.")
-            return
-
-        if not new_traces:
-            print("[WARN] No traces were trimmed successfully.")
-            return
-
-        # Update trace list and reset plot
-        self.plot_proj.trace_list = new_traces
-        self.plot_proj.current_page = 0
-        self.plot_proj.clear_plot()
-        self.plot_proj.plot(page=0)
-        print(f"[INFO] Trimmed {len(new_traces)} traces and reloaded plot.")
 
     def _cmd_concat(self, args):
         """

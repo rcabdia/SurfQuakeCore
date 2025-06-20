@@ -3,41 +3,42 @@
 """
 spectools
 """
+import os
 import pickle
 import gzip
-
 import numpy as np
-
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
 class TraceSpectrumResult:
     def __init__(self, trace, spectrum=None):
+
+        self.freq = None
+        self.method = None
         self.trace = trace  # original trace (or trimmed version)
         self.stats = trace.stats
         self.spectrum = spectrum  # tuple: (freqs, amplitudes)
 
     def compute_spectrum(self, method="multitaper"):
 
-        self.spectrum = SpectrumTool.compute_spectrum(self.trace, self.trace.stats.delta, mode=method)
+        self.spectrum, self.freq = SpectrumTool.compute_spectrum(self.trace.data, self.trace.stats.delta,
+                                                                 mode=method)
+        self.method=method
 
     def plot_spectrum(self, axis_type="loglog"):
         import matplotlib.pyplot as plt
 
-        if not self.spectrum:
-            raise ValueError("Spectrum not computed yet.")
-
-        freqs, amps = self.spectrum
 
         fig, ax = plt.subplots()
         if axis_type == "loglog":
-            ax.loglog(freqs, amps)
+            ax.loglog(self.freq, self.spectrum)
         elif axis_type == "xlog":
-            ax.semilogx(freqs, amps)
+            ax.semilogx(self.freq, self.spectrum)
         elif axis_type == "ylog":
-            ax.semilogy(freqs, amps)
+            ax.semilogy(self.freq, self.spectrum)
         else:
-            ax.plot(freqs, amps)
+            ax.plot(self.freq, self.spectrum)
 
+        ax.set_ylim(self.spectrum.min() / 10.0, self.spectrum.max() * 100.0)
         ax.set_xlabel("Frequency (Hz)")
         ax.set_ylabel("Amplitude")
         ax.set_title(f"Spectrum for {self.trace.id}")
@@ -45,68 +46,60 @@ class TraceSpectrumResult:
         plt.tight_layout()
         plt.show()
 
-    def summary(self):
-        return {
-            "id": self.trace.id,
-            "starttime": str(self.stats.starttime),
-            "endtime": str(self.stats.endtime),
-            "sampling_rate": self.stats.sampling_rate,
-            "npts": self.stats.npts,
-            "computed_spectrum": self.spectrum is not None,
-        }
-
-
-
-    def to_pickle(self, filepath: str, compress: bool = True):
+    def to_pickle(self, folder_path: str, compress: bool = True):
         """
-        Serialize the analysis object to a pickle file.
-
-        Parameters
-        ----------
-        filepath : str
-            Path to output file (e.g., 'trace_result.pkl' or '.pkl.gz')
-        compress : bool
-            Whether to gzip the pickle file.
+        Serialize the full object to a pickle file.
         """
-        data = {
-            "version": "1.0",
-            "trace_id": self.trace.id,
-            "trace": self.trace,
-            "spectrum": self.spectrum,
-        }
+
+        # Parse argument for folder path
+
+        if not folder_path:
+            print("[ERROR] --folder_path must be specified")
+            return
+
+        # Ensure the output directory exists
+        if not os.path.exists(folder_path):
+            try:
+                os.makedirs(folder_path)
+                print(f"[INFO] Created folder: {folder_path}")
+            except Exception as e:
+                print(f"[ERROR] Failed to create folder '{folder_path}': {e}")
+                return
+
+        t1 = self.trace.stats.starttime
+        base_name = f"{self.trace.id}.D.{t1.year}.{t1.julday}"
+        path_output = os.path.join(folder_path, base_name)
+
+        counter = 1
+        while os.path.exists(path_output + ".sp"):
+            path_output = os.path.join(folder_path, f"{base_name}_{counter}")
+            counter += 1
+
+        path_output += ".sp"
 
         open_func = gzip.open if compress else open
         mode = 'wb'
 
-        with open_func(filepath, mode) as f:
-            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        with open_func(path_output, mode) as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        print(f"[INFO] Serialized to: {filepath}")
+        print(f"[INFO] {self.trace.id} - Writing spectrum to {path_output}")
+
 
     @staticmethod
     def from_pickle(filepath: str, compress: bool = True):
         """
-        Load a TraceAnalysisResult from a pickle file.
-
-        Parameters
-        ----------
-        filepath : str
-            Path to .pkl or .pkl.gz file.
-        compress : bool
-            Whether the file is compressed.
-
-        Returns
-        -------
-        TraceAnalysisResult
+        Load the full object from a pickle file.
         """
-
         open_func = gzip.open if compress else open
         mode = 'rb'
 
         with open_func(filepath, mode) as f:
-            data = pickle.load(f)
+            obj = pickle.load(f)
 
-        obj = TraceSpectrumResult(trace=data["trace"], spectrum=data.get("spectrum"))
+        if not isinstance(obj, TraceSpectrumResult):
+            raise TypeError("Pickle file does not contain a TraceSpectrumResult object.")
+
         return obj
 
 class TraceSpectrogramResult:

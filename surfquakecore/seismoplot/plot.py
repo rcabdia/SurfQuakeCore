@@ -48,6 +48,7 @@ class PlotProj:
         """
 
         self.trace_list = list(stream)
+        #self._restore_all_trace_times()
         self.inventory = kwargs.pop("inventory", None)
         self.__selector = {}  # Use single underscore to avoid name mangling
         self.__selected_ax_index = 0
@@ -79,6 +80,19 @@ class PlotProj:
         self.prompt_active = False
         self.utc_start = None
         self.utc_end = None
+
+    def _restore_all_trace_times(self):
+        for tr in self.trace_list:
+            if hasattr(tr.stats, "picks"):
+                for pick in tr.stats.picks:
+                    if isinstance(pick.get("time"), (float, int)):
+                        pick["time"] = UTCDateTime(pick["time"])
+
+            if hasattr(tr.stats, "references"):
+                tr.stats.references = [
+                    UTCDateTime(t) if isinstance(t, (float, int)) else t
+                    for t in tr.stats.references
+                ]
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
@@ -393,7 +407,7 @@ class PlotProj:
 
         # Build and store pick dictionary in trace
         pick_entry = {
-            "time": UTCDateTime(pick_time),
+            "time": UTCDateTime(pick_time).timestamp,
             "phase": phase,
             "amplitude": amplitude,
             "polarity": polarity
@@ -435,6 +449,8 @@ class PlotProj:
         pick_info = None
         for pick in self.picks.get(trace_id, []):
             if pick[0] == pick_time:
+                if isinstance(pick[0], (int, float)):
+                    pick[0] = UTCDateTime(pick[0])
                 if len(pick) == 4:
                     _, phase, _, polarity = pick
                     pick_info = f"{phase}, {polarity}"
@@ -470,12 +486,12 @@ class PlotProj:
         if event.key == 'w' and event.inaxes in self.axs:
             ref_time = mdt.num2date(event.xdata).replace(tzinfo=None)
             utc_ref_time = UTCDateTime(ref_time)
-
+            self.last_reference = utc_ref_time
             # Store the reference in all traces
             for tr in self.trace_list:
                 if not hasattr(tr.stats, "references"):
                     tr.stats.references = []
-                tr.stats.references.append(utc_ref_time)
+                tr.stats.references.append(utc_ref_time.timestamp)
 
             # Draw the reference line on all axes
             for ax in self.axs:
@@ -637,7 +653,10 @@ class PlotProj:
         for tr in self.trace_list:
             if hasattr(tr.stats, "references"):
                 for ref_time in tr.stats.references:
-                    x = mdt.date2num(ref_time.datetime)
+                    if isinstance(ref_time, (float, int)):
+                        x = mdt.date2num(UTCDateTime(ref_time).datetime)
+                    else:
+                        x = mdt.date2num(ref_time.datetime)
                     for ax in self.axs:
                         ax.axvline(x=x, color='g', linestyle='--', alpha=0.5)
 
