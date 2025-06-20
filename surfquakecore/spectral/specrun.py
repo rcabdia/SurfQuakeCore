@@ -7,6 +7,9 @@ import os
 import pickle
 import gzip
 import numpy as np
+from matplotlib import gridspec
+from matplotlib.ticker import ScalarFormatter
+
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
 class TraceSpectrumResult:
@@ -30,7 +33,7 @@ class TraceSpectrumResult:
 
         fig, ax = plt.subplots()
         if axis_type == "loglog":
-            ax.loglog(self.freq, self.spectrum)
+            ax.loglog(self.freq, self.spectrum, linewidth=0.75)
         elif axis_type == "xlog":
             ax.semilogx(self.freq, self.spectrum)
         elif axis_type == "ylog":
@@ -110,66 +113,101 @@ class TraceSpectrogramResult:
 
     def compute_spectrogram(self, win=5.0, overlap_percent=50.0, linf=0, lsup=None):
 
-
         if lsup is None:
-            lsup = int(self.trace.sampling_rate//2)
+            lsup = int(self.trace.stats.sampling_rate//2)
 
         step_percentage = (100 - overlap_percent) * 1E-2
-        self.spectrogram = SpectrumTool.compute_spectrogram(self.trace, win, self.trace.delta, linf,
-                                                            lsup, step_percentage)
+        self.spectrogram, self.num_steps, self.time, self.freq = \
+            SpectrumTool.compute_spectrogram(self.trace.data, int(win * self.trace.stats.sampling_rate),
+                                             self.trace.stats.delta, linf, lsup, step_percentage)
 
-    def plot_spectrogram(self, db=True):
+
+    def plot_spectrogram(self):
         import matplotlib.pyplot as plt
-        if not self.spectrogram:
-            raise ValueError("Spectrogram not computed yet.")
 
-        times, freqs, power = self.spectrogram
-        Z = 10 * np.log10(power) if db else power
+        self.fig_spec = plt.figure(figsize=(10, 5))
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
+                               hspace=0.02, wspace=0.02)
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        mesh = ax.pcolormesh(times, freqs, Z, shading='auto', cmap='viridis')
-        ax.set_title(f"Spectrogram for {self.trace.id}")
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("Frequency [Hz]")
-        fig.colorbar(mesh, ax=ax, label="Power [dB]" if db else "Amplitude")
+        ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
+        ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
+        ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_powerlimits((0, 0))  # Forces scientific notation always
+        ax_waveform.yaxis.set_major_formatter(formatter)
+
+        # --- Plot waveform ---
+        ax_waveform.plot(self.trace.times(), self.trace.data, linewidth=0.75)
+        ax_waveform.set_title(f"Spectrogram for {self.trace.id}")
+        ax_waveform.tick_params(labelbottom=False)
+
+        # --- Plot spectrogram ---
+        pcm = ax_spec.pcolormesh(
+            self.time, self.freq, 10 * np.log10(self.spectrogram / np.max(self.spectrogram)),
+            shading='auto', cmap='rainbow'
+        )
+        ax_waveform.set_ylabel('Amplitude')
+        ax_spec.set_ylabel('Frequency [Hz]')
+        ax_spec.set_xlabel('Time [s]')
+
+        # --- Add colorbar without shifting axes ---
+        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
+        cbar.set_label("Power [dB]")
         plt.tight_layout()
         plt.show()
 
-    def summary(self):
-        return {
-            "id": self.trace.id,
-            "starttime": str(self.stats.starttime),
-            "endtime": str(self.stats.endtime),
-            "sampling_rate": self.stats.sampling_rate,
-            "npts": self.stats.npts,
-            "computed_spectrogram": self.spectrogram is not None,
-        }
+    def to_pickle(self, folder_path: str, compress: bool = True):
+        """
+        Serialize the full object to a pickle file.
+        """
 
-    def to_pickle(self, filepath: str, compress: bool = True):
-        """
-        Serialize the analysis object to a pickle file.
-        """
-        data = {
-            "version": "1.0",
-            "trace_id": self.trace.id,
-            "trace": self.trace,
-            "spectrogram": self.spectrogram,
-        }
+        # Parse argument for folder path
+
+        if not folder_path:
+            print("[ERROR] --folder_path must be specified")
+            return
+
+        # Ensure the output directory exists
+        if not os.path.exists(folder_path):
+            try:
+                os.makedirs(folder_path)
+                print(f"[INFO] Created folder: {folder_path}")
+            except Exception as e:
+                print(f"[ERROR] Failed to create folder '{folder_path}': {e}")
+                return
+
+        t1 = self.trace.stats.starttime
+        base_name = f"{self.trace.id}.D.{t1.year}.{t1.julday}"
+        path_output = os.path.join(folder_path, base_name)
+
+        counter = 1
+        while os.path.exists(path_output + ".spec"):
+            path_output = os.path.join(folder_path, f"{base_name}_{counter}")
+            counter += 1
+
+        path_output += ".spec"
 
         open_func = gzip.open if compress else open
-        with open_func(filepath, 'wb') as f:
-            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        mode = 'wb'
 
-        print(f"[INFO] Serialized to: {filepath}")
+        with open_func(path_output, mode) as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        print(f"[INFO] {self.trace.id} - Writing spectrum to {path_output}")
 
     @staticmethod
     def from_pickle(filepath: str, compress: bool = True):
         """
-        Load a TraceSpectrogramResult from a pickle file.
+        Load the full object from a pickle file.
         """
         open_func = gzip.open if compress else open
-        with open_func(filepath, 'rb') as f:
-            data = pickle.load(f)
+        mode = 'rb'
 
-        obj = TraceSpectrogramResult(trace=data["trace"], spectrogram=data.get("spectrogram"))
+        with open_func(filepath, mode) as f:
+            obj = pickle.load(f)
+
+        if not isinstance(obj, TraceSpectrogramResult):
+            raise TypeError("Pickle file does not contain a TraceSpectrogramResult object.")
+
         return obj
+

@@ -23,6 +23,7 @@ from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
+from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
 from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
 
@@ -72,8 +73,12 @@ def _create_actions():
 
         "processing_daily": _CliActions(
             name="processing_daily", run=_processing_daily, description=f"Type {__entry_point_name} -h for help.\n"),
+
         "quick": _CliActions(
-            name="processing_quick", run=_quickproc, description=f"Type {__entry_point_name} -h for help.\n")
+            name="processing_quick", run=_quickproc, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "specplot": _CliActions(
+            name="specplot", run=_specplot, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -1248,7 +1253,43 @@ def _quickproc():
 
     ae.run_fast_waveform_analysis(sp.data_files, auto=False)
 
+def _specplot():
+    parser = ArgumentParser(
+        prog="surfquake specplot",
+        description="Plot serialized spectral analysis (spectrum or spectrogram)",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    Plot a saved spectrum:
+        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp --type spectrum
 
+    Plot a saved spectrogram:
+        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --type spectrogram
+"""
+    )
+
+    parser.add_argument(
+        "--file", "-f",
+        required=True,
+        help="Path to the serialized .sp or .spec file"
+    )
+    parser.add_argument(
+        "--type", "-t",
+        required=True,
+        choices=["spectrum", "spectrogram"],
+        help="Type of spectral result to plot"
+    )
+
+    args = parser.parse_args()
+
+    if args.type == "spectrum":
+        obj = TraceSpectrumResult.from_pickle(args.file)
+        obj.plot_spectrum()
+
+    elif args.type == "spectrogram":
+        print("hola")
+        obj = TraceSpectrogramResult.from_pickle(args.file)
+        obj.plot_spectrogram()
 
 def resolve_path(path: Optional[str]) -> Optional[str]:
     if path is None:

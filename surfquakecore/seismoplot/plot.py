@@ -710,7 +710,7 @@ class PlotProj:
         self.ax_spec.set_ylabel("Amplitude")
         self.ax_spec.set_title(f"Spectrum for {trace.id}")
         self.ax_spec.legend()
-        plt.grid(True, which="both", ls="-", color='grey')
+        plt.grid(True, which="both", ls="-", color='grey', alpha=0.4)
         plt.tight_layout()
         plt.show(block=False)
 

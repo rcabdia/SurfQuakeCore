@@ -1,5 +1,6 @@
 from .cut import validate_cut
 from .rmean import validate_rmean
+from .spectrogram import validate_spectrogram
 from .spectrum import validate_spectrum
 from .stack import validate_stack
 from .synch import validate_synch
@@ -48,7 +49,8 @@ CHECK_DISPATCH = {
     'synch': validate_synch,
     'envelope': validate_envelope,
     'cut': validate_cut,
-    'spectrum': validate_spectrum
+    'spectrum': validate_spectrum,
+    'spectrogram': validate_spectrogram
 }
 
 def validate_step(step_type, config):

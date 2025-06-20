@@ -7,7 +7,7 @@ from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
 from surfquakecore.data_processing.seismicUtils import SeismicUtils
-from surfquakecore.spectral.specrun import TraceSpectrumResult
+from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
 
 
 class SeismogramData:
@@ -190,6 +190,18 @@ class SeismogramData:
                     spec = TraceSpectrumResult(tr)
                     spec.compute_spectrum()
                     spec.to_pickle(folder_path=_config['output_path'])
+
+                if _config['name'] == 'spectrogram':
+
+                    if "overlap" in _config.keys():
+                        overlap = _config["overlap"]
+                    else:
+                        overlap = 50
+
+                    spec = TraceSpectrogramResult(tr)
+                    spec.compute_spectrogram(win=_config["win"], overlap_percent=overlap)
+                    spec.to_pickle(folder_path=_config['output_path'])
+
 
             return tr
 

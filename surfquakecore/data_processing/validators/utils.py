@@ -1,4 +1,4 @@
-def require_keys(config, required_keys):
+def require_keys(config: object, required_keys: object) -> object:
     missing = [key for key in required_keys if key not in config]
     if missing:
         raise ValueError(f"Missing required keys: {missing}")
