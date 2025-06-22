@@ -216,8 +216,15 @@ class SurfProject:
 
     def add_files(self):
         if isinstance(self.root_path, str):
+            # Use glob to find files if root_path is a string
             self.data_files = glob.glob(self.root_path, recursive=True)
             print(f"[INFO] Found {len(self.data_files)} files using glob pattern: {self.root_path}")
+        elif isinstance(self.root_path, list):
+            # If already a list of file paths, use as-is
+            self.data_files = [os.path.abspath(p) for p in self.root_path if os.path.exists(p)]
+            print(f"[INFO] Using {len(self.data_files)} explicitly provided files.")
+        else:
+            raise ValueError("[ERROR] root_path must be a string (glob pattern) or list of file paths.")
 
     def search_files(self, format="NONE", verbose=True, use_glob: bool = False, **kwargs):
 

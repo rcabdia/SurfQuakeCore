@@ -1112,9 +1112,18 @@ def _processing_daily():
 
     # --- Load project ---
     if parsed_args.wave_files:
-        # Build project on-the-fly using wildcard path
-        sp = SurfProject(root_path=parsed_args.wave_files)
-        sp.search_files(use_glob=True, verbose=True)
+        if "," in parsed_args.wave_files:
+            # Explicit list of files
+            wave_paths = [make_abs(f.strip()) for f in parsed_args.wave_files.split(",") if f.strip()]
+            sp = SurfProject(root_path=wave_paths)
+            sp.search_files(use_glob=True)
+            print(f"[INFO] Using {len(wave_paths)} explicitly listed waveform files.")
+        else:
+            # Wildcard path
+            wave_paths = make_abs(parsed_args.wave_files)
+            sp = SurfProject(root_path=wave_paths)
+            sp.search_files(use_glob=True, verbose=True)
+            print(f"[INFO] Found {len(sp.data_files)} waveform files using glob pattern.")
 
     elif parsed_args.project_file:
         sp = SurfProject.load_project(parsed_args.project_file)
@@ -1230,7 +1239,7 @@ def _quickproc():
     parsed_args = parser.parse_args()
     print(parsed_args)
 
-    if "," in parsed_args.wave_files:
+    if "," in parsed_args.wave_files or " " in parsed_args.wave_files:
         # Explicit list of files
         wave_paths = [make_abs(f.strip()) for f in parsed_args.wave_files.split(",") if f.strip()]
 

@@ -466,7 +466,7 @@ class PlotCommandPrompt:
                         pick_time = pick.get("time")
                         break
                 if pick_time:
-                    shift_amount = pick_time - tr.stats.starttime
+                    shift_amount = UTCDateTime(pick_time) - tr.stats.starttime
                     tr.stats.starttime = UTCDateTime(0)  # align to zero
                     tr.data = tr.data[int(shift_amount / tr.stats.delta):]  # rough alignment
                 else:

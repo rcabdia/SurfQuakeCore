@@ -46,7 +46,7 @@ class PlotProj:
         plot_config : dict, optional
             Dictionary of plotting preferences.
         """
-
+        self.available_modes = ["standard", "overlay", "record"]
         self.trace_list = list(stream)
         #self._restore_all_trace_times()
         self.inventory = kwargs.pop("inventory", None)
