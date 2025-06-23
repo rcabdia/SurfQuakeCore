@@ -256,7 +256,7 @@ class PlotProj:
         cfg = self.plot_config
         traces = self.trace_list
         phase_curves = defaultdict(list)
-
+        N_traces = len(traces)
         # Collect arrival times grouped by phase
         for tr in traces:
             dist = tr.stats.get("geodetic", {}).get("geodetic", [None])[0]
@@ -269,9 +269,10 @@ class PlotProj:
                 if (
                         phase and phase not in seen_phases
                         and dist is not None
-                        and isinstance(arr_time, UTCDateTime)
+                        and isinstance(arr_time, float)
                 ):
-                    phase_curves[phase].append((mdt.date2num(arr_time.datetime), dist))
+
+                    phase_curves[phase].append((mdt.date2num(UTCDateTime(arr_time).datetime), dist))
                     seen_phases.add(phase)  # only first arrival for this phase
         # Sort by distance
         traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
@@ -279,20 +280,20 @@ class PlotProj:
         scale = cfg.get("scale_factor", 1.0)
 
         # Compute global start time for alignment
-        #t0 = min(tr.stats.starttime for tr in traces)
         fig, ax = plt.subplots(figsize=(12, 8))
         self.fig = fig  # ensure fig is accessible throughout
-        #self.axs = [ax]  # mimic structure used in standard plot
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
 
         for tr, dist in zip(traces, distances):
             # Normalize trace to its max amplitude
             norm_data = tr.data / np.max(np.abs(tr.data)) if np.max(np.abs(tr.data)) != 0 else tr.data
-
             # Align time axis to earliest start
             t = tr.times("matplotlib")
-            ax.plot(t, norm_data * scale + dist, linewidth=0.6, label=tr.id)
 
+            if N_traces>=1:
+                ax.plot(t, norm_data * scale + dist, color="black", alpha=0.75, linewidth=0.6)
+            else:
+                ax.plot(t, norm_data * scale + dist, alpha=0.75, linewidth=0.6, label=tr.id)
 
         # Plot arrival time curves for each phase
         for phase, points in phase_curves.items():
@@ -319,7 +320,7 @@ class PlotProj:
             self.fig.canvas.draw_idle()
             plt.pause(0.5)
 
-            print("[INFO] Type 'command parameter', 'help', 'q' to exit or 'p' to return to picking mode")
+            print("[INFO] Type 'command parameter', 'help', 'exit' to exit or 'p' to return to picking mode")
             prompt = PlotCommandPrompt(self)
             result = prompt.run()
 

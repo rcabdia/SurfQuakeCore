@@ -138,7 +138,7 @@ class AnalysisEvents:
                 for arr in arrivals:
                     arrivals_info.append({
                         "phase": arr.name,
-                        "time": origin + arr.time,
+                        "time": (origin + arr.time).timestamp,
                         "ray_param": arr.ray_param_sec_degree,
                         "incident_angle": arr.incident_angle
                     })

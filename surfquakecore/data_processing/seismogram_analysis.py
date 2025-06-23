@@ -348,71 +348,86 @@ class StreamProcessing:
         return self.stream
 
     def apply_shift(self, step_config):
-
         """
-    Apply time alignment to traces in the stream using either manual time shifts or phase-based alignment.
+        Apply time alignment to traces in the stream using manual time shifts,
+        pick-based phase alignment, or theoretical arrival time alignment.
 
-    This method supports two types of shifting strategies:
+        Supported shift strategies (evaluated in priority order):
 
-    1. Phase-Based Alignment:
-        If `step_config` contains the key "phase", the method searches for the specified phase in the
-        `stats.picks` list of each trace. If found, it aligns that phase arrival time to zero seconds
-        (i.e., `UTCDateTime(0)`), effectively shifting the trace so that the given phase occurs at t=0.
+        1. Theoretical Phase Alignment (`phase_theo`)
+            Aligns to the theoretical arrival time stored in
+            `trace.stats.geodetic['arrivals']`.
 
-        The trace's `starttime` is updated, and the data is trimmed to reflect the alignment.
+        2. Pick-Based Phase Alignment (`phase`)
+            Aligns to the observed pick time in `trace.stats.picks`.
 
-    2. Manual Shift:
-        If `step_config` contains the key "time_shifts", it should be a list of float values (in seconds)
-        to apply as additive shifts to the `starttime` of each trace in the stream.
+        3. Manual Time Shifts (`time_shifts`)
+            Adds a fixed offset (in seconds) to the starttime of each trace.
 
-    Parameters
-    ----------
-    step_config : dict
-        Dictionary specifying the shift method.
-        Keys:
-            - "phase": str, optional
-                Name of the seismic phase (e.g., "P", "S") to align to time zero.
-            - "time_shifts": list of float, optional
-                List of time shifts (in seconds) to apply to each trace.
+        Parameters
+        ----------
+        step_config : dict
+            Keys:
+                - "phase_theo": str, optional
+                    Phase name to align using theoretical arrival.
+                - "phase": str, optional
+                    Phase name to align using pick.
+                - "time_shifts": list of float, optional
+                    Per-trace time offsets to apply.
 
-    Returns
-    -------
-    stream : obspy.Stream
-        The updated stream with shifted traces.
+        Returns
+        -------
+        stream : obspy.Stream
+            Stream with aligned traces.
 
-    Notes
-    -----
-    - If both "phase" and "time_shifts" are provided, the phase-based alignment takes precedence.
-    - If neither is provided, a warning is shown and no changes are made.
-    - If a trace lacks the specified phase, it will be skipped with a warning.
-    - Trimming is done without padding. You may modify this to pad or extend as needed.
-    """
+        Notes
+        -----
+        - If both "phase" and "time_shifts" are provided, phase alignment takes precedence.
+        - If no valid shift config is given, stream is returned unchanged.
+        - If alignment exceeds data length, trace is skipped.
+        """
         try:
-            phase_name = step_config.get("phase", None)
-            time_shifts = step_config.get("time_shifts", None)
+            phase_theo = step_config.get("phase_theo")
+            phase_pick = step_config.get("phase")
+            time_shifts = step_config.get("time_shifts")
 
-            if phase_name:
-                # Align each trace using the time of the given phase
+            if phase_theo:
+                for tr in self.stream:
+                    arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
+                    theo_time = None
+                    for arr in arrivals:
+                        if arr.get("phase") == phase_theo:
+                            theo_time = arr.get("time")
+                            break
+                    if theo_time is not None:
+                        shift_amount = UTCDateTime(theo_time) - tr.stats.starttime
+                        tr.stats.starttime = UTCDateTime(0)
+                        tr.data = tr.data[int(shift_amount / tr.stats.delta):]
+                    else:
+                        print(f"[WARN] Trace {tr.id} missing theoretical phase '{phase_theo}' — skipped.")
+
+            elif phase_pick:
                 for tr in self.stream:
                     picks = getattr(tr.stats, "picks", [])
                     pick_time = None
                     for pick in picks:
-                        if pick.get("phase") == phase_name:
+                        if pick.get("phase") == phase_pick:
                             pick_time = pick.get("time")
                             break
                     if pick_time is not None:
-                        pick_time_utc = UTCDateTime(pick_time)
-                        shift_amount = pick_time_utc - tr.stats.starttime
-                        tr.stats.starttime = UTCDateTime(0)  # align pick to t=0
-                        tr.data = tr.data[int(shift_amount / tr.stats.delta):]  # trim front
+                        shift_amount = UTCDateTime(pick_time) - tr.stats.starttime
+                        tr.stats.starttime = UTCDateTime(0)
+                        tr.data = tr.data[int(shift_amount / tr.stats.delta):]
                     else:
-                        print(f"[WARN] Trace {tr.id} missing phase '{phase_name}' — no shift applied.")
+                        print(f"[WARN] Trace {tr.id} missing picked phase '{phase_pick}' — skipped.")
+
             elif time_shifts:
                 for i, shift_val in enumerate(time_shifts):
                     if i < len(self.stream):
                         self.stream[i].stats.starttime += shift_val
+
             else:
-                print("[WARN] No shift strategy found in step_config. Provide 'phase' or 'time_shifts'.")
+                print("[WARN] No valid shift config found (phase, phase_theo, or time_shifts). No action taken.")
 
         except Exception as e:
             print(f"[ERROR] apply_shift failed: {e}")

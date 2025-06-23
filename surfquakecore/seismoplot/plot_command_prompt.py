@@ -442,56 +442,79 @@ class PlotCommandPrompt:
 
     def _cmd_shift(self, args):
         """
-        Align traces by phase or reference.
+        Align traces by phase pick time or theoretical arrival.
 
         Usage:
             shift --phase <phase_name>
-            shift --reference
+            shift --phase_theo <phase_name>
         """
         from obspy import UTCDateTime
 
-        if "--phase" in args:
-            try:
-                idx = args.index("--phase")
-                phase_name = args[idx + 1]
-            except (IndexError, ValueError):
-                print("[ERROR] Usage: shift --phase <phase_name>")
-                return
+        # --- Determine phase argument type ---
+        phase_name = None
+        phase_source = None
+        for key in ["--phase", "--phase_theo"]:
+            if key in args:
+                try:
+                    idx = args.index(key)
+                    phase_name = args[idx + 1]
+                    phase_source = key
+                    break
+                except (IndexError, ValueError):
+                    print(f"[ERROR] Usage: shift {key} <phase_name>")
+                    return
 
-            for tr in self.plot_proj.trace_list:
-                pick_time = None
+        if not phase_name:
+            print("[ERROR] You must specify --phase or --phase_theo <phase_name>")
+            return
+
+        shifted_count = 0
+
+        # --- Process each trace ---
+        for tr in self.plot_proj.trace_list:
+            pick_time = None
+
+            if phase_source == "--phase":
                 picks = getattr(tr.stats, "picks", [])
                 for pick in picks:
                     if pick.get("phase") == phase_name:
-                        pick_time = pick.get("time")
+                        pick_time = pick.get("time")  # already a timestamp
                         break
-                if pick_time:
-                    shift_amount = UTCDateTime(pick_time) - tr.stats.starttime
-                    tr.stats.starttime = UTCDateTime(0)  # align to zero
-                    tr.data = tr.data[int(shift_amount / tr.stats.delta):]  # rough alignment
-                else:
-                    print(f"[WARN] Phase '{phase_name}' not found in {tr.id}")
 
-        elif "--reference" in args:
-            for tr in self.plot_proj.trace_list:
-                references = getattr(tr.stats, "references", [])
-                if references:
-                    ref_time = references[-1]
-                    shift_amount = ref_time - tr.stats.starttime
-                    tr.stats.starttime = UTCDateTime(0)
-                    tr.data = tr.data[int(shift_amount / tr.stats.delta):]
-                else:
-                    print(f"[WARN] No reference found in {tr.id}")
+            elif phase_source == "--phase_theo":
+                arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
+                for arr in arrivals:
+                    if arr.get("phase") == phase_name:
+                        pick_time = arr.get("time")  # timestamp expected
+                        break
 
-        else:
-            print("[ERROR] Must specify either --phase or --reference")
+            if pick_time is not None:
+                try:
+                    pick_time_utc = UTCDateTime(pick_time)
+                    shift_amount = pick_time_utc - tr.stats.starttime
+                    tr.stats.starttime = UTCDateTime(0)  # Align all to zero
+                    samples_to_shift = int(shift_amount / tr.stats.delta)
+
+                    if samples_to_shift >= len(tr.data):
+                        print(f"[WARN] Shift exceeds trace length for {tr.id} — skipping.")
+                        continue
+
+                    tr.data = tr.data[samples_to_shift:]  # Rough shift
+                    shifted_count += 1
+                except Exception as e:
+                    print(f"[ERROR] Failed to shift {tr.id}: {e}")
+            else:
+                print(f"[WARN] Phase '{phase_name}' not found in {tr.id}")
+
+        if shifted_count == 0:
+            print("[WARN] No traces were shifted.")
             return
 
         # Replot from beginning
         self.plot_proj.current_page = 0
         self.plot_proj.clear_plot()
         self.plot_proj.plot(page=0)
-        print("[INFO] Traces shifted and replotted.")
+        print(f"[INFO] Shifted {shifted_count} traces by phase '{phase_name}' and replotted.")
 
     def _cmd_help(self, args):
 
@@ -512,7 +535,7 @@ class PlotCommandPrompt:
         print("                               Example: >> plot_type overlay")
         print("  concat                           Merge/concatenate traces with same ID using ObsPy")
         print("  shift --phase <name>              Shift traces to align by phase pick (e.g., 'P')")
-        print("  shift --reference                 Shift traces to align by last reference time")
+        print("  shift --phase_theo <name>          Shift traces to align by theretical phase (e.g., 'P')")
         print("  cut --phase <name> <before> <after>     Trim traces using phase picks (e.g., 'P', 'S')")
         print("  cut --reference <before> <after>        Trim traces using last reference time")
         print("  write --folder_path <path>   Write current traces to folder in HDF5 format.")
