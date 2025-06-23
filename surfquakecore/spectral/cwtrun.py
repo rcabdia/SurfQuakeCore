@@ -57,7 +57,7 @@ class TraceCWTResult:
 
         self.cwt_data = (t, f, scalogram2, pred, pred_comp)
 
-    def plot_cwt(self, save_path: str = None):
+    def plot_cwt(self, save_path: str = None, clip: int = None):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
@@ -72,6 +72,9 @@ class TraceCWTResult:
 
         t, f, scalogram, pred, pred_comp = self.cwt_data
         tr = self.trace
+
+        if clip is not None:
+            scalogram = np.clip(scalogram, a_min=clip, a_max=0)
 
         self.fig_spec = plt.figure(figsize=(10, 5))
         gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
@@ -89,10 +92,20 @@ class TraceCWTResult:
         ax_waveform.plot(tr.times(), tr.data, linewidth=0.75)
         ax_waveform.set_title(f"CWT Scalogram for {tr.id}")
         ax_waveform.tick_params(labelbottom=False)
+        # Annotate with date
+        starttime = tr.stats.starttime
+        date_str = starttime.strftime("%Y-%m-%d %H:%M:%S")
+        textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
+        ax_waveform.text(0.01, 0.95, textstr, transform=ax_waveform.transAxes, fontsize=8,
+                va='top', ha='left',
+                bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
 
         # Plot scalogram
         x, y = np.meshgrid(t, f)
-        pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow')
+        if clip is not None:
+            pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow',  vmin=clip, vmax=0)
+        else:
+            pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow')
         ax_spec.fill_between(pred, f, 0, color="black", edgecolor="red", alpha=0.3)
         ax_spec.fill_between(pred_comp, f, 0, color="black", edgecolor="red", alpha=0.3)
         ax_waveform.set_ylabel('Amplitude')

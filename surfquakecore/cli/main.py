@@ -1293,6 +1293,8 @@ Examples:
     parser.add_argument("--type", "-t", required=True, choices=["spectrum", "spectrogram", "cwt"],
         help="Type of spectral result to plot")
 
+    parser.add_argument("--clip", "-c", type=int, required=False)
+
     parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
 
     args = parser.parse_args()
@@ -1307,7 +1309,7 @@ Examples:
 
     elif args.type == "cwt":
         obj = TraceCWTResult.from_pickle(args.file)
-        obj.plot_cwt(save_path=args.save_path)
+        obj.plot_cwt(save_path=args.save_path, clip=args.clip)
 
 
 def resolve_path(path: Optional[str]) -> Optional[str]:

@@ -12,7 +12,6 @@ import platform
 import numpy as np
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
-
 class TraceSpectrumResult:
     def __init__(self, trace, spectrum=None):
 
@@ -134,7 +133,7 @@ class TraceSpectrogramResult:
             SpectrumTool.compute_spectrogram(self.trace.data, int(win * self.trace.stats.sampling_rate),
                                              self.trace.stats.delta, linf, lsup, step_percentage)
 
-    def plot_spectrogram(self, save_path: str = None):
+    def plot_spectrogram(self, save_path: str = None, clip: int = None):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
@@ -145,6 +144,12 @@ class TraceSpectrogramResult:
             mplt.use("MacOSX")
         elif platform.system() == 'Linux':
             mplt.use("TkAgg")
+
+
+        if clip is not None:
+            spectrogram = np.clip(10 * np.log10(self.spectrogram / np.max(self.spectrogram)), a_min=clip, a_max=0)
+        else:
+            spectrogram = 10 * np.log10(self.spectrogram / np.max(self.spectrogram))
 
         self.fig_spec = plt.figure(figsize=(10, 5))
         gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
@@ -162,11 +167,22 @@ class TraceSpectrogramResult:
         ax_waveform.set_title(f"Spectrogram for {self.trace.id}")
         ax_waveform.tick_params(labelbottom=False)
 
+        # Annotate with date
+        starttime = self.trace.stats.starttime
+        date_str = starttime.strftime("%Y-%m-%d %H:%M:%S")
+        textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
+        ax_waveform.text(0.01, 0.95, textstr, transform=ax_waveform.transAxes, fontsize=8,
+                         va='top', ha='left',
+                         bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+
         # --- Plot spectrogram ---
-        pcm = ax_spec.pcolormesh(
-            self.time, self.freq, 10 * np.log10(self.spectrogram / np.max(self.spectrogram)),
-            shading='auto', cmap='rainbow'
-        )
+        if clip is not None:
+            pcm = ax_spec.pcolormesh(
+                self.time, self.freq, spectrogram, shading='auto', cmap='rainbow', vmin=clip, vmax=0)
+        else:
+            pcm = ax_spec.pcolormesh(self.time, self.freq, spectrogram, shading='auto', cmap='rainbow',
+                                     vmin=clip, vmax=0)
+
         ax_waveform.set_ylabel('Amplitude')
         ax_spec.set_ylabel('Frequency [Hz]')
         ax_spec.set_xlabel('Time [s]')

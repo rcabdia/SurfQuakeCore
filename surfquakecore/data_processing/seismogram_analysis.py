@@ -7,6 +7,7 @@ from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
 from surfquakecore.data_processing.seismicUtils import SeismicUtils
+from surfquakecore.spectral.cwtrun import TraceCWTResult
 from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
 
 
@@ -66,7 +67,6 @@ class SeismogramData:
 
             tr = st[0]
 
-
             for i in range(len(config)):
                 _config = config[i]
                 _keys = config[i]
@@ -102,7 +102,6 @@ class SeismogramData:
                         tr.integrate(method=_config['method'])
 
                 if _config['name'] == 'filter':
-
                     tr = filter_trace(tr, _config['type'], _config['fmin'], _config['fmax'],
                                       zerophase=_config['zerophase'], corners=_config['corners'])
 
@@ -142,11 +141,10 @@ class SeismogramData:
                     tr = add_frequency_domain_noise(tr, noise_type=_config['noise_type'], SNR_dB=_config['SNR_dB'])
 
                 if _config['name'] == 'whitening':
-                    #tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
+                    # tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
                     tr = whiten_new(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
 
                 if _config['name'] == 'remove_spikes':
-
                     filtered, outliers, medians, mads, thresholds = (
                         hampel(tr.data, _config['window_size'] * tr.stats.sampling_rate, _config['sigma']))
                     tr.data = filtered
@@ -202,12 +200,28 @@ class SeismogramData:
                     spec.compute_spectrogram(win=_config["win"], overlap_percent=overlap)
                     spec.to_pickle(folder_path=_config['output_path'])
 
+                if _config['name'] == 'cwt':
+                    cwt = TraceCWTResult(tr)
+
+                    if "fmin" in _config:
+                        fmin = _config["fmin"]
+                    else:
+                        fmin = None
+
+                    if "fmax" in _config:
+                        fmax = _config["fmax"]
+                    else:
+                        fmax = None
+
+                    cwt.compute_cwt(wavelet_type="cm", param=6.0, fmin=fmin, fmax=fmax, nf=80)
+                    cwt.to_pickle(folder_path=_config['output_path'])
 
             return tr
 
         except Exception as e:
             print(f"[ERROR] Trace processing failed: {e}")
             return None
+
 
 class StreamProcessing:
     """
@@ -326,7 +340,7 @@ class StreamProcessing:
             cc_tr.stats.sampling_rate = sr
             cc_tr.stats.network = tr.stats.network
             cc_tr.stats.station = tr.stats.station
-            cc_tr.stats.channel = tr.stats.channel[0:1]+"X"+tr.stats.channel[-1]
+            cc_tr.stats.channel = tr.stats.channel[0:1] + "X" + tr.stats.channel[-1]
             cc_tr.stats.correlation_with = ref_trace.id
             cc_tr.stats.original_trace = tr.id
             cc_tr.stats.is_autocorrelation = (i == reference_idx)
@@ -434,7 +448,6 @@ class StreamProcessing:
 
         return self.stream
 
-
     def apply_synch(self, step_config):
 
         if step_config["method"] == "starttime":
@@ -450,4 +463,3 @@ class StreamProcessing:
     def apply_concat(self):
         self.stream.merge(method=1, fill_value='interpolate')
         return self.stream
-
