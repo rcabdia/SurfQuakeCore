@@ -921,7 +921,7 @@ def _processing():
         "--post_script_stage",
         help="When to apply the post-script: 'before' or 'after' plotting",
         choices=["before", "after"],
-        default="after"
+        default="before"
     )
 
     parsed_args = arg_parse.parse_args()
@@ -988,20 +988,22 @@ def _processing():
     if parsed_args.event_file is not None:
 
         # we want to loop over all events or reference times
-        sp_sub_projects = sp.split_by_time_spans(event_file=parsed_args.event_file, cut_start_time=start,
+        sp_sub_projects = sp.split_by_time_spans(event_file=make_abs(parsed_args.event_file), cut_start_time=start,
                                                  cut_end_time=end, verbose=True)
-        sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                            sp_sub_projects, post_script=parsed_args.post_script,
+        sd = AnalysisEvents(make_abs(parsed_args.output_folder), make_abs(parsed_args.inventory_file),
+                            make_abs(parsed_args.config_file),
+                            sp_sub_projects, post_script=make_abs(parsed_args.post_script),
                             post_script_stage=parsed_args.post_script_stage,
-                            plot_config_file=parsed_args.plot_config, reference=parsed_args.reference,
+                            plot_config_file=make_abs(parsed_args.plot_config), reference=parsed_args.reference,
                             phase_list=phase_list)
         sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
     else:
 
-        sd = AnalysisEvents(parsed_args.output_folder, parsed_args.inventory_file, parsed_args.config_file,
-                            sp, post_script=parsed_args.post_script, post_script_stage=parsed_args.post_script_stage,
-                            plot_config_file=parsed_args.plot_config,
+        sd = AnalysisEvents(make_abs(parsed_args.output_folder), make_abs(parsed_args.inventory_file),
+                            make_abs(parsed_args.config_file),
+                            sp, post_script=make_abs(parsed_args.post_script), post_script_stage=parsed_args.post_script_stage,
+                            plot_config_file=make_abs(parsed_args.plot_config),
                             reference=parsed_args.reference, phase_list=phase_list)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
@@ -1102,7 +1104,7 @@ def _processing_daily():
         "--post_script_stage",
         help="When to apply the post-script: 'before' or 'after' plotting",
         choices=["before", "after"],
-        default="after"
+        default="before"
     )
 
     parsed_args = arg_parse.parse_args()
@@ -1173,14 +1175,14 @@ def _processing_daily():
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
-        output=parsed_args.output_folder,
-        inventory_file=parsed_args.inventory_file,
-        config_file=parsed_args.config_file,
+        output=make_abs(parsed_args.output_folder),
+        inventory_file=make_abs(parsed_args.inventory_file),
+        config_file= make_abs(parsed_args.config_file),
         surf_projects=subprojects,
-        plot_config_file=parsed_args.plot_config,
+        plot_config_file=make_abs(parsed_args.plot_config),
         time_segment_start=parsed_args.min_date,
         time_segment_end=parsed_args.max_date,
-        post_script=parsed_args.post_script,
+        post_script=make_abs(parsed_args.post_script),
         post_script_stage=parsed_args.post_script_stage
     )
     ae.run_waveform_analysis(auto=parsed_args.auto)
@@ -1258,12 +1260,12 @@ def _quickproc():
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
-        output=parsed_args.output_folder,
-        inventory_file=parsed_args.inventory_file,
-        config_file=parsed_args.config_file,
+        output=make_abs(parsed_args.output_folder),
+        inventory_file=make_abs(parsed_args.inventory_file),
+        config_file=make_abs(parsed_args.config_file),
         surf_projects=[sp],
-        plot_config_file=parsed_args.plot_config,
-        post_script=parsed_args.post_script,
+        plot_config_file=make_abs(parsed_args.plot_config),
+        post_script=make_abs(parsed_args.post_script),
         post_script_stage=parsed_args.post_script_stage
     )
 
