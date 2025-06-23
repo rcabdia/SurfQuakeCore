@@ -9,9 +9,10 @@ import copy
 import scipy, numpy as np
 import math
 import pywt
-from obspy import UTCDateTime
+from obspy import UTCDateTime, Trace
+from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
-from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheby1, sosfilt
+from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheby1, sosfilt, periodogram
 from surfquakecore.utils.obspy_utils import Filters
 from obspy.signal.filter import envelope
 from surfquakecore.cython_module.whiten import whiten_aux
@@ -674,4 +675,73 @@ def trim_trace(trace, mode: str, *args):
         return trace.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
     except Exception as e:
         raise ValueError(f"Trimming failed: {e}")
+
+def compute_entropy_trace(tr: Trace, win: float = 2.0, overlap: float = 0.5,
+                          normalize: bool = True) -> Trace:
+    """
+    Compute spectral entropy over sliding overlapping windows and return as a Trace
+    resampled to match the original trace length.
+
+    Parameters
+    ----------
+    tr : obspy.Trace
+        Input seismic trace.
+    win : float
+        Window length in seconds.
+    overlap : float
+        Fractional overlap between windows (e.g., 0.5 for 50% overlap).
+    normalize : bool
+        Normalize entropy values between 0 and 1.
+    plot : bool
+        Show a plot of the entropy time series.
+
+    Returns
+    -------
+    obspy.Trace
+        A new trace with the spectral entropy time series resampled to match the input trace.
+    """
+    tr = tr.copy()
+    tr.detrend("linear")
+    data = tr.data
+    dt = tr.stats.delta
+    fs = 1.0 / dt
+    npts = len(data)
+
+    win_samples = int(win / dt)
+    step_samples = max(1, int(win_samples * (1 - overlap)))
+
+    entropy_vals = []
+    entropy_times = []
+
+    for start in range(0, npts - win_samples + 1, step_samples):
+        segment = data[start:start + win_samples]
+        _, psd = periodogram(segment, fs=fs, window="hamming")
+        psd_norm = psd / np.sum(psd)
+        psd_norm = np.where(psd_norm == 0, 1e-12, psd_norm)  # avoid log(0)
+        entropy = -np.sum(psd_norm * np.log2(psd_norm))
+        if normalize:
+            entropy /= np.log2(len(psd_norm))
+
+        entropy_vals.append(entropy)
+        entropy_times.append(start + win_samples // 2)
+
+    # Resample to match original length using linear interpolation
+    entropy_vals = np.array(entropy_vals)
+    entropy_times = np.array(entropy_times)
+
+    interp_func = interp1d(entropy_times, entropy_vals, bounds_error=False,
+                           fill_value=(entropy_vals[0], entropy_vals[-1]))
+
+    full_times = np.arange(npts)
+    entropy_resampled = interp_func(full_times)
+
+    # Create output Trace
+    entropy_trace = Trace(data=entropy_resampled.astype(np.float32),
+                          header={
+                              "starttime": tr.stats.starttime,
+                              "sampling_rate": tr.stats.sampling_rate
+                          })
+
+    return entropy_trace
+
 

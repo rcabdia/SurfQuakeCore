@@ -2,7 +2,7 @@ from obspy import Stream, Trace, UTCDateTime
 import numpy as np
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
-    trace_envelope, whiten_new, trim_trace
+    trace_envelope, whiten_new, trim_trace, compute_entropy_trace
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
@@ -203,18 +203,27 @@ class SeismogramData:
                 if _config['name'] == 'cwt':
                     cwt = TraceCWTResult(tr)
 
-                    if "fmin" in _config:
+                    if "fmin" in _config.keys():
                         fmin = _config["fmin"]
                     else:
                         fmin = None
 
-                    if "fmax" in _config:
+                    if "fmax" in _config.keys():
                         fmax = _config["fmax"]
                     else:
                         fmax = None
 
                     cwt.compute_cwt(wavelet_type="cm", param=6.0, fmin=fmin, fmax=fmax, nf=80)
                     cwt.to_pickle(folder_path=_config['output_path'])
+
+                if _config['name'] == 'entropy':
+
+                    if "overlap" in _config.keys():
+                        overlap = _config['overlap'] * 1E-2
+                    else:
+                        overlap = 0.5
+
+                    tr = compute_entropy_trace(tr, win=_config['win'], overlap=overlap)
 
             return tr
 

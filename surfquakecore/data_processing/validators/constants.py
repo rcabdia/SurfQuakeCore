@@ -7,7 +7,8 @@ constants
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
-                 'cross_correlate', 'stack', 'synch', 'envelope', 'cut', 'concat', 'spectrum', 'spectrogram', 'cwt']
+                 'cross_correlate', 'stack', 'synch', 'envelope', 'cut', 'concat', 'spectrum', 'spectrogram', 'cwt',
+                 'entropy']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 

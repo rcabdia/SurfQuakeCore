@@ -1,5 +1,6 @@
 from .cut import validate_cut
 from .cwt import validate_cwt
+from .entropy import validate_entropy
 from .rmean import validate_rmean
 from .spectrogram import validate_spectrogram
 from .spectrum import validate_spectrum
@@ -52,7 +53,8 @@ CHECK_DISPATCH = {
     'cut': validate_cut,
     'spectrum': validate_spectrum,
     'spectrogram': validate_spectrogram,
-    'cwt': validate_cwt
+    'cwt': validate_cwt,
+    'entropy': validate_entropy
 }
 
 def validate_step(step_type, config):
