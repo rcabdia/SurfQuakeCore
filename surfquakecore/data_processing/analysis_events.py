@@ -162,10 +162,10 @@ class AnalysisEvents:
             for tr in st:
                 if self.config:
                     tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
-                    if tr is not None and self.reference == "event_time":
-                        tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
-                                             incidence_angle=incidence_angle, otime=origin, lat=lat, lon=lon,
-                                             depth=depth, arrivals=arrivals_info)
+                if tr is not None and self.reference == "event_time":
+                    tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
+                                         incidence_angle=incidence_angle, otime=origin.timestamp, lat=lat, lon=lon,
+                                         depth=depth, arrivals=arrivals_info)
                 traces.append(tr)
 
             return traces

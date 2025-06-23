@@ -33,7 +33,8 @@ from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
 from matplotlib.backend_bases import MouseButton
-# Choose the best backend before importing pyplot, more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
+# Choose the best backend before importing pyplot,
+# more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
 class PlotProj:
     def __init__(self, stream,
@@ -63,7 +64,8 @@ class PlotProj:
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
             "pick_output_file": "./picks.csv",
             "sharey": False,
-            "show_crosshair": False}
+            "show_crosshair": False,
+            "show_arrivals": False}
 
         self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
@@ -192,8 +194,33 @@ class PlotProj:
 
             ax.plot(t, tr.data, linewidth=0.75, label=label)
 
+
+            # --- Plot theoretical arrivals and origin time if present ---
+            arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
+            origin_time = tr.stats.get("geodetic", {}).get("otime", None)
+
+            # Plot origin time
+            if self.plot_config["show_arrivals"]:
+
+                if origin_time:
+                    ot = UTCDateTime(origin_time)
+                    ax.axvline(ot.matplotlib_date, color="blue", linestyle="-", linewidth=1.0, alpha=0.7)
+                    ax.text(ot.matplotlib_date, ax.get_ylim()[1] * 0.95, "Origin Time", color="blue",
+                            fontsize=8, ha="center", va="bottom")
+
+                # Plot arrivals
+                for arr in arrivals:
+                    phase = arr.get("phase")
+                    arr_time = arr.get("time")  # float timestamp
+                    if phase and arr_time:
+                        arr_dt = UTCDateTime(arr_time)
+                        ax.axvline(arr_dt.matplotlib_date, color="green", linestyle="--", linewidth=0.8)
+                        ax.text(arr_dt.matplotlib_date, ax.get_ylim()[1] * 0.85, phase, color="green",
+                                fontsize=8, rotation=0, ha="center", va="top")
+
             if self.plot_config["show_legend"] and len(self.axs) <= 9:
                 ax.legend()
+
 
             # Annotate with date
             starttime = tr.stats.starttime
@@ -290,7 +317,7 @@ class PlotProj:
             # Align time axis to earliest start
             t = tr.times("matplotlib")
 
-            if N_traces>=1:
+            if N_traces >= 12:
                 ax.plot(t, norm_data * scale + dist, color="black", alpha=0.75, linewidth=0.6)
             else:
                 ax.plot(t, norm_data * scale + dist, alpha=0.75, linewidth=0.6, label=tr.id)
