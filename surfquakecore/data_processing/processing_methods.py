@@ -10,6 +10,7 @@ import scipy, numpy as np
 import math
 import pywt
 from obspy import UTCDateTime, Trace
+from obspy.signal.trigger import classic_sta_lta, recursive_sta_lta, z_detect
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheby1, sosfilt, periodogram
@@ -743,5 +744,17 @@ def compute_entropy_trace(tr: Trace, win: float = 2.0, overlap: float = 0.5,
                           })
 
     return entropy_trace
+
+
+def compute_snr(tr, method, sign_win: float = 5, noise_win: float = 30):
+
+    if method == "classic":
+        tr.data = classic_sta_lta(tr.data,  sign_win*tr.stats.sampling_rate, noise_win*tr.stats.sampling_rate)
+    elif method == "recursive":
+        tr.data = recursive_sta_lta(tr.data,  sign_win*tr.stats.sampling_rate, noise_win*tr.stats.sampling_rate)
+    elif method == "z_detect":
+        tr.data = z_detect(tr.data,  sign_win*tr.stats.sampling_rate)
+    return tr
+
 
 

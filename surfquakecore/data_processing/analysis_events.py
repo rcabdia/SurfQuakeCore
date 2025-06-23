@@ -7,6 +7,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & C. Palacios
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
+
 import traceback
 import yaml
 from obspy import read_inventory, UTCDateTime
