@@ -7,7 +7,7 @@ constants
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
-                 'cross_correlate', 'stack', 'synch', 'envelope', 'cut', 'concat', 'spectrum', 'spectrogram']
+                 'cross_correlate', 'stack', 'synch', 'envelope', 'cut', 'concat', 'spectrum', 'spectrogram', 'cwt']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 
@@ -45,3 +45,5 @@ SYNCH_METHODS = ['starttime', 'MCCC']
 ENVELOPE_MODE = ['FULL', 'SMOOTH']
 
 SPECTRUM_METHODS = ["multitaper", "fft"]
+
+CWT_WAVELETS = ["cm", "mh", "pa"]

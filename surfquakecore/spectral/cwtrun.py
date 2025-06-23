@@ -4,14 +4,11 @@
 cwtrun
 """
 
+import os
 import pickle
 import gzip
 import math
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.ticker import ScalarFormatter
-import time
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
 
 class TraceCWTResult:
@@ -20,7 +17,7 @@ class TraceCWTResult:
         self.stats = trace.stats
         self.cwt_data = cwt_data  # tuple: (times, freqs, scalogram, pred_mask, pred_mask_comp)
 
-    def compute_cwt(self, wavelet_type="cm", param=6.0, fmin=0.5, fmax=None, nf=80):
+    def compute_cwt(self, wavelet_type="cm", param=6.0, fmin=None, fmax=None, nf=80):
 
         if wavelet_type == "cm":
             wavelet_type = "Complex Morlet"
@@ -30,7 +27,10 @@ class TraceCWTResult:
             wavelet_type = "Paul"
 
         if fmax is None:
-            fmax = self.trace.stats.sampling_rate / 2
+            fmax = self.trace.stats.sampling_rate // 2
+
+        if fmin is None:
+            fmin = 4//len(self.trace.data)
 
         tr = self.trace.copy()
 
@@ -57,11 +57,20 @@ class TraceCWTResult:
 
         self.cwt_data = (t, f, scalogram2, pred, pred_comp)
 
-    def plot_cwt(self):
-        if not self.cwt_data:
-            raise ValueError("CWT data not computed yet.")
+    def plot_cwt(self, save_path: str = None):
 
-        t, f, scalogram2, pred, pred_comp = self.cwt_data
+        import matplotlib.pyplot as plt
+        import matplotlib as mplt
+        import platform
+        import matplotlib.gridspec as gridspec
+        from matplotlib.ticker import ScalarFormatter
+
+        if platform.system() == 'Darwin':
+            mplt.use("MacOSX")
+        elif platform.system() == 'Linux':
+            mplt.use("TkAgg")
+
+        t, f, scalogram, pred, pred_comp = self.cwt_data
         tr = self.trace
 
         self.fig_spec = plt.figure(figsize=(10, 5))
@@ -83,9 +92,9 @@ class TraceCWTResult:
 
         # Plot scalogram
         x, y = np.meshgrid(t, f)
-        pcm = ax_spec.pcolormesh(x, y, scalogram2, shading='auto', cmap='rainbow')
-        ax_spec.fill_between(pred, ff, 0, color="black", edgecolor="red", alpha=0.3)
-        ax_spec.fill_between(pred_comp, ff, 0, color="black", edgecolor="red", alpha=0.3)
+        pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow')
+        ax_spec.fill_between(pred, f, 0, color="black", edgecolor="red", alpha=0.3)
+        ax_spec.fill_between(pred_comp, f, 0, color="black", edgecolor="red", alpha=0.3)
         ax_waveform.set_ylabel('Amplitude')
         ax_spec.set_ylim([np.min(f), np.max(f)])
         ax_spec.set_ylabel('Frequency [Hz]')
@@ -95,40 +104,64 @@ class TraceCWTResult:
         cbar.set_label("Power [dB]")
 
         plt.tight_layout()
-        plt.show(block=False)
+        if save_path:
+            self.fig_spec.savefig(save_path, dpi=300)
+            plt.close(self.fig_spec)
+        else:
+            plt.show()
 
-        while plt.fignum_exists(self.fig_spec.number):
-            plt.pause(0.2)
-            time.sleep(0.1)
 
-    def summary(self):
-        return {
-            "id": self.trace.id,
-            "starttime": str(self.stats.starttime),
-            "endtime": str(self.stats.endtime),
-            "sampling_rate": self.stats.sampling_rate,
-            "npts": self.stats.npts,
-            "computed_cwt": self.cwt_data is not None,
-        }
+    def to_pickle(self, folder_path: str, compress: bool = True):
+        """
+        Serialize the full object to a pickle file.
+        """
 
-    def to_pickle(self, filepath: str, compress: bool = True):
-        data = {
-            "version": "1.0",
-            "trace_id": self.trace.id,
-            "trace": self.trace,
-            "cwt_data": self.cwt_data,
-        }
+        # Parse argument for folder path
+
+        if not folder_path:
+            print("[ERROR] --folder_path must be specified")
+            return
+
+        # Ensure the output directory exists
+        if not os.path.exists(folder_path):
+            try:
+                os.makedirs(folder_path)
+                print(f"[INFO] Created folder: {folder_path}")
+            except Exception as e:
+                print(f"[ERROR] Failed to create folder '{folder_path}': {e}")
+                return
+
+        t1 = self.trace.stats.starttime
+        base_name = f"{self.trace.id}.D.{t1.year}.{t1.julday}"
+        path_output = os.path.join(folder_path, base_name)
+
+        counter = 1
+        while os.path.exists(path_output + ".cwt"):
+            path_output = os.path.join(folder_path, f"{base_name}_{counter}")
+            counter += 1
+
+        path_output += ".cwt"
 
         open_func = gzip.open if compress else open
-        with open_func(filepath, 'wb') as f:
-            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        mode = 'wb'
 
-        print(f"[INFO] Serialized to: {filepath}")
+        with open_func(path_output, mode) as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        print(f"[INFO] {self.trace.id} - Writing scalogram to {path_output}")
 
     @staticmethod
     def from_pickle(filepath: str, compress: bool = True):
+        """
+        Load the full object from a pickle file.
+        """
         open_func = gzip.open if compress else open
-        with open_func(filepath, 'rb') as f:
-            data = pickle.load(f)
+        mode = 'rb'
 
-        return TraceCWTResult(trace=data["trace"], cwt_data=data.get("cwt_data"))
+        with open_func(filepath, mode) as f:
+            obj = pickle.load(f)
+
+        if not isinstance(obj, TraceCWTResult):
+            raise TypeError("Pickle file does not contain a TraceSpectrogramResult object.")
+
+        return obj

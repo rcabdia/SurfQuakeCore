@@ -10,9 +10,6 @@ import pickle
 import gzip
 import platform
 import numpy as np
-from matplotlib import gridspec
-from matplotlib.ticker import ScalarFormatter
-
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
 
@@ -138,8 +135,12 @@ class TraceSpectrogramResult:
                                              self.trace.stats.delta, linf, lsup, step_percentage)
 
     def plot_spectrogram(self, save_path: str = None):
+
         import matplotlib.pyplot as plt
         import matplotlib as mplt
+        from matplotlib import gridspec
+        from matplotlib.ticker import ScalarFormatter
+
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         elif platform.system() == 'Linux':

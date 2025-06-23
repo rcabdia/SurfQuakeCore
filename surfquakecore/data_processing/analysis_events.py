@@ -280,7 +280,7 @@ class AnalysisEvents:
                     # If post-script is to run BEFORE plotting
                     if self.post_script_func and self.post_script_stage == "before":
                         try:
-                            full_stream = self.post_script_func(full_stream, self.inventory)
+                            full_stream = self.post_script_func(full_stream, inventory=self.inventory)
                         except Exception as e:
                             print(f"[WARNING] Post-script (before plotting) failed: {e}")
 
@@ -295,7 +295,7 @@ class AnalysisEvents:
 
                     if self.post_script_func and self.post_script_stage == "after":
                         try:
-                            full_stream = self.post_script_func(full_stream, self.inventory)
+                            full_stream = self.post_script_func(full_stream, inventory=self.inventory)
                         except Exception as e:
                             print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
@@ -307,14 +307,15 @@ class AnalysisEvents:
                     if interactive:
                         user_choice = input(
                             f"\n[Prompt] Finished subproject {i}. Type 'n' to continue, "
-                            f"'redo' to reprocess this event, or 'exit': "
+                            f"'r' to reprocess this event, or 'exit': "
                         ).strip().lower()
 
                         if user_choice == "c":
                             break
-                        elif user_choice == "redo":
-                            print(f"[INFO] Reloading config and reprocessing subproject {i}...")
-                            self.config = self.load_analysis_configuration(self.config_file)
+                        elif user_choice == "r":
+                            if self.config_file:
+                                print(f"[INFO] Reloading config and reprocessing subproject {i}...")
+                                self.config = self.load_analysis_configuration(self.config_file)
                             continue
                         elif user_choice == "exit":
                             print("[INFO] Exiting waveform analysis by user request.")
@@ -392,7 +393,8 @@ class AnalysisEvents:
                         # If post-script is to run BEFORE plotting
                         if self.post_script_func and self.post_script_stage == "before":
                             try:
-                                full_stream = self.post_script_func(full_stream, self.inventory, event=event)
+                                full_stream = self.post_script_func(full_stream, inventory=self.inventory,
+                                                                    event=event)
                             except Exception as e:
                                 print(f"[WARNING] Post-script (before plotting) failed: {e}")
 
@@ -412,7 +414,8 @@ class AnalysisEvents:
                         # --- Post-script (optional) --- # Might be user has edited the header of full_stream traces
                         if self.post_script_func and self.post_script_stage == "after":
                             try:
-                                full_stream = self.post_script_func(full_stream, self.inventory, event=event)
+                                full_stream = self.post_script_func(full_stream, inventory=self.inventory,
+                                                                    event=event)
                             except Exception as e:
                                 print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
@@ -424,15 +427,16 @@ class AnalysisEvents:
                         if plot:
                             user_choice = input(
                                 f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
-                                f"'redo' to reprocess this event, or 'exit': "
+                                f"''r to reprocess this event, or 'exit': "
                             ).strip().lower()
 
                             if user_choice == "c":
                                 break  # Exit the while-loop → go to next event
 
-                            elif user_choice == "redo":
-                                print(f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
-                                self.config = self.load_analysis_configuration(self.config_file)
+                            elif user_choice == "r":
+                                if self.config:
+                                    print(f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
+                                    self.config = self.load_analysis_configuration(self.config_file)
                                 continue  # Rerun same event
 
                             elif user_choice == "exit":
@@ -496,7 +500,7 @@ class AnalysisEvents:
 
                 if self.post_script_func and self.post_script_stage == "before":
                     try:
-                        full_stream = self.post_script_func(full_stream, self.inventory)
+                        full_stream = self.post_script_func(full_stream, inventory=self.inventory)
                     except Exception as e:
                         print(f"[WARNING] Post-script (before plotting) failed: {e}")
 
@@ -511,7 +515,7 @@ class AnalysisEvents:
 
                 if self.post_script_func and self.post_script_stage == "after":
                     try:
-                        full_stream = self.post_script_func(full_stream, self.inventory)
+                        full_stream = self.post_script_func(full_stream, inventory=self.inventory)
                     except Exception as e:
                         print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
@@ -521,16 +525,17 @@ class AnalysisEvents:
                 # --- User prompt for next action ---
                 if plot:
                     user_choice = input(
-                        f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
-                        f"'redo' to reprocess this event, or 'exit': "
+                        f"\n[Prompt] Finished processing. Type 'c' to continue, "
+                        f"'r' to reprocess this event, or 'exit': "
                     ).strip().lower()
 
                     if user_choice == "c":
                         break  # Exit the while-loop → go to next event
 
-                    elif user_choice == "redo":
-                        print(f"[INFO] Loading parametrization and Reprocessing...")
-                        self.config = self.load_analysis_configuration(self.config_file)
+                    elif user_choice == "r":
+                        if self.config_file:
+                            print(f"[INFO] Loading parametrization and Reprocessing...")
+                            self.config = self.load_analysis_configuration(self.config_file)
                         continue  # Rerun same event
 
                     elif user_choice == "exit":

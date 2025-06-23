@@ -15,9 +15,6 @@ from dataclasses import dataclass
 from dateutil import parser
 from multiprocessing import freeze_support
 from typing import Optional
-
-from matplotlib import pyplot as plt
-
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
@@ -26,6 +23,7 @@ from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
+from surfquakecore.spectral.cwtrun import TraceCWTResult
 from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
 from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
@@ -1216,13 +1214,19 @@ def _quickproc():
     )
 
     parser.add_argument("-w", "--wave_files", type=str, required=True)
+
     parser.add_argument(
         "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)",
         action="store_true")
+
     parser.add_argument("-c", "--config_file", type=str, required=False)
+
     parser.add_argument("-i", "--inventory_file", type=str, required=False)
+
     parser.add_argument("-o", "--output_folder", type=str, required=False)
+
     parser.add_argument("--plot_config", type=str)
+
     parser.add_argument(
         "--post_script",
         help="Path to Python script to apply to each event stream",
@@ -1269,7 +1273,7 @@ def _specplot():
 
     parser = ArgumentParser(
         prog="surfquake specplot",
-        description="Plot serialized spectral analysis (spectrum or spectrogram)",
+        description="Plot serialized spectral analysis (spectrum, spectrogram or cwt)",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1286,7 +1290,7 @@ Examples:
 
     parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp or .spec file")
 
-    parser.add_argument("--type", "-t", required=True, choices=["spectrum", "spectrogram"],
+    parser.add_argument("--type", "-t", required=True, choices=["spectrum", "spectrogram", "cwt"],
         help="Type of spectral result to plot")
 
     parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
@@ -1300,6 +1304,10 @@ Examples:
     elif args.type == "spectrogram":
         obj = TraceSpectrogramResult.from_pickle(args.file)
         obj.plot_spectrogram(save_path=args.save_path)
+
+    elif args.type == "cwt":
+        obj = TraceCWTResult.from_pickle(args.file)
+        obj.plot_cwt(save_path=args.save_path)
 
 
 def resolve_path(path: Optional[str]) -> Optional[str]:
