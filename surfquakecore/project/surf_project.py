@@ -214,17 +214,43 @@ class SurfProject:
 
         return new_project
 
-    def add_files(self):
-        if isinstance(self.root_path, str):
-            # Use glob to find files if root_path is a string
-            self.data_files = glob.glob(self.root_path, recursive=True)
-            print(f"[INFO] Found {len(self.data_files)} files using glob pattern: {self.root_path}")
-        elif isinstance(self.root_path, list):
-            # If already a list of file paths, use as-is
-            self.data_files = [os.path.abspath(p) for p in self.root_path if os.path.exists(p)]
-            print(f"[INFO] Using {len(self.data_files)} explicitly provided files.")
+    @staticmethod
+    def collect_files(root_path) -> list:
+        """
+        Collect seismic files (e.g., MSEED, SAC) from a glob pattern or list.
+
+        Parameters
+        ----------
+        root_path : str or list
+            A glob string (e.g., './data/*.mseed') or a list of file paths.
+
+        Returns
+        -------
+        list
+            Filtered list of absolute paths to valid seismic files.
+        """
+
+        BLACKLIST_EXTENSIONS = {'.txt', '.log', '.png', '.jpg', '.csv', '.json', '.xml',
+                                '.yaml', '.pdf', '.xml',
+                                '.docx', '.pkl'}
+
+        if isinstance(root_path, str):
+            all_files = glob.glob(root_path, recursive=True)
+            print(f"[INFO] Found {len(all_files)} files using glob pattern: {root_path}")
+        elif isinstance(root_path, list):
+            all_files = [os.path.abspath(p) for p in root_path if os.path.exists(p)]
+            print(f"[INFO] Using {len(all_files)} explicitly provided files.")
         else:
-            raise ValueError("[ERROR] root_path must be a string (glob pattern) or list of file paths.")
+            raise ValueError("[ERROR] root_path must be a string (glob) or a list of paths.")
+
+        # Filter out blacklisted extensions
+        valid_files = [
+            f for f in all_files
+            if os.path.splitext(f)[1].lower() not in BLACKLIST_EXTENSIONS
+        ]
+
+        print(f"[INFO] {len(valid_files)} files retained after filtering.")
+        return valid_files
 
     def search_files(self, format="NONE", verbose=True, use_glob: bool = False, **kwargs):
 

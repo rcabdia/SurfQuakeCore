@@ -1253,23 +1253,21 @@ def _quickproc():
         # Wildcard path
         wave_paths = make_abs(parsed_args.wave_files)
 
-
      # Build project on-the-fly using wildcard path
-    sp = SurfProject(root_path=wave_paths)
-    sp.add_files()
+    data_files = SurfProject.collect_files(root_path=wave_paths)
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
         output=make_abs(parsed_args.output_folder),
         inventory_file=make_abs(parsed_args.inventory_file),
         config_file=make_abs(parsed_args.config_file),
-        surf_projects=[sp],
+        surf_projects=[],
         plot_config_file=make_abs(parsed_args.plot_config),
         post_script=make_abs(parsed_args.post_script),
         post_script_stage=parsed_args.post_script_stage
     )
 
-    ae.run_fast_waveform_analysis(sp.data_files, auto=False)
+    ae.run_fast_waveform_analysis(data_files, auto=False)
 
 def _specplot():
 
