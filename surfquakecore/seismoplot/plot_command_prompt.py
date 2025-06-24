@@ -32,7 +32,7 @@ class PlotCommandPrompt:
             "sp": self._cmd_spectrum,
             "cwt": self._cmd_cwt,
             "p": self._cmd_pick,
-            "fk": self._cmd_fk,
+            "beam": self._cmd_beam,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
             "concat": self._cmd_concat,
@@ -227,42 +227,73 @@ class PlotCommandPrompt:
         else:
             self.plot_proj._plot_wavelet(idx, wavelet, param)
 
-    def _cmd_fk(self, args):
+    def _cmd_beam(self, args):
         """
-        Run FK analysis and show output.
-        Usage: fk [--fmin 0.8] [--fmax 2.2] [--smax 0.3] [--grid 0.05] [--win 3] [--overlap 0.1]
+        Run beamforming analysis and show output.
+
+        Usage:
+            beam [--method fk] [--fmin 0.8] [--fmax 2.2] [--smax 0.3]
+                 [--grid 0.05] [--win 3] [--overlap 0.1]
+
+        Options:
+            --method    Beamforming method: fk (default), capon, etc.
+            --fmin      Minimum frequency (Hz)
+            --fmax      Maximum frequency (Hz)
+            --smax      Maximum slowness (s/km)
+            --grid      Slowness grid spacing
+            --win       Time window length (s)
+            --overlap   Overlap percentage (0-1)
         """
 
         # Default parameters
         params = {
+            "method": "FK",
             "fmin": 0.8,
             "fmax": 2.2,
             "smax": 0.3,
             "slow_grid": 0.05,
             "timewindow": 3,
-            "overlap": 0.05
+            "overlap": 0.05,
         }
 
-        # Parse command-line style args
-        it = iter(args[1:])  # Skip 'fk'
+        # Allowed keys and their types
+        valid_keys = {
+            "method": str,
+            "fmin": float,
+            "fmax": float,
+            "smax": float,
+            "grid": float,  # maps to slow_grid
+            "win": float,  # maps to timewindow
+            "overlap": float,
+        }
+
+        # Parse arguments
+        it = iter(args[1:])  # Skip 'beam'
         for arg in it:
             if arg.startswith("--"):
                 key = arg[2:]
+                if key not in valid_keys:
+                    print(f"[WARNING] Unknown option '--{key}' ignored.")
+                    continue
                 try:
-                    val = float(next(it))
+                    val_str = next(it)
+                    val = valid_keys[key](val_str)
                     if key == "grid":
                         params["slow_grid"] = val
+                    elif key == "win":
+                        params["timewindow"] = val
                     else:
                         params[key] = val
                 except (StopIteration, ValueError):
                     print(f"[ERROR] Invalid value for --{key}")
                     return
 
-        print(f"[INFO] Running FK with parameters: {params}")
+        print(f"[INFO] Running beamforming method '{params['method']}' with parameters: {params}")
+
         try:
             self.plot_proj._run_fk(**params)
         except Exception as e:
-             print(f"[ERROR] FK run failed: {e}")
+            print(f"[ERROR] Beamforming run failed: {e}")
 
     def _cmd_prev(self, args):
         if self.plot_proj.current_page > 0:
@@ -657,15 +688,22 @@ class PlotCommandPrompt:
             >> cut --reference 5 20
             >> cut --start "2023-01-01 12:00:00" --end "2023-01-01 12:01:00"
     """,
-            "fk": """
-    fk [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>]
-        Run FK analysis (beamforming) on trace grid.
+            "beam": """
+            beam [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>] [--method fk]
+                Run FK (or other) beamforming method on current traces.
 
-        Default: fmin=0.8, fmax=2.2, smax=0.3, grid=0.05, win=3, overlap=0.05
+                Options:
+                    --method    : Beamforming type ('FK', 'CAPON' or 'MUSIC)
+                    --fmin      : Min frequency (Hz)
+                    --fmax      : Max frequency (Hz)
+                    --smax      : Max slowness (s/km)
+                    --grid      : Slowness grid spacing
+                    --win       : Window length in seconds
+                    --overlap   : Overlap ratio [0-1]
 
-        Example:
-            >> fk --fmin 1.0 --fmax 3.0 --win 2 --overlap 0.1
-    """
+                Example:
+                    >> beam --method FK --fmin 1.0 --fmax 3.0 --grid 0.025 --win 3 --overlap 0.05
+            """
         }
 
         # Check if specific command is requested

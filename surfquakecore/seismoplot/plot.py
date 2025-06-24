@@ -1024,6 +1024,7 @@ class PlotProj:
         self.fmax = kwargs.pop("fmax", 2.2)
         self.smax = kwargs.pop("smax", 0.3)
         self.slow_grid = kwargs.pop("slow_grid", 0.05)
+        self.method_beam = kwargs.pop("method", "FK")
 
 
         if self.utc_start is not None and self.utc_end is not None:
@@ -1108,9 +1109,17 @@ class PlotProj:
                 selection = MseedUtil.filter_inventory_by_stream(traces_slow, self.inventory)
                 wavenumber = array_analysis.array()
 
-                Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
-                    traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow, self.slow_grid, "FK"
-                )
+                if self.method_beam == "FK" or self.method_beam == "CAPON":
+                    Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
+                        traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow,
+                        self.slow_grid, self.method_beam)
+
+                elif self.method_beam == "MUSIC":
+                    Z, Sxpow, Sypow, coord = wavenumber.run_music(traces, selection, xdata, self.fmin, self.fmax,
+                                                              self.smax, self.timewindow, self.slow_grid, "MUSIC")
+
+                backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
+                slowness = np.abs(Sxpow, Sypow)
 
                 # Build slowness grid
                 Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
@@ -1118,14 +1127,26 @@ class PlotProj:
                 x = y = np.linspace(-1 * self.smax, self.smax, nx)
                 X, Y = np.meshgrid(x, y)
 
+                print("Time {time} Slowness: {slowness:.2f} Azimuth: {azimuth:.2f} Power: "
+                "{power:.2f}".format(time=time_clicked.isoformat()[:-5], slowness=slowness[0],
+                                       azimuth=backacimuth[0], power=np.max(Z)))
+
+                if self.method_beam == "FK" or self.method_beam == "CAPON":
+                    clabel = "Power"
+                elif self.method_beam == "MTP.COHERENCE":
+                    clabel = "Magnitude Coherence"
+                elif self.method_beam == "MUSIC":
+                    clabel = "MUSIC Pseudospectrum"
+                #
+
                 # Plot
                 self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
                 contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
                 ax_slow.set_xlabel("Sx (s/km)")
                 ax_slow.set_ylabel("Sy (s/km)")
-                ax_slow.set_title(f"FK Coherence at {time_clicked.strftime('%H:%M:%S')}")
+                ax_slow.set_title(f"Beam Power at {time_clicked.strftime('%H:%M:%S')}")
                 cbar = plt.colorbar(contour, ax=ax_slow)
-                cbar.set_label("Normalized Power")
+                cbar.set_label(clabel)
                 plt.tight_layout()
                 plt.show(block=False)
 
