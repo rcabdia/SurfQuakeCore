@@ -232,7 +232,6 @@ class PlotCommandPrompt:
         Run FK analysis and show output.
         Usage: fk [--fmin 0.8] [--fmax 2.2] [--smax 0.3] [--grid 0.05] [--win 3] [--overlap 0.1]
         """
-        import matplotlib.pyplot as plt
 
         # Default parameters
         params = {

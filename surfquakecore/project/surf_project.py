@@ -250,6 +250,7 @@ class SurfProject:
         ]
 
         print(f"[INFO] {len(valid_files)} files retained after filtering.")
+        valid_files.sort()
         return valid_files
 
     def search_files(self, format="NONE", verbose=True, use_glob: bool = False, **kwargs):

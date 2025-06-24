@@ -107,12 +107,12 @@ class PlotProj:
             return float('inf'), float('inf')
 
     def plot(self, page=0):
-        # if platform.system() == 'Darwin':
-        #     mplt.use("MacOSX")
-        # elif platform.system() == 'Linux':
-        mplt.use("TkAgg")
-        #mplt.use("Qt5Agg")
-        #mplt.use("MacOSX")
+
+        if platform.system() == 'Darwin':
+            mplt.use("MacOSX")
+        elif platform.system() == 'Linux':
+            mplt.use("TkAgg")
+
         self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
 
@@ -399,6 +399,7 @@ class PlotProj:
 
 
     def _on_doubleclick(self, event):
+
         """Handle double-clicks to place picks."""
 
         # Ignore invalid clicks
@@ -406,6 +407,7 @@ class PlotProj:
         #    return
 
         # Check which subplot was clicked
+
         ax = event.inaxes
         try:
             tr_idx = next(i for i, a in enumerate(self.axs) if a == ax)
@@ -1015,7 +1017,7 @@ class PlotProj:
         except:
             pass
 
-        # TODO IMPLEMENT THE METHOD
+        # TODO IMPLEMENT THE METHOD "CAPON or MUSIC"
         self.timewindow = kwargs.pop("timewindow", 3)
         self.overlap = kwargs.pop("overlap", 0.05)
         self.fmin = kwargs.pop("fmin", 0.8)
@@ -1036,13 +1038,12 @@ class PlotProj:
                 selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
                 wavenumber = array_analysis.array()
                 self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces_fk, selection, stime, etime,
-                                                                                             self.fmin, self.fmax, self.smax,
-                                                                                             self.slow_grid,
-                                                                                             self.timewindow, self.overlap)
+                               self.fmin, self.fmax, self.smax, self.slow_grid, self.timewindow, self.overlap)
 
                 # --- Create grid layout with reserved space for colorbar ---
                 self.fig_fk = plt.figure(figsize=(9, 6))
-                self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
+                #self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
+                self.fig_fk.canvas.mpl_connect('key_press_event', self._on_fk_key_press)
                 gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
                                        wspace=0.02)
 
@@ -1084,58 +1085,56 @@ class PlotProj:
         else:
             print("A time window span needs to be selected")
 
-    def _on_fk_doubleclick(self, event):
-        """On double-click, show time and plot slowness map at that moment."""
-        if not event.dblclick or event.inaxes is None:
-            return
+    def _on_fk_key_press(self, event):
 
-        ax = event.inaxes
-        xdata = event.xdata
-        if xdata is None:
-            return
+        if event.key == 'e':
+            #ax = event.inaxes
+            xdata = event.xdata
+            if xdata is None:
+                return
 
-        try:
-            time_clicked = mdt.num2date(xdata).replace(tzinfo=None)
-            print(f"[INFO] Double-clicked time: {time_clicked.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
-        except Exception as e:
-            print(f"[ERROR] Failed to convert time: {e}")
-            return
+            try:
+                time_clicked = mdt.num2date(xdata).replace(tzinfo=None)
+                print(f"[INFO] Double-clicked time: {time_clicked.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+            except Exception as e:
+                print(f"[ERROR] Failed to convert time: {e}")
+                return
 
-        try:
+            try:
 
-            # Get data
-            traces = Stream(self.trace_list)
-            traces_slow = traces.copy()
-            selection = MseedUtil.filter_inventory_by_stream(traces_slow, self.inventory)
-            wavenumber = array_analysis.array()
+                # Get data
+                traces = Stream(self.trace_list)
+                traces_slow = traces.copy()
+                selection = MseedUtil.filter_inventory_by_stream(traces_slow, self.inventory)
+                wavenumber = array_analysis.array()
 
-            Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
-                traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow, self.slow_grid, "FK"
-            )
+                Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
+                    traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow, self.slow_grid, "FK"
+                )
 
-            # Build slowness grid
-            Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
-            nx = len(Sx[0])
-            x = y = np.linspace(-1 * self.smax, self.smax, nx)
-            X, Y = np.meshgrid(x, y)
+                # Build slowness grid
+                Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
+                nx = len(Sx[0])
+                x = y = np.linspace(-1 * self.smax, self.smax, nx)
+                X, Y = np.meshgrid(x, y)
 
-            # Plot
-            self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
-            contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
-            ax_slow.set_xlabel("Sx (s/km)")
-            ax_slow.set_ylabel("Sy (s/km)")
-            ax_slow.set_title(f"FK Coherence at {time_clicked.strftime('%H:%M:%S')}")
-            cbar = plt.colorbar(contour, ax=ax_slow)
-            cbar.set_label("Normalized Power")
-            plt.tight_layout()
-            plt.show(block=False)
+                # Plot
+                self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
+                contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
+                ax_slow.set_xlabel("Sx (s/km)")
+                ax_slow.set_ylabel("Sy (s/km)")
+                ax_slow.set_title(f"FK Coherence at {time_clicked.strftime('%H:%M:%S')}")
+                cbar = plt.colorbar(contour, ax=ax_slow)
+                cbar.set_label("Normalized Power")
+                plt.tight_layout()
+                plt.show(block=False)
 
-            while plt.fignum_exists(self.fig_slow_map.number):
-                plt.pause(0.2)
-                time.sleep(0.1)
+                while plt.fignum_exists(self.fig_slow_map.number):
+                    plt.pause(0.2)
+                    time.sleep(0.1)
 
-        except Exception as e:
-            print(f"[ERROR] Could not compute or plot FK coherence: {e}")
+            except Exception as e:
+                print(f"[ERROR] Could not compute or plot FK coherence: {e}")
 
     def _restore_state(self):
         self._redraw_picks()

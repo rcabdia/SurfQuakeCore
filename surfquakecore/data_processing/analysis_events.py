@@ -507,7 +507,8 @@ class AnalysisEvents:
 
 
                 if full_stream and plot:
-                    plotter = PlotProj(full_stream, plot_config=self.plot_config, interactive=interactive)
+                    plotter = PlotProj(full_stream, plot_config=self.plot_config, inventory=self.inventory,
+                                       interactive=interactive)
                     full_stream = plotter.plot()
 
                     for tr in full_stream:
