@@ -6,6 +6,10 @@ plot_command_prompt.py
 import os
 import readline
 import atexit
+import warnings
+warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
+from surfquakecore.data_processing.processing_methods import filter_trace
+
 
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
@@ -21,6 +25,7 @@ class PlotCommandPrompt:
         self.commands = {
             "n": self._cmd_next,
             "b": self._cmd_prev,
+            "filter": self._cmd_filter,
             "spectrogram": self._cmd_spectrogram,
             "spec": self._cmd_spectrogram,
             "spectrum": self._cmd_spectrum,
@@ -43,15 +48,35 @@ class PlotCommandPrompt:
         Usage: exit
         """
         import matplotlib.pyplot as plt
+        import gc
+        import multiprocessing as mp
+        import warnings
 
         print("[INFO] Exiting interactive plotting session.")
         self.prompt_active = False
         self._exit_code = "exit"
 
         try:
-            plt.close(self.plot_proj.fig)
+            if self.plot_proj and hasattr(self.plot_proj, "fig"):
+                plt.close(self.plot_proj.fig)
+                self.plot_proj.fig = None
         except Exception:
-            pass  # In case fig is None or already closed
+            pass
+
+        # Explicitly call garbage collector to release mpl backends/semaphores
+        gc.collect()
+
+        # On macOS, also consider forcibly terminating child processes if you're using any (e.g., in FK)
+        try:
+            mp.active_children()
+            mp.get_context().get_logger().setLevel("ERROR")  # suppress log noise
+        except Exception:
+            pass
+
+        # Suppress final cleanup warning from multiprocessing
+        warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
+
+        print("[INFO] Cleanup complete.")
 
     def run(self) -> str:
         """
@@ -101,6 +126,68 @@ class PlotCommandPrompt:
         self.plot_proj.clear_plot()  # clear figure
         self.plot_proj.plot(page=self.plot_proj.current_page)  # replot
         # Do not set prompt_active = False; stay in prompt!
+
+    def _cmd_filter(self, args):
+        """
+        Apply a filter to currently displayed traces.
+
+        Usage:
+            filter <type> <fmin> <fmax> [--corners <int>] [--zerophase <bool>] [--ripple <float>]
+        Example:
+            >> filter bandpass 0.1 1.0 --corners 4 --zerophase True
+        """
+        if len(args) < 4:
+            print("Usage: filter <type> <fmin> <fmax> [--corners <int>] [--zerophase <bool>] ...")
+            return
+
+        filter_type = args[1]
+        try:
+            fmin = float(args[2])
+            fmax = float(args[3])
+        except ValueError:
+            print("[ERROR] fmin and fmax must be numbers.")
+            return
+
+        # Parse optional kwargs
+        kwargs = {}
+        it = iter(args[4:])
+        for arg in it:
+            if arg.startswith("--"):
+                key = arg[2:]
+                try:
+                    val = next(it)
+                    # Try to cast to appropriate type
+                    if val.lower() in ["true", "false"]:
+                        val = val.lower() == "true"
+                    elif "." in val:
+                        val = float(val)
+                    else:
+                        val = int(val)
+                    kwargs[key] = val
+                except (StopIteration, ValueError):
+                    print(f"[ERROR] Invalid or missing value for --{key}")
+                    return
+
+        # Apply filter to each displayed trace
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to filter.")
+            return
+
+        filtered_count = 0
+        for tr in traces:
+            try:
+                success = filter_trace(tr, type=filter_type, fmin=fmin, fmax=fmax, **kwargs)
+                if success is not False:
+                    filtered_count += 1
+            except Exception as e:
+                print(f"[ERROR] Failed to filter {tr.id}: {e}")
+
+        print(f"[INFO] Filter applied to {filtered_count} traces.")
+
+        self.plot_proj.clear_plot()
+        self.plot_proj.plot(page=self.plot_proj.current_page)
+
 
     def _cmd_spectrogram(self, args):
         if len(args) >= 2:
@@ -517,28 +604,98 @@ class PlotCommandPrompt:
         print(f"[INFO] Shifted {shifted_count} traces by phase '{phase_name}' and replotted.")
 
     def _cmd_help(self, args):
+        """
+        Show general help or detailed help for a specific command.
+        Usage:
+            help               → show list of all commands
+            help <command>     → show detailed help for that command
+        """
+        # Detailed help content per command
+        detailed_help = {
+            "filter": """
+    filter <type> <fmin> <fmax> [--corners N] [--zerophase Bool] [--ripple R] [--rp R] [--rs R]
+        Apply filter to current traces.
 
+        Supported types:
+            - bandpass, highpass, lowpass (Butterworth)
+            - cheby1, cheby2, elliptic, bessel
+
+        Parameters:
+            fmin/fmax   : Frequency limits in Hz
+            --corners   : Filter order (default: 4)
+            --zerophase : Forward-backward filtering (default: True)
+            --ripple    : Passband ripple (cheby1) or stopband attenuation (cheby2) [dB]
+            --rp        : Passband ripple for elliptic filter [dB]
+            --rs        : Stopband attenuation for elliptic filter [dB]
+
+        Examples:
+            >> filter bandpass 0.1 1.0 --corners 4 --zerophase True
+            >> filter cheby1 0.2 2.0 --ripple 1
+            >> filter elliptic 0.3 3.0 --rp 0.5 --rs 60
+    """,
+            "shift": """
+    shift --phase <name>
+    shift --phase_theo <name>
+        Align traces by:
+            --phase       → manual picks in stats.picks
+            --phase_theo  → theoretical arrivals in stats.geodetic.arrivals
+
+        Example:
+            >> shift --phase P
+            >> shift --phase_theo S
+    """,
+            "cut": """
+    cut --phase <name> <before> <after>
+    cut --reference <before> <after>
+    cut --start "<UTC>" --end "<UTC>"
+        Trim traces around:
+            - Phase pick
+            - Reference time
+            - Absolute UTC interval
+
+        Examples:
+            >> cut --phase P 10 30
+            >> cut --reference 5 20
+            >> cut --start "2023-01-01 12:00:00" --end "2023-01-01 12:01:00"
+    """,
+            "fk": """
+    fk [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>]
+        Run FK analysis (beamforming) on trace grid.
+
+        Default: fmin=0.8, fmax=2.2, smax=0.3, grid=0.05, win=3, overlap=0.05
+
+        Example:
+            >> fk --fmin 1.0 --fmax 3.0 --win 2 --overlap 0.1
+    """
+        }
+
+        # Check if specific command is requested
+        if len(args) > 1:
+            cmd = args[1].lower()
+            if cmd in detailed_help:
+                print(detailed_help[cmd])
+            else:
+                print(f"[WARN] No detailed help available for '{cmd}'")
+            return
+
+        # General summary
         print("Available commands:")
         print("  p                             Return to interactive picking mode")
         print("  n                             Next set of traces / exit prompt")
         print("  b                             Previous set of traces")
-        print("  spectrum <index>|all [type]  Plot amplitude spectrum (type: loglog, xlog, ylog).")
-        print("                               Example: >> sp 0 | >> sp all ylog")
-        print("  spec <idx> [win overlap]     Plot spectrogram for one trace.")
-        print("                               Example: >> spec 0 5.0 50")
-        print("  cwt <idx> <wavelet> <param> [fmin fmax]  Continuous wavelet transform.")
-        print("                               Wavelets: cm (Morlet), mh, pa")
-        print("                               Example: >> cwt 0 cm 6 0.5 8")
-        print("  fk [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>]")
-        print("                               Run FK analysis. Example: >> fk --fmin 0.8 --fmax 2.0")
-        print("  plot_type <type>             Change plot mode. Types: standard, record, overlay")
-        print("                               Example: >> plot_type overlay")
-        print("  concat                           Merge/concatenate traces with same ID using ObsPy")
-        print("  shift --phase <name>              Shift traces to align by phase pick (e.g., 'P')")
-        print("  shift --phase_theo <name>          Shift traces to align by theretical phase (e.g., 'P')")
-        print("  cut --phase <name> <before> <after>     Trim traces using phase picks (e.g., 'P', 'S')")
-        print("  cut --reference <before> <after>        Trim traces using last reference time")
-        print("  write --folder_path <path>   Write current traces to folder in HDF5 format.")
-        print("                               Example: >> write --folder_path ./output")
-        print("  exit                            Close plot and exit interactive prompt")
-        print("  help                          Show this help message")
+        print("  filter <type> <fmin> <fmax>   Filter traces (type: help filter for details)")
+        print("  spectrum <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
+        print("  spec <idx> [win overlap]      Plot spectrogram for one trace")
+        print("  cwt <idx> <wavelet> <param>   Continuous wavelet transform")
+        print("  fk [--fmin ...]               FK analysis (type: help fk for options)")
+        print("  plot_type <type>              Change plot mode: standard, record, overlay")
+        print("  concat                        Merge/concatenate traces")
+        print("  shift --phase <name>          Shift by pick (type: help shift for info)")
+        print("  cut --phase <name> ...        Trim traces (type: help cut for usage)")
+        print("  write --folder_path <path>    Export displayed traces to HDF5")
+        print("  exit                          Close plot and exit")
+        print("  help [command]                Show general or detailed help")
+
+if __name__ == "__main__":
+    import multiprocessing as mp
+    mp.set_start_method("fork", force=True)  # 'fork' is safest for Matplotlib on macOS

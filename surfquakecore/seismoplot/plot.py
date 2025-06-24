@@ -107,11 +107,12 @@ class PlotProj:
             return float('inf'), float('inf')
 
     def plot(self, page=0):
-        if platform.system() == 'Darwin':
-            mplt.use("MacOSX")
-        elif platform.system() == 'Linux':
-            mplt.use("TkAgg")
-
+        # if platform.system() == 'Darwin':
+        #     mplt.use("MacOSX")
+        # elif platform.system() == 'Linux':
+        mplt.use("TkAgg")
+        #mplt.use("Qt5Agg")
+        #mplt.use("MacOSX")
         self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
 
@@ -259,7 +260,6 @@ class PlotProj:
         plt.ion()
         plt.tight_layout()
 
-
         if self.enable_command_prompt:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
@@ -274,6 +274,8 @@ class PlotProj:
         else:
             self._register_span_selector()
             plt.show(block=True)
+            #self.fig.canvas.draw_idle()
+
 
 
     def _plot_record_section(self):
@@ -386,11 +388,11 @@ class PlotProj:
         def filtered_doubleclick(event):
             if event.button == MouseButton.RIGHT:
                 return  # allow SpanSelector to use right-click
-            self._on_doubleclick(event)
+            if event.dblclick and event.button == MouseButton.LEFT:
+                self._on_doubleclick(event)
 
         self.fig.canvas.mpl_connect('button_press_event', filtered_doubleclick)
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
-
         self.info_box = self.fig.text(0.75, 0.8, "", ha='left', va='top', fontsize=9)
         self._update_info_box()
         self._restore_state()
@@ -400,8 +402,8 @@ class PlotProj:
         """Handle double-clicks to place picks."""
 
         # Ignore invalid clicks
-        if not event.dblclick or event.inaxes not in self.axs:
-            return
+        #if not event.inaxes not in self.axs:
+        #    return
 
         # Check which subplot was clicked
         ax = event.inaxes
@@ -414,6 +416,7 @@ class PlotProj:
         pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
 
         # Ask for pick type (optional input)
+        plt.pause(0.01)
         try:
             raw_input = input(
                 f"Enter pick type and polarity for {trace.id} at {pick_time.strftime('%H:%M:%S')} (e.g., 'P,U' or 'Sg'): ").strip()
@@ -591,6 +594,74 @@ class PlotProj:
 
             self.enable_command_prompt = True
             self.plot(page=self.current_page)
+
+        elif event.key == 'e':
+            # Ignore invalid clicks
+            if event.inaxes not in self.axs:
+                return
+
+            # Check which subplot was clicked
+            ax = event.inaxes
+            try:
+                tr_idx = next(i for i, a in enumerate(self.axs) if a == ax)
+            except StopIteration:
+                print("[WARNING] Clicked axis not found.")
+                return
+            trace = self.trace_list[tr_idx]
+            pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
+
+            # Ask for pick type (optional input)
+            plt.pause(0.01)
+            try:
+                raw_input = input(
+                    f"Enter pick type and polarity for {trace.id} at {pick_time.strftime('%H:%M:%S')} (e.g., 'P,U' or 'Sg'): ").strip()
+                if ',' in raw_input:
+                    phase, polarity = [s.strip() or '?' for s in raw_input.split(",", maxsplit=1)]
+                else:
+                    phase = raw_input if raw_input else "?"
+                    polarity = "?"
+            except Exception:
+                phase, polarity = "?", "?"
+
+            if polarity not in ['U', 'D', '?']:
+                print("[WARNING] Polarity not recognized. Defaulting to '?'.")
+                polarity = '?'
+
+            # Calculate relative time and amplitude
+            rel_time = (pick_time - trace.stats.starttime.datetime).total_seconds()
+            amplitude = np.interp(rel_time, trace.times(), trace.data)
+
+            # Build and store pick dictionary in trace
+            pick_entry = {
+                "time": UTCDateTime(pick_time).timestamp,
+                "phase": phase,
+                "amplitude": amplitude,
+                "polarity": polarity
+            }
+
+            if not hasattr(trace.stats, "picks"):
+                trace.stats.picks = []
+            trace.stats.picks.append(pick_entry)
+
+            # Save to CSV file if configured
+            csv_path = self.plot_config.get("pick_output_file")
+            if csv_path:
+                header_needed = not os.path.exists(csv_path)
+                with open(csv_path, "a") as f:
+                    if header_needed:
+                        f.write("id,time,phase,amplitude,polarity\n")
+                    f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
+
+            # Add to in-memory pick tracking
+            if trace.id not in self.picks:
+                self.picks[trace.id] = []
+            self.picks[trace.id].append((pick_time, phase, amplitude, polarity))
+
+            # Draw pick line and update display
+            self.current_pick = (trace.id, pick_time)
+            self._draw_pick_lines(trace.id, ax, pick_time)
+            self._update_info_box()
+            self.fig.canvas.draw()
 
     def _redraw_picks(self):
         """Redraw all pick lines only on their corresponding axes."""
