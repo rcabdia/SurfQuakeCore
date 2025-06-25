@@ -25,6 +25,7 @@ import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
 import matplotlib.dates as mdates
+from obspy.signal.polarization import flinn
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
@@ -1127,9 +1128,12 @@ class PlotProj:
                 x = y = np.linspace(-1 * self.smax, self.smax, nx)
                 X, Y = np.meshgrid(x, y)
 
-                print("Time {time} Slowness: {slowness:.2f} Azimuth: {azimuth:.2f} Power: "
-                "{power:.2f}".format(time=time_clicked.isoformat()[:-5], slowness=slowness[0],
-                                       azimuth=backacimuth[0], power=np.max(Z)))
+                info_text = (
+                    f"Time: {time_clicked.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"Slowness: {slowness[0]:.2f} s/km\n"
+                    f"Azimuth: {backacimuth[0]:.2f}°\n"
+                    f"Power: {np.max(Z):.2f}")
+                print(info_text)
 
                 if self.method_beam == "FK" or self.method_beam == "CAPON":
                     clabel = "Power"
@@ -1144,7 +1148,16 @@ class PlotProj:
                 contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
                 ax_slow.set_xlabel("Sx (s/km)")
                 ax_slow.set_ylabel("Sy (s/km)")
-                ax_slow.set_title(f"Beam Power at {time_clicked.strftime('%H:%M:%S')}")
+                # Add top-left annotation text (instead of title)
+                ax_slow.text(
+                    0.02, 0.98, info_text,
+                    transform=ax_slow.transAxes,
+                    ha="left", va="top",
+                    fontsize=9,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.8)
+                )
+
+                #ax_slow.set_title(f"Beam Power at {time_clicked.strftime('%H:%M:%S')}")
                 cbar = plt.colorbar(contour, ax=ax_slow)
                 cbar.set_label(clabel)
                 plt.tight_layout()
@@ -1235,6 +1248,80 @@ class PlotProj:
             sharex=True
         )
         self._span_selector.set_sub_axes(axs)
+
+    def plot_particle_motion(self, z, n, e):
+
+        z_data = z.data - np.mean(z.data)
+        n_data = n.data - np.mean(n.data)
+        e_data = e.data - np.mean(e.data)
+
+        st = Stream(traces=[z.copy(), n.copy(), e.copy()])
+        azimuth, incidence, rect, plan = flinn(st)
+
+        max_val = max(np.max(np.abs(z_data)), np.max(np.abs(n_data)), np.max(np.abs(e_data)))
+        lim = 1.05 * max_val
+        #incidence = 90 - incidence
+        # Plot
+        self.fig_part, axs = plt.subplots(2, 2, figsize=(8, 6))
+        self.fig_part.suptitle(f"Particle Motion: {z.stats.station}", fontsize=12)
+
+        # --- Z vs N ---
+        axs[0, 0].plot(n_data, z_data, linewidth=0.5)
+        axs[0, 0].set_xlabel("Radial / North")
+        axs[0, 0].set_ylabel("Vertical")
+        axs[0, 0].set_xlim(-lim, lim)
+        axs[0, 0].set_ylim(-lim, lim)
+        axs[0, 0].grid(True, which="both", ls="-", color='grey', alpha=0.4)
+
+        # Incidence angle line
+        inc_rad = np.radians(incidence)
+        axs[0, 0].plot([0, np.cos(inc_rad) * lim], [0, np.sin(inc_rad) * lim], 'k--', linewidth=0.8)
+        axs[0, 0].text(0.05 * lim, 0.9 * lim, f"Inc: {incidence:.1f}°", color='blue', fontsize=9, weight='bold')
+
+        # --- Z vs E ---
+        axs[0, 1].plot(e_data, z_data, linewidth=0.5)
+        axs[0, 1].set_xlabel("Transversal / East")
+        axs[0, 1].set_ylabel("Vertical")
+        axs[0, 1].set_xlim(-lim, lim)
+        axs[0, 1].set_ylim(-lim, lim)
+        axs[0, 1].grid(True, which="both", ls="-", color='grey', alpha=0.4)
+        # Add in Z–E panel
+        axs[0, 1].plot([0, np.cos(inc_rad) * lim], [0, np.sin(inc_rad) * lim], 'k--', linewidth=0.8)
+        axs[0, 1].text(0.05 * lim, 0.9 * lim,
+                       f"Inc: {incidence:.1f}°", color='blue', fontsize=9, weight='bold')
+
+        # --- N vs E ---
+        axs[1, 0].plot(e_data, n_data, linewidth=0.5)
+        axs[1, 0].set_xlabel("Transversal / East")
+        axs[1, 0].set_ylabel("Radial / North")
+        axs[1, 0].set_xlim(-lim, lim)
+        axs[1, 0].set_ylim(-lim, lim)
+        axs[1, 0].grid(True, which="both", ls="-", color='grey', alpha=0.4)
+
+        # Add azimuth arrow
+        az_rad = np.radians(azimuth)
+        arrow_len = lim * 0.8
+        axs[1, 0].arrow(0, 0,
+                        arrow_len * np.sin(az_rad),
+                        arrow_len * np.cos(az_rad),
+                        width=0.01 * lim, head_width=0.05 * lim,
+                        color='red', edgecolor='black', length_includes_head=True)
+        axs[1, 0].text(0.05 * lim, 0.9 * lim, f"Az: {azimuth:.1f}°", color='red', fontsize=9, weight='bold')
+
+        # --- Info box ---
+        axs[1, 1].axis("off")
+        summary = (f"Azimuth:         {azimuth:.2f}°\n" f"Incidence:       {incidence:.2f}°\n"
+                   f"Rectilinearity:  {rect:.2f}\n" f"Planarity:       {plan:.2f}")
+
+        axs[1, 1].text(0.05, 0.6, summary, fontsize=10, va="center", ha="left")
+
+        plt.tight_layout()
+        plt.show(block=False)
+
+        # Hold open as long as figure exists
+        while plt.fignum_exists(self.fig_part.number):
+            plt.pause(0.2)
+            time.sleep(0.1)
 
     def clear_plot(self):
         if self.fig:

@@ -31,6 +31,7 @@ class PlotCommandPrompt:
             "spectrum": self._cmd_spectrum,
             "sp": self._cmd_spectrum,
             "cwt": self._cmd_cwt,
+            "pm": self._cmd_pm,
             "p": self._cmd_pick,
             "beam": self._cmd_beam,
             "plot_type": self._cmd_type,
@@ -633,6 +634,67 @@ class PlotCommandPrompt:
         self.plot_proj.plot(page=0)
         print(f"[INFO] Shifted {shifted_count} traces by phase '{phase_name}' and replotted.")
 
+    def _cmd_pm(self, args):
+        """
+        Run particle motion analysis for current displayed stream.
+        Usage: pm
+        """
+        from collections import defaultdict
+
+        trace_list = getattr(self.plot_proj, "displayed_traces", [])
+        if not trace_list:
+            print("[WARN] No traces currently displayed.")
+            return
+
+        utc_start = getattr(self.plot_proj, "utc_start", None)
+        utc_end = getattr(self.plot_proj, "utc_end", None)
+        if not (utc_start and utc_end):
+            print("[ERROR] plot_proj.utc_start and utc_end must be set.")
+            return
+
+        # Group traces by (net, sta, loc)
+        grouped = defaultdict(list)
+        for tr in trace_list:
+            key = (tr.stats.network, tr.stats.station, tr.stats.location)
+            grouped[key].append(tr)
+
+        valid_sets = []
+        accepted_combos = [
+            ("Z", "N", "E"),
+            ("Z", "1", "2"),
+            ("Z", "Y", "X")
+        ]
+
+        for key, traces in grouped.items():
+            comp_map = {tr.stats.channel[-1].upper(): tr for tr in traces}
+
+            for names in accepted_combos:
+                if all(c in comp_map for c in names):
+                    # Reorder as Z, N, E regardless of naming
+                    z, n, e = comp_map[names[0]].copy(), comp_map[names[1]].copy(), comp_map[names[2]].copy()
+                    print(f"[INFO] Mapping channels {names} → Z, N, E for station {key[1]}")
+
+                    try:
+                        # Trim to common interval
+                        for tr in (z, n, e):
+                            tr.trim(starttime=utc_start, endtime=utc_end, pad=True, fill_value=0)
+
+                        min_len = min(len(z.data), len(n.data), len(e.data))
+                        z.data, n.data, e.data = z.data[:min_len], n.data[:min_len], e.data[:min_len]
+
+                        valid_sets.append((z, n, e))
+                    except Exception as err:
+                        print(f"[WARN] Failed trimming for station {key[1]}: {err}")
+                    break  # only process the first valid combo
+
+        if not valid_sets:
+            print("[WARN] No valid 3-component sets (ZNE, Z12, ZYX) found.")
+            return
+
+        for z, n, e in valid_sets:
+            print(f"[INFO] Plotting particle motion for {z.id}")
+            self.plot_proj.plot_particle_motion(z, n, e)
+
     def _cmd_help(self, args):
         """
         Show general help or detailed help for a specific command.
@@ -703,6 +765,18 @@ class PlotCommandPrompt:
 
                 Example:
                     >> beam --method FK --fmin 1.0 --fmax 3.0 --grid 0.025 --win 3 --overlap 0.05
+            """,
+            "pm": """
+            pm
+                Perform particle motion analysis on all valid 3-component trace groups
+                (e.g., ZNE, Z12, ZYX). Opens a static plot with polarization projections.
+
+                Output:
+                    - Z vs N, Z vs E, N vs E views
+                    - Azimuth, Incidence, Rectilinearity, Planarity
+
+                Example:
+                    >> pm
             """
         }
 
