@@ -112,10 +112,10 @@ class TraceBeamResult:
             plt.tight_layout()
             plt.show()
 
-    def _on_fk_key_press(self, event):
+    def _on_beam_key_press(self, event):
 
         if event.key == 'e':
-            #ax = event.inaxes
+
             xdata = event.xdata
             if xdata is None:
                 return
