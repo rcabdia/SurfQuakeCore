@@ -2,7 +2,7 @@ from obspy import Stream, Trace, UTCDateTime
 import numpy as np
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
-    trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr
+    trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
@@ -228,6 +228,9 @@ class SeismogramData:
                 if _config['name'] == 'snr':
                     tr = compute_snr(tr, method=_config['method'], sign_win=_config['sign_win'],
                                      noise_win=_config['noise_win'])
+
+                if _config['name'] == 'raw':
+                    tr = downsample_trace(tr, factor=_config['factor'], to_int=_config['integers'], scale_target=1000)
 
             return tr
 

@@ -1,6 +1,7 @@
 from .cut import validate_cut
 from .cwt import validate_cwt
 from .entropy import validate_entropy
+from .raw import validate_raw
 from .rmean import validate_rmean
 from .snr import validate_snr
 from .spectrogram import validate_spectrogram
@@ -56,7 +57,8 @@ CHECK_DISPATCH = {
     'spectrogram': validate_spectrogram,
     'cwt': validate_cwt,
     'entropy': validate_entropy,
-    'snr': validate_snr
+    'snr': validate_snr,
+    'raw': validate_raw
 }
 
 def validate_step(step_type, config):

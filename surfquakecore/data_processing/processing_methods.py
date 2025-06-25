@@ -756,5 +756,44 @@ def compute_snr(tr, method, sign_win: float = 5, noise_win: float = 30):
         tr.data = z_detect(tr.data,  sign_win*tr.stats.sampling_rate)
     return tr
 
+def downsample_trace(trace, factor=10, to_int=False, scale_target=1000):
+    """
+    Downsample an ObsPy Trace and optionally convert data to scaled integers.
+
+    Parameters
+    ----------
+    trace : obspy.Trace
+        Input trace to downsample.
+    factor : int
+        Downsampling factor (e.g., 10 takes every 10th sample).
+    to_int : bool
+        If True, scale data and convert to int32.
+    scale_target : float
+        Target maximum amplitude after scaling for int conversion.
+
+    Returns
+    -------
+    obspy.Trace
+        Downsampled (and optionally integer-converted) trace.
+    """
+
+    # Downsample data
+    downsampled_data = trace.data[::factor]
+    new_sampling_rate = trace.stats.sampling_rate / factor
+
+    # Scale to integer if requested
+    if to_int:
+        max_amp = np.max(np.abs(downsampled_data)) or 1.0
+        scale = scale_target / max_amp
+        downsampled_data = (downsampled_data * scale).astype(np.int32)
+
+    # Create new Trace with updated metadata
+    new_trace = trace.copy()
+    new_trace.data = downsampled_data
+    new_trace.stats.sampling_rate = new_sampling_rate
+    new_trace.stats.npts = len(downsampled_data)
+
+    return new_trace
+
 
 
