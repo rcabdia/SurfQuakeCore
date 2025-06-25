@@ -231,8 +231,7 @@ class SurfProject:
         """
 
         BLACKLIST_EXTENSIONS = {'.txt', '.log', '.png', '.jpg', '.csv', '.json', '.xml',
-                                '.yaml', '.pdf', '.xml',
-                                '.docx', '.pkl'}
+                                '.yaml', '.pdf', '.docx', '.pkl'}
 
         if isinstance(root_path, str):
             all_files = glob.glob(root_path, recursive=True)

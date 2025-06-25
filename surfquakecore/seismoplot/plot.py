@@ -24,7 +24,6 @@ from obspy.core.trace import Trace
 import matplotlib as mplt
 import matplotlib.dates as mdt
 import numpy as np
-import matplotlib.dates as mdates
 from obspy.signal.polarization import flinn
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
@@ -234,8 +233,8 @@ class PlotProj:
 
             # Format x-axis
             ax.xaxis_date()
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-            ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+            ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
+            ax.xaxis.set_major_locator(mdt.AutoDateLocator())
 
             # Hide bottom ticks except for last subplot
             if ax_idx < len(self.axs) - 1:
@@ -335,7 +334,7 @@ class PlotProj:
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Distance (km)")
         ax.xaxis_date()
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
         ax.set_title("Record Section")
 
         min_time = min(tr.stats.starttime for tr in traces)
@@ -376,7 +375,7 @@ class PlotProj:
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Normalized Amplitude")
         ax.xaxis_date()
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
         ax.set_title("Overlay of All Traces")
 
         if self.plot_config["show_legend"]:
@@ -1067,7 +1066,7 @@ class PlotProj:
                 ax2.set_xlabel("Time (UTC)")
                 ax0.set_title("FK Analysis - Relative Power")
 
-                formatter = mdates.DateFormatter('%H:%M:%S')
+                formatter = mdt.DateFormatter('%H:%M:%S')
                 ax2.xaxis.set_major_formatter(formatter)
                 ax2.tick_params(axis='x', rotation=0)
 
