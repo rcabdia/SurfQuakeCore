@@ -1,3 +1,4 @@
+from .beam import validate_beam
 from .cut import validate_cut
 from .cwt import validate_cwt
 from .entropy import validate_entropy
@@ -58,7 +59,8 @@ CHECK_DISPATCH = {
     'cwt': validate_cwt,
     'entropy': validate_entropy,
     'snr': validate_snr,
-    'raw': validate_raw
+    'raw': validate_raw,
+    'beam': validate_beam
 }
 
 def validate_step(step_type, config):

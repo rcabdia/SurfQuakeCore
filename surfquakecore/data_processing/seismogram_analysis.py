@@ -1,5 +1,6 @@
-from obspy import Stream, Trace, UTCDateTime
+from obspy import Stream, Trace, UTCDateTime, Inventory
 import numpy as np
+from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace
@@ -9,7 +10,7 @@ from obspy.signal.cross_correlation import correlate_template
 from surfquakecore.data_processing.seismicUtils import SeismicUtils
 from surfquakecore.spectral.cwtrun import TraceCWTResult
 from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
-
+from typing import Optional
 
 class SeismogramData:
 
@@ -244,11 +245,12 @@ class StreamProcessing:
     Class for applying stream-wide processing steps (e.g., stack, cross-correlation, rotate, shift).
     """
 
-    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch"}
+    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam"}
 
-    def __init__(self, stream: Stream, config: list, **kwargs):
+    def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
         self.config = config
+        self.inventory = inventory
         self.kwargs = kwargs
 
     def run_stream_processing(self) -> Stream:
@@ -280,6 +282,9 @@ class StreamProcessing:
                     self.stream = self.apply_synch(step)
                 elif method_name == "concat":
                     self.stream = self.apply_concat()
+                elif method_name == "beam":
+                    self.apply_beam(step)
+
 
             return self.stream
 
@@ -479,3 +484,11 @@ class StreamProcessing:
     def apply_concat(self):
         self.stream.merge(method=1, fill_value='interpolate')
         return self.stream
+
+    def apply_beam(self, step_config):
+        bm = TraceBeamResult(stream = self.stream, overlap=step_config["overlap"], fmin=step_config["fmin"],
+                        fmax=step_config["fmax"], smax=step_config["smax"], slow_grid=step_config["slow_grid"],
+                        inventory=self.inventory, method=step_config["method"])
+
+        bm.compute_beam()
+        bm.to_pickle(folder_path = step_config["output_folder"])

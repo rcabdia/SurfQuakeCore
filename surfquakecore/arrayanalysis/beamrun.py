@@ -6,7 +6,7 @@ beamforming obj
 """
 
 from matplotlib import gridspec
-from obspy import Inventory
+from obspy import Inventory, UTCDateTime
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.utils.obspy_utils import MseedUtil
 import numpy as np
@@ -63,7 +63,7 @@ class TraceBeamResult:
             self.timewindow, self.overlap
         )
 
-    def plot_beam(self):
+    def plot_beam(self, save_path: str = None):
 
         if not hasattr(self, "relpower") or self.relpower is None:
             raise RuntimeError("[ERROR] Beam not computed. Call compute_beam() first.")
@@ -76,40 +76,48 @@ class TraceBeamResult:
         elif platform.system() == 'Linux':
             mplt.use("TkAgg")
 
-            # --- Create grid layout with reserved space for colorbar ---
-            self.fig_fk = plt.figure(figsize=(9, 6))
-            # self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
-            self.fig_fk.canvas.mpl_connect('key_press_event', self._on_beam_key_press)
-            gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
-                                   wspace=0.02)
+        # --- Create grid layout with reserved space for colorbar ---
+        self.fig_fk = plt.figure(figsize=(9, 6))
+        # self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
+        self.fig_fk.canvas.mpl_connect('key_press_event', self._on_beam_key_press)
+        gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
+                               wspace=0.02)
 
-            # Create subplots
-            ax0 = self.fig_fk.add_subplot(gs[0, 0])
-            ax1 = self.fig_fk.add_subplot(gs[1, 0], sharex=ax0)
-            ax2 = self.fig_fk.add_subplot(gs[2, 0], sharex=ax0)
-            ax_cbar = self.fig_fk.add_subplot(gs[:, 1])  # colorbar takes all rows
+        # Create subplots
+        ax0 = self.fig_fk.add_subplot(gs[0, 0])
+        ax1 = self.fig_fk.add_subplot(gs[1, 0], sharex=ax0)
+        ax2 = self.fig_fk.add_subplot(gs[2, 0], sharex=ax0)
+        ax_cbar = self.fig_fk.add_subplot(gs[:, 1])  # colorbar takes all rows
+        t1 = UTCDateTime(mdt.num2date(self.T[0]))
+        date_str = t1.strftime("%Y-%m-%d")
+        textstr = f"JD {t1.julday} / {t1.year}\n{date_str}"
 
-            # Scatter plots
-            sc0 = ax0.scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
-            sc1 = ax1.scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
-            sc2 = ax2.scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
+        # Scatter plots
+        sc0 = ax0.scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
+        sc1 = ax1.scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
+        sc2 = ax2.scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
+        ax0.text(0.01, 0.95, textstr, transform=ax0.transAxes, fontsize=8,
+                va='top', ha='left', bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+        # Labels and formatting
+        ax0.set_ylabel("Rel. Power")
+        ax1.set_ylabel("Slowness\n(s/km)")
+        ax2.set_ylabel("BackAzimuth")
+        ax2.set_xlabel("Time (UTC)")
+        ax0.set_title("FK Analysis - Relative Power")
 
-            # Labels and formatting
-            ax0.set_ylabel("Rel. Power")
-            ax1.set_ylabel("Slowness\n(s/km)")
-            ax2.set_ylabel("BackAzimuth")
-            ax2.set_xlabel("Time (UTC)")
-            ax0.set_title("FK Analysis - Relative Power")
+        formatter = mdt.DateFormatter('%H:%M:%S')
+        ax2.xaxis.set_major_formatter(formatter)
+        ax2.tick_params(axis='x', rotation=0)
 
-            formatter = mdt.DateFormatter('%H:%M:%S')
-            ax2.xaxis.set_major_formatter(formatter)
-            ax2.tick_params(axis='x', rotation=0)
+        # Add colorbar
+        cbar = self.fig_fk.colorbar(sc2, cax=ax_cbar)
+        cbar.set_label("Relative Power")
 
-            # Add colorbar
-            cbar = self.fig_fk.colorbar(sc2, cax=ax_cbar)
-            cbar.set_label("Relative Power")
-
-            plt.tight_layout()
+        plt.tight_layout()
+        if save_path:
+            self.fig_fk.savefig(save_path, dpi=300)
+            plt.close(self.fig_fk)
+        else:
             plt.show()
 
     def _on_beam_key_press(self, event):
@@ -246,22 +254,26 @@ class TraceBeamResult:
 
         return obj
 
-    def detect_beam_peaks(self, phase_dict="regional", peak_kwargs=None, output_file=None):
+    def detect_beam_peaks(self, phase_dict="regional", min_power=0.75, peak_kwargs=None,
+                          bazimuth_range=None, output_file=None, min_time_separation=10.0):
         """
-        Detect relative maxima (peaks) in self.relpower using optional slowness constraints.
+        Detect relative maxima (peaks) in self.relpower using optional slowness and backazimuth constraints.
 
         Parameters:
-            phase_dict (dict or str): Phase slowness dictionary or a shortcut: "regional", "teleseismic".
-            peak_kwargs (dict): Optional arguments for scipy.signal.find_peaks.
-            output_file (str): Optional path to a text file to append results.
+            phase_dict (dict or str): Phase slowness dictionary or shortcut ("regional", "teleseismic").
+            min_power (float): Minimum relative power to accept a peak.
+            peak_kwargs (dict): Arguments passed to scipy.signal.find_peaks().
+            bazimuth_range (tuple): Optional (min, max) azimuth range in degrees.
+            output_file (str): Optional file path to append detected results.
+            min_time_separation (float): Minimum time (in seconds) between peaks across all phases.
 
         Returns:
-            dict: {phase_name: list of (time, azimuth, slowness, power)}
+            dict: {phase_name: list of (datetime, azimuth, slowness, power)}
         """
         from scipy.signal import find_peaks
+        from matplotlib.dates import num2date
         from datetime import datetime
 
-        # Define shortcuts
         regional_phases = {
             "Pg": (0.20, 0.35),
             "Pn": (0.06, 0.10),
@@ -284,18 +296,20 @@ class TraceBeamResult:
         }
 
         if isinstance(phase_dict, str):
-            phase_dict = phase_dict.lower()
-            if phase_dict == "regional":
+            key = phase_dict.lower()
+            if key == "regional":
                 phase_dict = regional_phases
-            elif phase_dict == "teleseismic":
+            elif key == "teleseismic":
                 phase_dict = teleseismic_phases
             else:
-                raise ValueError(f"[ERROR] Unknown shortcut: {phase_dict}")
+                raise ValueError(f"[ERROR] Unknown phase_dict shortcut: '{phase_dict}'")
 
         if peak_kwargs is None:
             peak_kwargs = {"prominence": 0.1, "distance": 10}
 
         results = {}
+        seen_phase_times = set()
+        accepted_times = []
 
         for phase, (smin, smax) in phase_dict.items():
             mask = (self.Slowness >= smin) & (self.Slowness <= smax)
@@ -307,31 +321,51 @@ class TraceBeamResult:
 
             phase_results = []
             for idx in peaks:
-                t = self.T[idx]
-                az = self.AZ[idx]
-                slow = self.Slowness[idx]
                 power = self.relpower[idx]
+                if power < min_power:
+                    continue
+
+                az = self.AZ[idx]
+                if bazimuth_range:
+                    baz_min, baz_max = bazimuth_range
+                    if not (baz_min <= az <= baz_max):
+                        continue
+
+                t = num2date(self.T[idx]).replace(tzinfo=None)
+                slow = self.Slowness[idx]
+                key = (phase, t.isoformat())
+
+                # Avoid exact duplicates
+                if key in seen_phase_times:
+                    continue
+
+                # Enforce global time separation across phases
+                if any(abs((t - tprev).total_seconds()) < min_time_separation for tprev in accepted_times):
+                    continue
+
+                seen_phase_times.add(key)
+                accepted_times.append(t)
                 phase_results.append((t, az, slow, power))
 
             if phase_results:
-                results[phase] = phase_results
+                # Sort by power descending and keep the strongest
+                phase_results.sort(key=lambda x: x[3], reverse=True)
+                results[phase] = [phase_results[0]]
 
-        # Append results to file if requested
+        # Optional file write
         if output_file:
             try:
                 with open(output_file, "a") as f:
-                    f.write("# Beam peak detection results\n")
-                    f.write(f"# Timestamp: {datetime.utcnow().isoformat()}Z\n")
-                    for phase, peaks in results.items():
-                        for t, az, slow, pwr in peaks:
-                            f.write(f"{phase:10s} {t.isoformat()} AZ={az:6.2f} SLOW={slow:6.3f} RELPWR={pwr:5.3f}\n")
+                    for phase, picks in results.items():
+                        for t, az, slow, pwr in picks:
+                            f.write(f"{phase:5s},{t.isoformat()},{az:6.2f} "
+                                    f"{slow:6.3f},{pwr:5.3f}\n")
                     f.write("\n")
                 print(f"[INFO] Beam peak results appended to {output_file}")
             except Exception as e:
                 print(f"[ERROR] Could not write to file: {e}")
 
         return results
-
     def __repr__(self):
         return (f"<TraceBeamResult method={self.method_beam} "
                 f"window={self.timewindow}s fmin={self.fmin}Hz fmax={self.fmax}Hz>")

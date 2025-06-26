@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from dateutil import parser
 from multiprocessing import freeze_support
 from typing import Optional
-
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
@@ -81,7 +80,10 @@ def _create_actions():
             name="processing_quick", run=_quickproc, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "specplot": _CliActions(
-            name="specplot", run=_specplot, description=f"Type {__entry_point_name} -h for help.\n")
+            name="specplot", run=_specplot, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "beamplot": _CliActions(
+            name="beamplot", run=_beamplot, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -1314,75 +1316,73 @@ Examples:
         obj.plot_cwt(save_path=args.save_path, clip=args.clip)
 
 
-def beamplot():
+def _beamplot():
+
     parser = ArgumentParser(
         prog="surfquake beamplot",
         description="Plot serialized beamforming result and optionally extract peaks",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    Plot a saved FK beam:
-        surfquake beamplot --file ./output/2024.123.beam
+  Plot a saved FK beam:
+      surfquake beamplot --file ./output/2024.123.beam
 
-    Detect peaks with regional phase constraints:
-        surfquake beamplot --file event.beam --find_solutions regional --write_path solutions.txt
+  Detect peaks with regional phase constraints:
+      surfquake beamplot --file event.beam --find_solutions regional --write_path solutions.txt
 
-    Use custom slowness constraints:
-        surfquake beamplot --file beam.beam --find_solutions '{"Pn": [0.05, 0.08], "Lg": [0.18, 0.30]}'
+  Use custom slowness constraints:
+      surfquake beamplot --file beam.beam --find_solutions '{"Pn": [0.05, 0.08], "Lg": [0.18, 0.30]}'
 
-    Apply azimuth filtering:
-        surfquake beamplot -f beam.beam --find_solutions regional --baz_range 100 150
+  Apply azimuth filtering:
+      surfquake beamplot -f beam.beam --find_solutions regional --baz_range 100 150
+
+  Control minimum power threshold:
+      surfquake beamplot -f beam.beam --find_solutions teleseismic --min_power 0.2
 """
     )
 
     parser.add_argument("--file", "-f", required=True, help="Path to the .beam file (gzip-pickled TraceBeamResult)")
     parser.add_argument("--save_path", help="Optional path to save the beam figure (e.g., output.png)")
-
-    parser.add_argument("--find_solutions", help="Detect peaks using phase constraints: 'regional', 'teleseismic', or dict string")
+    parser.add_argument("--find_solutions", help="Phase constraint: 'regional', 'teleseismic', or dict string")
     parser.add_argument("--baz_range", nargs=2, type=float, metavar=('MIN', 'MAX'),
                         help="Backazimuth range filter in degrees (e.g., 90 140)")
+    parser.add_argument("--min_power", type=float, default=0.6,
+                        help="Minimum relative power required to accept a peak (default: 0.1)")
     parser.add_argument("--write_path", help="Append detected peaks to specified TXT file")
 
     args = parser.parse_args()
 
     # Load object
-    beam_obj = TraceBeamResult.from_pickle(args.file)
+    beam_obj = TraceBeamResult.from_pickle(make_abs(args.file))
 
-    # Plot beam
-    beam_obj.plot_beam(save_path=args.save_path)
+    # Process peak detection if requested
 
-    # Find peaks if requested
     if args.find_solutions:
         try:
             baz_range = tuple(args.baz_range) if args.baz_range else None
-            peaks = beam_obj.find_relative_maxima(
-                min_power=0.1,
+
+            results = beam_obj.detect_beam_peaks(
+                phase_dict=args.find_solutions,
                 peak_kwargs={"prominence": 0.1, "distance": 10},
-                phase_constraints=args.find_solutions,
+                min_power=args.min_power,
+                output_file=args.write_path,
                 bazimuth_range=baz_range
             )
+
+            if len(results)>0:
+                total_peaks = sum(len(peaks) for peaks in results.values())
+                print(f"[INFO] Found {total_peaks} beam peaks:")
+                for phase, peaks in results.items():
+                    for t, az, s, pwr in peaks:
+                        print(f"  {t} | Phase: {phase:8} | "
+                              f"BAz: {az:6.1f}° | S: {s:.3f} s/km | Pow: {pwr:.2f}")
+
         except Exception as e:
             print(f"[ERROR] Failed to detect peaks: {e}")
-            return
 
-        print(f"[INFO] Found {len(peaks)} beam peaks:")
-        for p in peaks:
-            tstr = p['time'].strftime('%Y-%m-%d %H:%M:%S')
-            phase = p.get("phase", "?")
-            print(f"  {tstr} | Phase: {phase:5} | BAz: {p['azimuth']:6.1f}° | "
-                  f"S: {p['slowness']:.3f} s/km | Pow: {p['rel_power']:.2f}")
+        beam_obj.plot_beam(save_path=make_abs(args.save_path) if args.save_path else None)
 
-        # Append to file
-        if args.write_path:
-            try:
-                with open(args.write_path, "a") as f:
-                    for p in peaks:
-                        tstr = p['time'].strftime('%Y-%m-%d %H:%M:%S')
-                        phase = p.get("phase", "?")
-                        f.write(f"{tstr},{phase},{p['azimuth']:.2f},{p['slowness']:.3f},{p['rel_power']:.2f}\n")
-                print(f"[INFO] Peaks written to {args.write_path}")
-            except Exception as e:
-                print(f"[ERROR] Failed to write to file: {e}")
+
 def resolve_path(path: Optional[str]) -> Optional[str]:
     if path is None:
         return None

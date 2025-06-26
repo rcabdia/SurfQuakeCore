@@ -273,7 +273,7 @@ class AnalysisEvents:
                     del results
                     gc.collect()
 
-                    sp = StreamProcessing(full_stream, self.config)
+                    sp = StreamProcessing(full_stream, self.config, self.inventory)
                     full_stream = sp.run_stream_processing()
 
                     print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
@@ -386,7 +386,7 @@ class AnalysisEvents:
                         del results
                         gc.collect()
 
-                        sp = StreamProcessing(full_stream, self.config)
+                        sp = StreamProcessing(full_stream, self.config, self.inventory)
                         full_stream = sp.run_stream_processing()
 
                         print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
@@ -494,7 +494,7 @@ class AnalysisEvents:
                 del all_traces, results
                 gc.collect()
 
-                sp = StreamProcessing(full_stream, self.config)
+                sp = StreamProcessing(full_stream, self.config, self.inventory)
                 full_stream = sp.run_stream_processing()
 
                 print(f"[INFO] Fast mode: {len(full_stream)} traces processed")
