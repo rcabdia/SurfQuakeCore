@@ -45,40 +45,45 @@ class PlotCommandPrompt:
         }
 
     def _cmd_exit(self, args):
-        """
-        Exit the plot and close the interactive session.
-        Usage: exit
-        """
-        import matplotlib.pyplot as plt
-        import gc
-        import multiprocessing as mp
-        import warnings
-
-        print("[INFO] Exiting interactive plotting session.")
+        print("[INFO] Returning to picking mode...")
         self.prompt_active = False
-        self._exit_code = "exit"
+        self._exit_code = "p"
 
-        try:
-            if self.plot_proj and hasattr(self.plot_proj, "fig"):
-                plt.close(self.plot_proj.fig)
-                self.plot_proj.fig = None
-        except Exception:
-            pass
-
-        # Explicitly call garbage collector to release mpl backends/semaphores
-        gc.collect()
-
-        # On macOS, also consider forcibly terminating child processes if you're using any (e.g., in FK)
-        try:
-            mp.active_children()
-            mp.get_context().get_logger().setLevel("ERROR")  # suppress log noise
-        except Exception:
-            pass
-
-        # Suppress final cleanup warning from multiprocessing
-        warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
-
-        print("[INFO] Cleanup complete.")
+    # def _cmd_exit(self, args):
+    #     """
+    #     Exit the plot and close the interactive session.
+    #     Usage: exit
+    #     """
+    #     import matplotlib.pyplot as plt
+    #     import gc
+    #     import multiprocessing as mp
+    #     import warnings
+    #
+    #     print("[INFO] Exiting interactive plotting session.")
+    #     self.prompt_active = False
+    #     self._exit_code = "exit"
+    #
+    #     try:
+    #         if self.plot_proj and hasattr(self.plot_proj, "fig"):
+    #             plt.close(self.plot_proj.fig)
+    #             self.plot_proj.fig = None
+    #     except Exception:
+    #         pass
+    #
+    #     # Explicitly call garbage collector to release mpl backends/semaphores
+    #     gc.collect()
+    #
+    #     # On macOS, also consider forcibly terminating child processes if you're using any (e.g., in FK)
+    #     try:
+    #         mp.active_children()
+    #         mp.get_context().get_logger().setLevel("ERROR")  # suppress log noise
+    #     except Exception:
+    #         pass
+    #
+    #     # Suppress final cleanup warning from multiprocessing
+    #     warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
+    #
+    #     print("[INFO] Cleanup complete.")
 
     def run(self) -> str:
         """
@@ -723,14 +728,14 @@ class PlotCommandPrompt:
             >> xcorr --ref 0 --mode full --normalize full --strict True
         """
 
-        from surfquakecore.data_processing.processing_methods import filter_trace, apply_cross_correlation
+        from surfquakecore.data_processing.processing_methods import apply_cross_correlation
 
         # Default parameters
         params = {
             "reference": 0,
             "mode": "full",
             "normalize": "full",
-            "strict": True,
+            "trim": True,
         }
 
         # Parse arguments
@@ -742,9 +747,9 @@ class PlotCommandPrompt:
                 params["mode"] = next(it)
             elif arg == "--normalize":
                 params["normalize"] = next(it)
-            elif arg == "--strict":
+            elif arg == "--trim":
                 val = next(it)
-                params["strict"] = val.lower() == "true"
+                params["trim"] = val.lower() == "False"
 
         # Input stream
         stream = getattr(self.plot_proj, "trace_list", [])
@@ -850,17 +855,17 @@ class PlotCommandPrompt:
             """,
 
             "xcorr": """
-            xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--strict True|False]
+            xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--trim True|False]
                 Cross-correlate currently displayed traces against a reference trace.
 
                 Parameters:
                     --ref         Reference trace index (default: 0)
                     --mode        Correlation mode: full, same, valid (default: full)
                     --normalize   Normalization mode: full, partial, etc. (default: full)
-                    --strict      True: enforce same start/end times (default: True)
+                    --strict      True: enforce same start/end times (default: False)
 
                 Example:
-                    >> xcorr --ref 0 --mode full --normalize full --strict False
+                    >> xcorr --ref 0 --mode full --normalize full --trim False
             """
         }
 
@@ -888,7 +893,7 @@ class PlotCommandPrompt:
         print("  shift --phase <name>          Shift by pick (type: help shift for info)")
         print("  cut --phase <name> ...        Trim traces (type: help cut for usage)")
         print("  write --folder_path <path>    Export displayed traces to HDF5")
-        print("  exit                          Close plot and exit")
+        print("  exit                          Close command line and exit to interactive picking mode")
         print("  help [command]                Show general or detailed help")
 
 if __name__ == "__main__":

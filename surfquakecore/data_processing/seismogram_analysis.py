@@ -12,6 +12,7 @@ from surfquakecore.spectral.cwtrun import TraceCWTResult
 from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
 from typing import Optional
 
+
 class SeismogramData:
 
     @staticmethod
@@ -285,7 +286,6 @@ class StreamProcessing:
                 elif method_name == "beam":
                     self.apply_beam(step)
 
-
             return self.stream
 
     def apply_stack(self, step_config):
@@ -332,7 +332,7 @@ class StreamProcessing:
         normalize = step_config.get("normalize", 'full')
         mode = step_config.get("mode", 'full')
         reference_idx = step_config.get("reference", 0)
-        strict = step_config.get("strict", True)
+        strict = step_config.get("trim", False)
 
         st = self.stream.copy()
 
@@ -340,19 +340,20 @@ class StreamProcessing:
             print("[WARNING] Empty stream for cross-correlation")
             return Stream()
 
-        # Ensure uniform sampling rate
+        # Ensure uniform sampling rate and trim to common time window and ensure aligned length
         sr = st[0].stats.sampling_rate
-        for tr in st:
-            if tr.stats.sampling_rate != sr:
-                raise ValueError("Inconsistent sampling rates in stream.")
+        npts = st[reference_idx].stats.npts
 
-        # In strict mode, trim to common time window and ensure aligned length
         if strict:
+
+            for tr in st:
+                if tr.stats.sampling_rate != sr:
+                    raise ValueError("Inconsistent sampling rates in stream.")
+
             common_start = max(tr.stats.starttime for tr in st)
             common_end = min(tr.stats.endtime for tr in st)
             st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
 
-            npts = st[0].stats.npts
             for tr in st:
                 if tr.stats.npts != npts:
                     raise ValueError("Traces do not have same number of samples after trimming.")
@@ -373,11 +374,20 @@ class StreamProcessing:
             cc_tr = Trace(data=cc)
             cc_tr.stats.sampling_rate = sr
             cc_tr.stats.network = tr.stats.network
-            cc_tr.stats.station = tr.stats.station
+            cc_tr.stats.station = ref_trace.stats.station + "_" + tr.stats.station
             cc_tr.stats.channel = tr.stats.channel[0:1] + "X" + tr.stats.channel[-1]
             cc_tr.stats.correlation_with = ref_trace.id
             cc_tr.stats.original_trace = tr.id
             cc_tr.stats.is_autocorrelation = (i == reference_idx)
+            if strict:
+                num = len(ref_trace.data)
+                if (num % 2) == 0:
+                    c = int(np.ceil(num / 2.) + 1)  # even
+                else:
+
+                    c = int(np.ceil((num + 1) / 2))  # odd
+
+                cc_tr.stats.mid_point = (cc_tr.stats.starttime + c * cc_tr.stats.sampling_rate).timestamp
 
             cc_stream.append(cc_tr)
 
@@ -389,6 +399,7 @@ class StreamProcessing:
 
         if "GAC" in step_config["method"]:
             self.stream.rotate(method=step_config["type"])
+
         else:
 
             self.stream.rotate(method=step_config["type"], back_azimuth=step_config["angle"],
@@ -499,9 +510,9 @@ class StreamProcessing:
         return self.stream
 
     def apply_beam(self, step_config):
-        bm = TraceBeamResult(stream = self.stream, overlap=step_config["overlap"], fmin=step_config["fmin"],
-                        fmax=step_config["fmax"], smax=step_config["smax"], slow_grid=step_config["slow_grid"],
-                        inventory=self.inventory, method=step_config["method"])
+        bm = TraceBeamResult(stream=self.stream, overlap=step_config["overlap"], fmin=step_config["fmin"],
+                             fmax=step_config["fmax"], smax=step_config["smax"], slow_grid=step_config["slow_grid"],
+                             inventory=self.inventory, method=step_config["method"])
 
         bm.compute_beam()
-        bm.to_pickle(folder_path = step_config["output_folder"])
+        bm.to_pickle(folder_path=step_config["output_folder"])

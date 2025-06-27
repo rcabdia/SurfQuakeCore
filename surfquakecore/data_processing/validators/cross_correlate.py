@@ -14,5 +14,5 @@ def validate_cross_correlate(config):
 
     require_type(config, "normalize", str)
     require_type(config, "reference_idx", int)
-    require_type(config, "strict", bool)
+    require_type(config, "trim", bool)
 

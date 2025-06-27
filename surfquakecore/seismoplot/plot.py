@@ -349,7 +349,7 @@ class PlotProj:
             self.fig.canvas.draw_idle()
             plt.pause(0.5)
 
-            print("[INFO] Type 'command parameter', 'help', 'exit' to exit or 'p' to return to picking mode")
+            print("[INFO] Type 'command parameter', 'help', 'exit' or 'p' to return to picking mode")
             prompt = PlotCommandPrompt(self)
             result = prompt.run()
 

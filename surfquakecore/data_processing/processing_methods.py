@@ -797,13 +797,14 @@ def downsample_trace(trace, factor=10, to_int=False, scale_target=1000):
     return new_trace
 
 
-def apply_cross_correlation(stream, reference_idx=0, mode='full', normalize='full', strict=True):
+def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', trim=True):
 
     """
     Cross-correlate all traces in the stream with respect to a reference trace.
 
     Parameters:
         step_config (dict):
+            - "stream": Original Stream
             - "normalize": normalization type (default: 'full')
             - "mode": correlation mode ('full', 'valid', 'same')
             - "reference": index of the reference trace (default: 0)
@@ -820,19 +821,20 @@ def apply_cross_correlation(stream, reference_idx=0, mode='full', normalize='ful
         print("[WARNING] Empty stream for cross-correlation")
         return Stream()
 
-    # Ensure uniform sampling rate
+    # Ensure uniform sampling rate and trim to common time window and ensure aligned length
     sr = st[0].stats.sampling_rate
-    for tr in st:
-        if tr.stats.sampling_rate != sr:
-            raise ValueError("Inconsistent sampling rates in stream.")
+    npts = st[reference].stats.npts
 
-    # In strict mode, trim to common time window and ensure aligned length
-    if strict:
+    if trim:
+
+        for tr in st:
+            if tr.stats.sampling_rate != sr:
+                raise ValueError("Inconsistent sampling rates in stream.")
+
         common_start = max(tr.stats.starttime for tr in st)
         common_end = min(tr.stats.endtime for tr in st)
         st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
 
-        npts = st[0].stats.npts
         for tr in st:
             if tr.stats.npts != npts:
                 raise ValueError("Traces do not have same number of samples after trimming.")
@@ -840,7 +842,7 @@ def apply_cross_correlation(stream, reference_idx=0, mode='full', normalize='ful
         # In flexible mode, no trimming
         pass  # Traces may have different start times or lengths
 
-    ref_trace = st[reference_idx]
+    ref_trace = st[reference]
     cc_stream = Stream()
 
     for i, tr in enumerate(st):
@@ -853,11 +855,21 @@ def apply_cross_correlation(stream, reference_idx=0, mode='full', normalize='ful
         cc_tr = Trace(data=cc)
         cc_tr.stats.sampling_rate = sr
         cc_tr.stats.network = tr.stats.network
-        cc_tr.stats.station = tr.stats.station
+        cc_tr.stats.station = ref_trace.stats.station + "_" + tr.stats.station
         cc_tr.stats.channel = tr.stats.channel[0:1] + "X" + tr.stats.channel[-1]
         cc_tr.stats.correlation_with = ref_trace.id
         cc_tr.stats.original_trace = tr.id
-        cc_tr.stats.is_autocorrelation = (i == reference_idx)
+        cc_tr.stats.is_autocorrelation = (i == reference)
+
+        if trim:
+            num = len(ref_trace.data)
+            if (num % 2) == 0:
+                c = int(np.ceil(num / 2.) + 1)  # even
+            else:
+
+                c = int(np.ceil((num + 1) / 2))  # odd
+
+            cc_tr.stats.mid_point = (cc_tr.stats.starttime + c * cc_tr.stats.sampling_rate).timestamp
 
         cc_stream.append(cc_tr)
 
