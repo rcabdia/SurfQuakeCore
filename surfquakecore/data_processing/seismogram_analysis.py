@@ -1,9 +1,11 @@
+import os
+
 from obspy import Stream, Trace, UTCDateTime, Inventory
 import numpy as np
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
-    trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace
+    trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
@@ -516,3 +518,60 @@ class StreamProcessing:
 
         bm.compute_beam()
         bm.to_pickle(folder_path=step_config["output_folder"])
+
+    def apply_pm(self, step_config):
+        """
+        Run particle motion analysis for current displayed stream.
+        Usage: pm
+        """
+        from collections import defaultdict
+        common_start = max(tr.stats.starttime for tr in self.stream)
+        common_end = min(tr.stats.endtime for tr in self.stream)
+        self.stream.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
+
+        trace_list = list(self.stream)
+        if not trace_list:
+            print("[WARN] No traces currently displayed.")
+            return
+
+
+        # Group traces by (net, sta, loc)
+        grouped = defaultdict(list)
+        for tr in trace_list:
+            key = (tr.stats.network, tr.stats.station, tr.stats.location)
+            grouped[key].append(tr)
+
+        valid_sets = []
+        accepted_combos = [
+            ("Z", "N", "E"),
+            ("Z", "1", "2"),
+            ("Z", "Y", "X")
+        ]
+
+        for key, traces in grouped.items():
+            comp_map = {tr.stats.channel[-1].upper(): tr for tr in traces}
+
+            for names in accepted_combos:
+                if all(c in comp_map for c in names):
+                    # Reorder as Z, N, E regardless of naming
+                    z, n, e = comp_map[names[0]].copy(), comp_map[names[1]].copy(), comp_map[names[2]].copy()
+                    print(f"[INFO] Mapping channels {names} → Z, N, E for station {key[1]}")
+
+                    try:
+
+                        min_len = min(len(z.data), len(n.data), len(e.data))
+                        z.data, n.data, e.data = z.data[:min_len], n.data[:min_len], e.data[:min_len]
+
+                        valid_sets.append((z, n, e))
+                    except Exception as err:
+                        print(f"[WARN] Failed trimming for station {key[1]}: {err}")
+                    break  # only process the first valid combo
+
+        if not valid_sets:
+            print("[WARN] No valid 3-component sets (ZNE, Z12, ZYX) found.")
+            return
+
+        for z, n, e in valid_sets:
+            print(f"[INFO] Plotting particle motion for {z.id}")
+            save_path = os.path.join(step_config["output_path"], z.id) + "_pm.txt"
+            particle_motion(z, n, e, save_path=save_path)

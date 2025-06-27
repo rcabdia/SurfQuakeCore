@@ -9,8 +9,10 @@ import copy
 import scipy, numpy as np
 import math
 import pywt
+from matplotlib import pyplot as plt
 from obspy import UTCDateTime, Trace, Stream
 from obspy.signal.cross_correlation import correlate_template
+from obspy.signal.polarization import flinn
 from obspy.signal.trigger import classic_sta_lta, recursive_sta_lta, z_detect
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
@@ -874,5 +876,91 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
         cc_stream.append(cc_tr)
 
     return cc_stream
+
+
+def particle_motion(z, n, e, save_path: str = None):
+
+    z_data = z.data - np.mean(z.data)
+    n_data = n.data - np.mean(n.data)
+    e_data = e.data - np.mean(e.data)
+
+    st = Stream(traces=[z.copy(), n.copy(), e.copy()])
+    azimuth, incidence, rect, plan = flinn(st)
+
+    summary = (f"Azimuth:         {azimuth:.2f}°\n" f"Incidence:       {incidence:.2f}°\n"
+               f"Rectilinearity:  {rect:.2f}\n" f"Planarity:       {plan:.2f}")
+    print(summary)
+    # Optional file write
+
+    # Plot
+    if save_path:
+
+        try:
+            with open(save_path, "a") as f:
+                f.write(f"{azimuth:.2f}°,{incidence:.2f}°,{rect:.2f},{plan:.2f}\n")
+            print(f"[INFO] Particle Motion results appended to {save_path}")
+        except Exception as e:
+            print(f"[ERROR] Could not write to file: {e}")
+
+        max_val = max(np.max(np.abs(z_data)), np.max(np.abs(n_data)), np.max(np.abs(e_data)))
+        lim = 1.05 * max_val
+
+        fig_part, axs = plt.subplots(2, 2, figsize=(8, 6))
+        fig_part.suptitle(f"Particle Motion: {z.stats.station}", fontsize=12)
+
+        # --- Z vs N ---
+        axs[0, 0].plot(n_data, z_data, linewidth=0.5)
+        axs[0, 0].set_xlabel("Radial / North")
+        axs[0, 0].set_ylabel("Vertical")
+        axs[0, 0].set_xlim(-lim, lim)
+        axs[0, 0].set_ylim(-lim, lim)
+        axs[0, 0].grid(True, which="both", ls="-", color='grey', alpha=0.4)
+
+        # Incidence angle line
+        inc_rad = np.radians(incidence)
+        axs[0, 0].plot([0, np.cos(inc_rad) * lim], [0, np.sin(inc_rad) * lim], 'k--', linewidth=0.8)
+        axs[0, 0].text(0.05 * lim, 0.9 * lim, f"Inc: {incidence:.1f}°", color='blue', fontsize=9, weight='bold')
+
+        # --- Z vs E ---
+        axs[0, 1].plot(e_data, z_data, linewidth=0.5)
+        axs[0, 1].set_xlabel("Transversal / East")
+        axs[0, 1].set_ylabel("Vertical")
+        axs[0, 1].set_xlim(-lim, lim)
+        axs[0, 1].set_ylim(-lim, lim)
+        axs[0, 1].grid(True, which="both", ls="-", color='grey', alpha=0.4)
+        # Add in Z–E panel
+        axs[0, 1].plot([0, np.cos(inc_rad) * lim], [0, np.sin(inc_rad) * lim], 'k--', linewidth=0.8)
+        axs[0, 1].text(0.05 * lim, 0.9 * lim,
+                       f"Inc: {incidence:.1f}°", color='blue', fontsize=9, weight='bold')
+
+        # --- N vs E ---
+        axs[1, 0].plot(e_data, n_data, linewidth=0.5)
+        axs[1, 0].set_xlabel("Transversal / East")
+        axs[1, 0].set_ylabel("Radial / North")
+        axs[1, 0].set_xlim(-lim, lim)
+        axs[1, 0].set_ylim(-lim, lim)
+        axs[1, 0].grid(True, which="both", ls="-", color='grey', alpha=0.4)
+
+        # Add azimuth arrow
+        az_rad = np.radians(azimuth)
+        arrow_len = lim * 0.8
+        axs[1, 0].arrow(0, 0,
+                        arrow_len * np.sin(az_rad),
+                        arrow_len * np.cos(az_rad),
+                        width=0.01 * lim, head_width=0.05 * lim,
+                        color='red', edgecolor='black', length_includes_head=True)
+        axs[1, 0].text(0.05 * lim, 0.9 * lim, f"Az: {azimuth:.1f}°", color='red', fontsize=9, weight='bold')
+
+        # --- Info box ---
+        axs[1, 1].axis("off")
+        summary = (f"Azimuth:         {azimuth:.2f}°\n" f"Incidence:       {incidence:.2f}°\n"
+                   f"Rectilinearity:  {rect:.2f}\n" f"Planarity:       {plan:.2f}")
+
+        axs[1, 1].text(0.05, 0.6, summary, fontsize=10, va="center", ha="left")
+        plt_path = save_path.split(".")[0] + ".png"
+        plt.tight_layout()
+        fig_part.savefig(plt_path, dpi=300)
+        plt.close( fig_part)
+
 
 

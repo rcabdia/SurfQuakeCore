@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 plot_command_prompt.py
 """
+
 import os
 import readline
 import atexit
-import warnings
-warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
-
-
+from surfquakecore.data_processing.processing_methods import filter_trace
 
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
@@ -50,6 +49,9 @@ class PlotCommandPrompt:
         self._exit_code = "p"
 
     # def _cmd_exit(self, args):
+
+    #     import warnings
+    #     warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
     #     """
     #     Exit the plot and close the interactive session.
     #     Usage: exit
