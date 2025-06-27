@@ -9,7 +9,8 @@ import copy
 import scipy, numpy as np
 import math
 import pywt
-from obspy import UTCDateTime, Trace
+from obspy import UTCDateTime, Trace, Stream
+from obspy.signal.cross_correlation import correlate_template
 from obspy.signal.trigger import classic_sta_lta, recursive_sta_lta, z_detect
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
@@ -795,5 +796,71 @@ def downsample_trace(trace, factor=10, to_int=False, scale_target=1000):
 
     return new_trace
 
+
+def apply_cross_correlation(stream, reference_idx=0, mode='full', normalize='full', strict=True):
+
+    """
+    Cross-correlate all traces in the stream with respect to a reference trace.
+
+    Parameters:
+        step_config (dict):
+            - "normalize": normalization type (default: 'full')
+            - "mode": correlation mode ('full', 'valid', 'same')
+            - "reference": index of the reference trace (default: 0)
+            - "strict": if True, all traces must align in time (default: True)
+
+    Returns:
+        Stream: New stream with correlation functions as Trace objects.
+    """
+
+
+    st = stream.copy()
+
+    if len(st) == 0:
+        print("[WARNING] Empty stream for cross-correlation")
+        return Stream()
+
+    # Ensure uniform sampling rate
+    sr = st[0].stats.sampling_rate
+    for tr in st:
+        if tr.stats.sampling_rate != sr:
+            raise ValueError("Inconsistent sampling rates in stream.")
+
+    # In strict mode, trim to common time window and ensure aligned length
+    if strict:
+        common_start = max(tr.stats.starttime for tr in st)
+        common_end = min(tr.stats.endtime for tr in st)
+        st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
+
+        npts = st[0].stats.npts
+        for tr in st:
+            if tr.stats.npts != npts:
+                raise ValueError("Traces do not have same number of samples after trimming.")
+    else:
+        # In flexible mode, no trimming
+        pass  # Traces may have different start times or lengths
+
+    ref_trace = st[reference_idx]
+    cc_stream = Stream()
+
+    for i, tr in enumerate(st):
+        try:
+            cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
+        except Exception as e:
+            print(f"[WARNING] Failed to correlate {tr.id} with {ref_trace.id}: {e}")
+            continue
+
+        cc_tr = Trace(data=cc)
+        cc_tr.stats.sampling_rate = sr
+        cc_tr.stats.network = tr.stats.network
+        cc_tr.stats.station = tr.stats.station
+        cc_tr.stats.channel = tr.stats.channel[0:1] + "X" + tr.stats.channel[-1]
+        cc_tr.stats.correlation_with = ref_trace.id
+        cc_tr.stats.original_trace = tr.id
+        cc_tr.stats.is_autocorrelation = (i == reference_idx)
+
+        cc_stream.append(cc_tr)
+
+    return cc_stream
 
 

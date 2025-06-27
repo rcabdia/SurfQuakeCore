@@ -8,7 +8,7 @@ import readline
 import atexit
 import warnings
 warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
-from surfquakecore.data_processing.processing_methods import filter_trace
+
 
 
 class PlotCommandPrompt:
@@ -34,6 +34,7 @@ class PlotCommandPrompt:
             "pm": self._cmd_pm,
             "p": self._cmd_pick,
             "beam": self._cmd_beam,
+            "xcorr": self._cmd_xcorr,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
             "concat": self._cmd_concat,
@@ -552,7 +553,13 @@ class PlotCommandPrompt:
         from obspy import Stream
 
         try:
-            st = Stream(self.plot_proj.trace_list)
+
+            trace_list = getattr(self.plot_proj, "displayed_traces", [])
+            if not trace_list:
+                print("[WARN] No traces currently displayed.")
+                return
+
+            st = Stream(trace_list)
             print(f"[INFO] Merging {len(st)} trace segments...")
 
             st.merge(method=1, fill_value='interpolate')  # method=1 = interpolate across gaps
@@ -705,6 +712,58 @@ class PlotCommandPrompt:
             print(f"[INFO] Plotting particle motion for {z.id}")
             self.plot_proj.plot_particle_motion(z, n, e)
 
+    def _cmd_xcorr(self, args):
+        """
+        Cross-correlate current traces with respect to a reference.
+
+        Usage:
+            xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--strict True|False]
+
+        Example:
+            >> xcorr --ref 0 --mode full --normalize full --strict True
+        """
+
+        from surfquakecore.data_processing.processing_methods import filter_trace, apply_cross_correlation
+
+        # Default parameters
+        params = {
+            "reference": 0,
+            "mode": "full",
+            "normalize": "full",
+            "strict": True,
+        }
+
+        # Parse arguments
+        it = iter(args[1:])
+        for arg in it:
+            if arg == "--ref":
+                params["reference"] = int(next(it))
+            elif arg == "--mode":
+                params["mode"] = next(it)
+            elif arg == "--normalize":
+                params["normalize"] = next(it)
+            elif arg == "--strict":
+                val = next(it)
+                params["strict"] = val.lower() == "true"
+
+        # Input stream
+        stream = getattr(self.plot_proj, "trace_list", [])
+        if not stream:
+            print("[ERROR] No traces available for cross-correlation.")
+            return
+
+        print(f"[INFO] Running cross-correlation with parameters: {params}")
+
+        try:
+            cc_stream = apply_cross_correlation(stream, **params)
+            self.plot_proj.trace_list = list(cc_stream)
+            self.plot_proj.current_page = 0
+            self.plot_proj.clear_plot()
+            self.plot_proj.plot(page=0)
+            print(f"[INFO] Cross-correlation complete. {len(cc_stream)} traces plotted.")
+        except Exception as e:
+            print(f"[ERROR] Cross-correlation failed: {e}")
+
     def _cmd_help(self, args):
         """
         Show general help or detailed help for a specific command.
@@ -788,6 +847,20 @@ class PlotCommandPrompt:
 
                 Example:
                     >> pm
+            """,
+
+            "xcorr": """
+            xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--strict True|False]
+                Cross-correlate currently displayed traces against a reference trace.
+
+                Parameters:
+                    --ref         Reference trace index (default: 0)
+                    --mode        Correlation mode: full, same, valid (default: full)
+                    --normalize   Normalization mode: full, partial, etc. (default: full)
+                    --strict      True: enforce same start/end times (default: True)
+
+                Example:
+                    >> xcorr --ref 0 --mode full --normalize full --strict False
             """
         }
 

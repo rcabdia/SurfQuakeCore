@@ -317,47 +317,60 @@ class StreamProcessing:
 
     def apply_cross_correlation(self, step_config):
         """
-        Cross-correlate all traces in stream with respect to a reference trace.
+        Cross-correlate all traces in the stream with respect to a reference trace.
 
-        Returns a new Stream with the correlation functions as Trace objects.
+        Parameters:
+            step_config (dict):
+                - "normalize": normalization type (default: 'full')
+                - "mode": correlation mode ('full', 'valid', 'same')
+                - "reference": index of the reference trace (default: 0)
+                - "strict": if True, all traces must align in time (default: True)
+
+        Returns:
+            Stream: New stream with correlation functions as Trace objects.
         """
-        # --- Configuration ---
-
         normalize = step_config.get("normalize", 'full')
         mode = step_config.get("mode", 'full')
         reference_idx = step_config.get("reference", 0)
+        strict = step_config.get("strict", True)
 
         st = self.stream.copy()
 
-        # --- Check for empty stream ---
         if len(st) == 0:
             print("[WARNING] Empty stream for cross-correlation")
             return Stream()
 
-        # --- Ensure uniform sampling rate ---
+        # Ensure uniform sampling rate
         sr = st[0].stats.sampling_rate
         for tr in st:
             if tr.stats.sampling_rate != sr:
                 raise ValueError("Inconsistent sampling rates in stream.")
 
-        # --- Trim to common time window ---
-        common_start = max(tr.stats.starttime for tr in st)
-        common_end = min(tr.stats.endtime for tr in st)
-        st.trim(starttime=common_start, endtime=common_end)
+        # In strict mode, trim to common time window and ensure aligned length
+        if strict:
+            common_start = max(tr.stats.starttime for tr in st)
+            common_end = min(tr.stats.endtime for tr in st)
+            st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
 
-        # --- Ensure uniform number of samples ---
-        npts = st[0].stats.npts
-        for tr in st:
-            if tr.stats.npts != npts:
-                raise ValueError("Traces do not have same number of samples after trimming.")
+            npts = st[0].stats.npts
+            for tr in st:
+                if tr.stats.npts != npts:
+                    raise ValueError("Traces do not have same number of samples after trimming.")
+        else:
+            # In flexible mode, no trimming
+            pass  # Traces may have different start times or lengths
 
         ref_trace = st[reference_idx]
         cc_stream = Stream()
 
         for i, tr in enumerate(st):
-            cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
-            cc_tr = Trace()
-            cc_tr.data = cc
+            try:
+                cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
+            except Exception as e:
+                print(f"[WARNING] Failed to correlate {tr.id} with {ref_trace.id}: {e}")
+                continue
+
+            cc_tr = Trace(data=cc)
             cc_tr.stats.sampling_rate = sr
             cc_tr.stats.network = tr.stats.network
             cc_tr.stats.station = tr.stats.station
@@ -368,7 +381,7 @@ class StreamProcessing:
 
             cc_stream.append(cc_tr)
 
-        return Stream(cc_stream)
+        return cc_stream
 
     def apply_rotation(self, step_config):
 
