@@ -49,7 +49,6 @@ class PlotProj:
         """
         self.available_modes = ["standard", "overlay", "record"]
         self.trace_list = list(stream)
-        #self._restore_all_trace_times()
         self.inventory = kwargs.pop("inventory", None)
         self.__selector = {}  # Use single underscore to avoid name mangling
         self.__selected_ax_index = 0
@@ -82,19 +81,6 @@ class PlotProj:
         self.prompt_active = False
         self.utc_start = None
         self.utc_end = None
-
-    def _restore_all_trace_times(self):
-        for tr in self.trace_list:
-            if hasattr(tr.stats, "picks"):
-                for pick in tr.stats.picks:
-                    if isinstance(pick.get("time"), (float, int)):
-                        pick["time"] = UTCDateTime(pick["time"])
-
-            if hasattr(tr.stats, "references"):
-                tr.stats.references = [
-                    UTCDateTime(t) if isinstance(t, (float, int)) else t
-                    for t in tr.stats.references
-                ]
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
@@ -195,7 +181,6 @@ class PlotProj:
 
             ax.plot(t, tr.data, linewidth=0.75, label=label)
 
-
             # --- Plot theoretical arrivals and origin time if present ---
             arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
             origin_time = tr.stats.get("geodetic", {}).get("otime", None)
@@ -221,7 +206,6 @@ class PlotProj:
 
             if self.plot_config["show_legend"] and len(self.axs) <= 9:
                 ax.legend()
-
 
             # Annotate with date
             starttime = tr.stats.starttime
@@ -274,9 +258,6 @@ class PlotProj:
         else:
             self._register_span_selector()
             plt.show(block=True)
-            #self.fig.canvas.draw_idle()
-
-
 
     def _plot_record_section(self):
 
@@ -367,18 +348,21 @@ class PlotProj:
             return
 
         fig, ax = plt.subplots(figsize=(12, 8))
-
+        n = len(traces)
         for tr in traces:
             t = tr.times("matplotlib")
-            ax.plot(t, tr.data, linewidth=0.8, alpha=0.7, label=tr.id)
 
+            if n > 12:
+                ax.plot(t, tr.data, color="black", linewidth=0.8, alpha=0.7)
+            else:
+                ax.plot(t, tr.data, linewidth=0.8, alpha=0.7, label=tr.id)
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Normalized Amplitude")
         ax.xaxis_date()
         ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
         ax.set_title("Overlay of All Traces")
 
-        if self.plot_config["show_legend"]:
+        if self.plot_config["show_legend"] or n <= 12:
             ax.legend(fontsize=6)
 
         plt.tight_layout()
@@ -1089,7 +1073,7 @@ class PlotProj:
     def _on_fk_key_press(self, event):
 
         if event.key == 'e':
-            #ax = event.inaxes
+
             xdata = event.xdata
             if xdata is None:
                 return
@@ -1102,7 +1086,6 @@ class PlotProj:
                 return
 
             try:
-
                 # Get data
                 traces = Stream(self.trace_list)
                 traces_slow = traces.copy()
