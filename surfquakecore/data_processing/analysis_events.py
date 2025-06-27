@@ -305,7 +305,7 @@ class AnalysisEvents:
                         self._write_files(full_stream)
 
                     # Prompt only in interactive mode
-                    if interactive:
+                    if plot:
                         user_choice = input(
                             f"\n[Prompt] Finished subproject {i}. Type 'n' to continue, "
                             f"'r' to reprocess this event, or 'exit': "
@@ -428,7 +428,7 @@ class AnalysisEvents:
                         if plot:
                             user_choice = input(
                                 f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
-                                f"''r to reprocess this event, or 'exit': "
+                                f"'r' to reprocess this event, or 'exit': "
                             ).strip().lower()
 
                             if user_choice == "c":
