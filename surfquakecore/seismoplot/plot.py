@@ -110,7 +110,7 @@ class PlotProj:
 
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
-        elif platform.system() == 'Linux':
+        else:
             mplt.use("TkAgg")
 
         self.current_page = page

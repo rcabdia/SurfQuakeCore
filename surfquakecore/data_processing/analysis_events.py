@@ -563,7 +563,9 @@ class AnalysisEvents:
             for trace_path, _ in file_group:
                 st += read(trace_path)
 
-            st.merge(method=1, fill_value='interpolate')
+            # TODO: This line is very important, default behaviour is not merging traces /
+            #  on the contrary when selecting events
+            #st.merge(method=1, fill_value='interpolate')
 
             # Trim to time segment if defined
             if hasattr(self, "time_segment_start") and hasattr(self, "time_segment_end"):

@@ -73,7 +73,7 @@ class TraceBeamResult:
 
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
-        elif platform.system() == 'Linux':
+        else:
             mplt.use("TkAgg")
 
         # --- Create grid layout with reserved space for colorbar ---

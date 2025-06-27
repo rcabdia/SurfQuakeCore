@@ -514,8 +514,18 @@ class PlotCommandPrompt:
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
 
+        elif len(args)==1 and isinstance(self.plot_proj.utc_start, UTCDateTime) and isinstance(self.plot_proj.utc_end, UTCDateTime):
+            for tr in self.plot_proj.trace_list:
+                try:
+                    tr_cut = tr.copy().trim(starttime=self.plot_proj.utc_start, endtime=self.plot_proj.utc_end,
+                                            pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+
         else:
-            print("[ERROR] You must specify --phase, --reference, or --start/--end")
+            print("[ERROR] You must specify --phase, --reference, --start/--end or "
+                  "span selector to select time segment")
             return
 
         if not new_traces:
@@ -746,6 +756,7 @@ class PlotCommandPrompt:
             - Absolute UTC interval
 
         Examples:
+            >> cut (only if you have already start_time and end_time using the span selector, dragging with right mouse)
             >> cut --phase P 10 30
             >> cut --reference 5 20
             >> cut --start "2023-01-01 12:00:00" --end "2023-01-01 12:01:00"

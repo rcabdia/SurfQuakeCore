@@ -1034,8 +1034,7 @@ def _processing_daily():
             • after  : apply script after plotting (e.g., to act on manual picks)
 
     Usage Example:
-        surfquake processing \\
-            -w "./waveforms/*Z" \\
+        surfquake processing_daily \\
             -i inventory.xml \\
             -c config.yaml \\
             -o ./output_folder \\
@@ -1046,8 +1045,7 @@ def _processing_daily():
             --post_script_stage after
 
     Key Arguments:
-        -p, --project_file        Path to a saved project file
-        -w, --wave_files          Path or glob pattern to waveform files
+        -p, --project_file        Path to a saved project files
         -o, --output_folder       Directory for processed output
         -i, --inventory_file      Station metadata (XML/RESP)
         -c, --config_file         Processing configuration (YAML)
@@ -1065,17 +1063,14 @@ def _processing_daily():
 
     arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
 
-    arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
-
     arg_parse.add_argument(
-        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true"
-    )
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true")
 
     arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
 
-    arg_parse.add_argument("-i", "--inventory_file", required=True, help="stations metadata file")
+    arg_parse.add_argument("-i", "--inventory_file", required=False, help="stations metadata file")
 
-    arg_parse.add_argument("-c", "--config_file", help="YAML config for processing")
+    arg_parse.add_argument("-c", "--config_file", required=False, help="YAML config for processing")
 
     arg_parse.add_argument("--plot_config", help="YAML file for plot customization")
 
@@ -1114,26 +1109,9 @@ def _processing_daily():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    # --- Load project ---
-    if parsed_args.wave_files:
-        if "," in parsed_args.wave_files:
-            # Explicit list of files
-            wave_paths = [make_abs(f.strip()) for f in parsed_args.wave_files.split(",") if f.strip()]
-            sp = SurfProject(root_path=wave_paths)
-            sp.search_files(use_glob=True)
-            print(f"[INFO] Using {len(wave_paths)} explicitly listed waveform files.")
-        else:
-            # Wildcard path
-            wave_paths = make_abs(parsed_args.wave_files)
-            sp = SurfProject(root_path=wave_paths)
-            sp.search_files(use_glob=True, verbose=True)
-            print(f"[INFO] Found {len(sp.data_files)} waveform files using glob pattern.")
+    # --- Load project --
 
-    elif parsed_args.project_file:
-        sp = SurfProject.load_project(parsed_args.project_file)
-
-    else:
-        raise ValueError("You must specify either --project_file or --wave_files.")
+    sp = SurfProject.load_project(parsed_args.project_file)
 
     # --- Apply key filters ---
     filters = {}

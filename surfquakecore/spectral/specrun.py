@@ -34,7 +34,7 @@ class TraceSpectrumResult:
 
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
-        elif platform.system() == 'Linux':
+        else:
             mplt.use("TkAgg")
 
         fig, ax = plt.subplots()
@@ -142,7 +142,7 @@ class TraceSpectrogramResult:
 
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
-        elif platform.system() == 'Linux':
+        else:
             mplt.use("TkAgg")
 
 
