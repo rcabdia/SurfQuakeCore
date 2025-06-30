@@ -6,6 +6,8 @@ processing_methods
 """
 
 import copy
+import os
+
 import scipy, numpy as np
 import math
 import pywt
@@ -887,18 +889,29 @@ def particle_motion(z, n, e, save_path: str = None):
     st = Stream(traces=[z.copy(), n.copy(), e.copy()])
     azimuth, incidence, rect, plan = flinn(st)
 
+    t = z.stats.starttime.strftime("%Y-%m-%d %H:%M:%S")
     summary = (f"Azimuth:         {azimuth:.2f}°\n" f"Incidence:       {incidence:.2f}°\n"
                f"Rectilinearity:  {rect:.2f}\n" f"Planarity:       {plan:.2f}")
     print(summary)
-    # Optional file write
 
     # Plot
-    if save_path:
+    txt_path = os.path.join(save_path, "pm.txt")
+    base_name = f"{z.id}.D.{z.stats.starttime.year}.{z.stats.starttime.julday}"
+    plt_output = os.path.join(save_path, base_name)
+
+    counter = 1
+    while os.path.exists(plt_output):
+        plt_output = os.path.join(save_path, f"{base_name}_{counter}")
+        counter += 1
+
+    plt_output = plt_output+".png"
+
+    if txt_path:
 
         try:
-            with open(save_path, "a") as f:
-                f.write(f"{azimuth:.2f}°,{incidence:.2f}°,{rect:.2f},{plan:.2f}\n")
-            print(f"[INFO] Particle Motion results appended to {save_path}")
+            with open(txt_path, "a") as f:
+                f.write(f"{z.id}, {t}, {azimuth:.2f}°,{incidence:.2f}°,{rect:.2f},{plan:.2f}\n")
+            print(f"[INFO] Particle Motion results appended to {txt_path}")
         except Exception as e:
             print(f"[ERROR] Could not write to file: {e}")
 
@@ -957,10 +970,9 @@ def particle_motion(z, n, e, save_path: str = None):
                    f"Rectilinearity:  {rect:.2f}\n" f"Planarity:       {plan:.2f}")
 
         axs[1, 1].text(0.05, 0.6, summary, fontsize=10, va="center", ha="left")
-        plt_path = save_path.split(".")[0] + ".png"
         plt.tight_layout()
-        fig_part.savefig(plt_path, dpi=300)
-        plt.close( fig_part)
+        fig_part.savefig(plt_output, dpi=300)
+        plt.close(fig_part)
 
 
 

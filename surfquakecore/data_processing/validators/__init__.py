@@ -3,6 +3,7 @@ from .concat import validate_concat
 from .cut import validate_cut
 from .cwt import validate_cwt
 from .entropy import validate_entropy
+from .particle import validate_particle
 from .raw import validate_raw
 from .rmean import validate_rmean
 from .snr import validate_snr
@@ -62,7 +63,8 @@ CHECK_DISPATCH = {
     'snr': validate_snr,
     'raw': validate_raw,
     'beam': validate_beam,
-    'concat': validate_concat
+    'concat': validate_concat,
+    'particle_motion': validate_particle
 }
 
 def validate_step(step_type, config):

@@ -248,7 +248,7 @@ class StreamProcessing:
     Class for applying stream-wide processing steps (e.g., stack, cross-correlation, rotate, shift).
     """
 
-    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam"}
+    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam", "particle_motion"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -287,6 +287,8 @@ class StreamProcessing:
                     self.stream = self.apply_concat()
                 elif method_name == "beam":
                     self.apply_beam(step)
+                elif method_name == "particle_motion":
+                    self.apply_pm(step)
 
             return self.stream
 
@@ -520,11 +522,19 @@ class StreamProcessing:
         bm.to_pickle(folder_path=step_config["output_folder"])
 
     def apply_pm(self, step_config):
+
         """
         Run particle motion analysis for current displayed stream.
         Usage: pm
         """
+
         from collections import defaultdict
+
+        if "output_path" not in step_config.keys():
+            write_output = None
+        else:
+            write_output = step_config["output_path"]
+
         common_start = max(tr.stats.starttime for tr in self.stream)
         common_end = min(tr.stats.endtime for tr in self.stream)
         self.stream.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
@@ -533,7 +543,6 @@ class StreamProcessing:
         if not trace_list:
             print("[WARN] No traces currently displayed.")
             return
-
 
         # Group traces by (net, sta, loc)
         grouped = defaultdict(list)
@@ -573,5 +582,4 @@ class StreamProcessing:
 
         for z, n, e in valid_sets:
             print(f"[INFO] Plotting particle motion for {z.id}")
-            save_path = os.path.join(step_config["output_path"], z.id) + "_pm.txt"
-            particle_motion(z, n, e, save_path=save_path)
+            particle_motion(z, n, e, save_path=write_output)

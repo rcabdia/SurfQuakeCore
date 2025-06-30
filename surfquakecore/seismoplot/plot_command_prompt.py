@@ -8,6 +8,8 @@ plot_command_prompt.py
 import os
 import readline
 import atexit
+from typing import Optional
+
 from surfquakecore.data_processing.processing_methods import filter_trace
 
 class PlotCommandPrompt:
@@ -42,6 +44,9 @@ class PlotCommandPrompt:
             "help": self._cmd_help,
             "exit": self._cmd_exit
         }
+
+    def make_abs(self, path: Optional[str]) -> Optional[str]:
+        return os.path.abspath(path) if path else None
 
     def _cmd_exit(self, args):
         print("[INFO] Returning to picking mode...")
@@ -350,7 +355,7 @@ class PlotCommandPrompt:
         for arg in it:
             if arg == "--folder_path":
                 try:
-                    folder_path = next(it)
+                    folder_path = self.make_abs(next(it))
                 except StopIteration:
                     print("[ERROR] Missing value after --folder_path")
                     return
