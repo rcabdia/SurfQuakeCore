@@ -5,7 +5,8 @@ import numpy as np
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
-    trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion
+    trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
+    rename_trace
 from surfquakecore.cython_module.hampel import hampel
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
@@ -235,6 +236,9 @@ class SeismogramData:
 
                 if _config['name'] == 'raw':
                     tr = downsample_trace(tr, factor=_config['factor'], to_int=_config['integers'], scale_target=1000)
+
+                if _config['name'] == 'rename':
+                    tr = rename_trace(tr, _config)
 
             return tr
 

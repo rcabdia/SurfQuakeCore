@@ -5,6 +5,7 @@ from .cwt import validate_cwt
 from .entropy import validate_entropy
 from .particle import validate_particle
 from .raw import validate_raw
+from .rename import validate_rename
 from .rmean import validate_rmean
 from .snr import validate_snr
 from .spectrogram import validate_spectrogram
@@ -64,7 +65,8 @@ CHECK_DISPATCH = {
     'raw': validate_raw,
     'beam': validate_beam,
     'concat': validate_concat,
-    'particle_motion': validate_particle
+    'particle_motion': validate_particle,
+    'rename': validate_rename
 }
 
 def validate_step(step_type, config):

@@ -7,7 +7,6 @@ processing_methods
 
 import copy
 import os
-
 import scipy, numpy as np
 import math
 import pywt
@@ -880,6 +879,49 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
     return cc_stream
 
 
+
+def rename_trace(trace: Trace, config: dict) -> Trace:
+    """
+    Rename components of a trace using a mapping config.
+
+    Parameters:
+        trace (obspy.Trace): Input trace.
+        config (dict): Renaming config with optional keys: networks, stations, channels, components.
+
+    Returns:
+        obspy.Trace: Renamed trace.
+    """
+    tr = trace.copy()
+
+    # --- Network ---
+    network_map = config.get("networks", {})
+    new_net = network_map.get(tr.stats.network)
+    if new_net:
+        tr.stats.network = new_net
+
+    # --- Station ---
+    station_map = config.get("stations", {})
+    new_sta = station_map.get(tr.stats.station)
+    if new_sta:
+        tr.stats.station = new_sta
+
+    # --- Full channel ---
+    channel_map = config.get("channels", {})
+    new_cha = channel_map.get(tr.stats.channel)
+    if new_cha:
+        tr.stats.channel = new_cha
+    else:
+        # --- Component-only replacement (last character) ---
+        comp_map = config.get("components", {})
+        orig_comp = tr.stats.channel[-1]
+        new_comp = comp_map.get(orig_comp)
+        if new_comp:
+            tr.stats.channel = tr.stats.channel[:-1] + new_comp
+
+    return tr
+
+
+
 def particle_motion(z, n, e, save_path: str = None):
 
     z_data = z.data - np.mean(z.data)
@@ -973,6 +1015,8 @@ def particle_motion(z, n, e, save_path: str = None):
         plt.tight_layout()
         fig_part.savefig(plt_output, dpi=300)
         plt.close(fig_part)
+
+
 
 
 
