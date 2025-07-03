@@ -254,37 +254,49 @@ class PhasenetReader:
 
         return meta["data"].shape
 
+    from obspy import read, Stream
+    import numpy as np
+
     def read(self, fname):
+        # Read and preprocess the seismic data
         st = read(fname)
-        print('FNAME: ', fname)
+        print('FNAME:', fname)
         st = st.detrend("spline", order=2, dspline=5 * st[0].stats.sampling_rate)
         st = st.merge(fill_value=0)
 
         if self.highpass_filter > 0:
             st = st.filter("highpass", freq=self.highpass_filter)
 
-        # Ensure 24h
+        # Ensure 24h length
         tr_raw = st[0]
         tr = self.ensure_24(tr_raw)
         st = Stream(traces=tr)
 
-        order = ["3", "2", "1", "E", "N", "Z"]
-        order = {key: i for i, key in enumerate(order)}
-        comp2idx = {"3": 0, "2": 1, "1": 2, "E": 0, "N": 1, "Z": 2}
+        # Component to index mapping
+        comp2idx = {
+            "1": 0, "X": 0, "E": 0,
+            "2": 1, "Y": 1, "N": 1,
+            "Z": 2,
+            "H": 3  # Hydrophone, optional 4th channel
+        }
 
+        # Prepare metadata
         t0 = st[0].stats.starttime.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
         nt = len(st[0].data)
         data = np.zeros([nt, self.config.n_channel], dtype=self.dtype)
-        ids = [x.get_id() for x in st]
 
-        for j, id in enumerate(sorted(ids, key=lambda x: order[x[-1]])):
-            if len(ids) != 3:
-                j = comp2idx[id[-1]]
-            data[:, j] = st.select(id=id)[0].data.astype(self.dtype)
+        # Fill data array based on component
+        for tr in st:
+            # Convert component letter to uppercase
+            comp = tr.stats.channel[-1].upper()
+            idx = comp2idx.get(comp)
+            if idx is not None and idx < self.config.n_channel:
+                data[:, idx] = tr.data.astype(self.dtype)
+            else:
+                print(f"Warning: unknown or extra component '{comp}' in {tr.id}")
 
         data = data[:, np.newaxis, :]
-        meta = {"data": data, "t0": t0}
-        return meta
+        return {"data": data, "t0": t0}
 
     @staticmethod
     def ensure_24(tr):
