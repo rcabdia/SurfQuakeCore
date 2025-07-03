@@ -152,8 +152,8 @@ def _project():
     print(parsed_args)
 
     print(f"Project from {parsed_args.data_dir} saving to {parsed_args.save_dir} as {parsed_args.project_name}")
-    sp = SurfProject(parsed_args.data_dir)
-    project_file_path = os.path.join(parsed_args.save_dir, parsed_args.project_name)
+    sp = SurfProject(make_abs(parsed_args.data_dir))
+    project_file_path = os.path.join(make_abs(parsed_args.save_dir), parsed_args.project_name)
     sp.search_files(verbose=parsed_args.verbose)
     print(sp)
     sp.save_project(path_file_to_storage=project_file_path)
@@ -217,11 +217,11 @@ def _pick():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.f)
+    sp_loaded = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.f))
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
 
         picker = PhasenetISP(sp_loaded.project, amplitude=True, min_p_prob=parsed_args.p,
-                             min_s_prob=parsed_args.s, output=parsed_args.d)
+                             min_s_prob=parsed_args.s, output=make_abs(parsed_args.d))
 
         # Running Stage
         picks = picker.phasenet()
@@ -304,8 +304,9 @@ def _associate():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    rc = RealCore(parsed_args.inventory_file_path, parsed_args.config_file_path, parsed_args.data_dir,
-                  parsed_args.work_dir_path, parsed_args.save_dir)
+    rc = RealCore(make_abs(parsed_args.inventory_file_path), make_abs(parsed_args.config_file_path),
+                  make_abs(parsed_args.data_dir),
+                  make_abs(parsed_args.work_dir_path), make_abs(parsed_args.save_dir))
     rc.run_real()
 
     print("End of Events AssociationProcess, please see for results: ", parsed_args.save_dir)
@@ -378,7 +379,9 @@ def _locate():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    nll_manager = NllManager(parsed_args.config_file_path, parsed_args.inventory_file_path, parsed_args.out_dir_path)
+    nll_manager = NllManager(make_abs(parsed_args.config_file_path),
+                             make_abs(parsed_args.inventory_file_path),
+                             make_abs(parsed_args.out_dir_path))
 
     if parsed_args.generate_grid:
         print("Generating Velocity Grid")
@@ -397,10 +400,10 @@ def _locate():
             nll_manager.run_nlloc(num_iter=i)
     else:
         nll_manager.run_nlloc()
-    print("Finished Locations see output at, ", os.path.join(parsed_args.out_dir_path, "loc"))
-    nll_catalog = Nllcatalog(parsed_args.out_dir_path)
-    nll_catalog.run_catalog(parsed_args.out_dir_path)
-    print("Catalog done, finished process see catalog at ", parsed_args.out_dir_path)
+    print("Finished Locations see output at, ", os.path.join(make_abs(parsed_args.out_dir_path), "loc"))
+    nll_catalog = Nllcatalog(make_abs(parsed_args.out_dir_path))
+    nll_catalog.run_catalog(make_abs(parsed_args.out_dir_path))
+    print("Catalog done, finished process see catalog at ", make_abs(parsed_args.out_dir_path))
 
 
 def _source():
@@ -468,23 +471,24 @@ def _source():
     print(parsed_args)
 
     # load_project #
-    sp_loaded = SurfProject.load_project(path_to_project_file=parsed_args.project_file_path)
+    sp_loaded = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.project_file_path))
     print(sp_loaded)
 
     # Running stage
-    summary_path_file = os.path.join(parsed_args.output_dir_path, "source_summary.txt")
+    summary_path_file = os.path.join(make_abs(parsed_args.output_dir_path), "source_summary.txt")
 
     if parsed_args.large_scale:
         scale = "teleseism"
     else:
         scale = "regional"
 
-    mg = Automag(sp_loaded, parsed_args.loc_files_path, parsed_args.inventory_file_path, parsed_args.config_file_path,
-                 parsed_args.output_dir_path, scale=scale)
+    mg = Automag(sp_loaded, make_abs(parsed_args.loc_files_path),
+                 parsed_args.inventory_file_path, parsed_args.config_file_path,
+                 make_abs(parsed_args.output_dir_path), scale=scale)
 
     mg.estimate_source_parameters()
 
-    rs = ReadSource(parsed_args.output_dir_path)
+    rs = ReadSource(make_abs(parsed_args.output_dir_path))
     summary = rs.generate_source_summary()
     rs.write_summary(summary, summary_path_file)
 
@@ -542,21 +546,21 @@ def _mti():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    sp = SurfProject.load_project(path_to_project_file=parsed_args.path_to_project_file)
+    sp = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.path_to_project_file))
     print(sp)
 
     bic = BayesianIsolaCore(
         project=sp,
-        inventory_file=parsed_args.inventory_file_path,
-        output_directory=parsed_args.output_dir_path,
-        save_plots=parsed_args.save_plots,
+        inventory_file=make_abs(parsed_args.inventory_file_path),
+        output_directory=make_abs(parsed_args.output_dir_path),
+        save_plots=make_abs(parsed_args.save_plots),
     )
 
     print("Starting Inversion")
-    bic.run_inversion(mti_config=parsed_args.config_files_path)
+    bic.run_inversion(mti_config=make_abs(parsed_args.config_files_path))
 
     print("Writing Summary")
-    wm = WriteMTI(parsed_args.output_dir_path)
+    wm = WriteMTI(make_abs(parsed_args.output_dir_path))
     wm.mti_summary()
     print("End of process, please review output directory")
 
@@ -609,12 +613,12 @@ def _csv2xml():
     print(parsed_args)
 
     if parsed_args.resp_files_path:
-        sc = Convert(parsed_args.csv_file_path, resp_files=parsed_args.resp_files_path)
+        sc = Convert(make_abs(parsed_args.csv_file_path), resp_files=make_abs(parsed_args.resp_files_path))
     else:
-        sc = Convert(parsed_args.csv_file_path)
+        sc = Convert(make_abs(parsed_args.csv_file_path))
     data_map = sc.create_stations_xml()
     inventory = sc.get_data_inventory(data_map)
-    sc.write_xml(parsed_args.output_path, parsed_args.stations_xml_name, inventory)
+    sc.write_xml(make_abs(parsed_args.output_path), parsed_args.stations_xml_name, inventory)
 
 
 def _buildcatalog():
@@ -671,20 +675,21 @@ def _buildcatalog():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    if os.path.isdir(parsed_args.path_to_output_folder):
+    if os.path.isdir(make_abs(parsed_args.path_to_output_folder)):
         pass
     else:
         try:
-            os.makedirs(parsed_args.path_to_output_folder)
+            os.makedirs(make_abs(parsed_args.path_to_output_folder))
         except Exception as error:
             print("An exception occurred:", error)
 
-    catalog_path_pkl = os.path.join(parsed_args.path_to_output_folder, "catalog_obj.pkl")
-    catalog_path_surf = os.path.join(parsed_args.path_to_output_folder, "catalog_surf.txt")
+    catalog_path_pkl = os.path.join(make_abs(parsed_args.path_to_output_folder), "catalog_obj.pkl")
+    catalog_path_surf = os.path.join(make_abs(parsed_args.path_to_output_folder), "catalog_surf.txt")
 
-    bc = BuildCatalog(loc_folder=parsed_args.path_event_files_folder,
-                      source_summary_file=parsed_args.path_source_summary_file,
-                      output_path=parsed_args.path_to_output_folder, mti_summary_file=parsed_args.path_mti_summary_file,
+    bc = BuildCatalog(loc_folder=make_abs(parsed_args.path_event_files_folder),
+                      source_summary_file=make_abs(parsed_args.path_source_summary_file),
+                      output_path=make_abs(parsed_args.path_to_output_folder),
+                      mti_summary_file=make_abs(parsed_args.path_mti_summary_file),
                       format=parsed_args.catalog_format)
 
     bc.build_catalog_loc()
@@ -693,15 +698,13 @@ def _buildcatalog():
 
 
 def _buildmticonfig():
-    arg_parse = ArgumentParser(prog=f"{__entry_point_name} Creates mti_config.ini files from a catalog query and "
-                                    f"a mti_config template",
-                               description="mti_config files building command")
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} Create mti_config.ini from catalog and template",
         description="Automatically generate MTI config files from a catalog query.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
+    
     Overview:
         The `buildmticonfig` tool creates multiple `mti_config.ini` files using:
             - A catalog file (e.g., QuakeML or ObsPy Catalog)
@@ -790,19 +793,20 @@ def _buildmticonfig():
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    if os.path.isdir(parsed_args.output_folder):
+    if os.path.isdir(make_abs(parsed_args.output_folder)):
         pass
     else:
         try:
-            os.makedirs(parsed_args.output_folder)
+            os.makedirs(make_abs(parsed_args.output_folder))
         except Exception as error:
             print("An exception occurred:", error)
 
     print("Querying Catalog --> ", parsed_args.lat_min, parsed_args.lat_max, parsed_args.lon_min, parsed_args.lon_max,
           parsed_args.depth_min, parsed_args.depth_max, parsed_args.mag_min, parsed_args.mag_max)
 
-    bmc = BuildMTIConfigs(catalog_file_path=parsed_args.catalog_file_path, mti_config=parsed_args.mti_config_template,
-                          output_path=parsed_args.output_folder)
+    bmc = BuildMTIConfigs(catalog_file_path=make_abs(parsed_args.catalog_file_path),
+                          mti_config=make_abs(parsed_args.mti_config_template),
+                          output_path=make_abs(parsed_args.output_folder))
 
     bmc.write_mti_ini_file(starttime=parsed_args.starttime, endtime=parsed_args.endtime,
                            lat_min=float(parsed_args.lat_min),
