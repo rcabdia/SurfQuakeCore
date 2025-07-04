@@ -64,6 +64,26 @@ class NllManager:
         """
         return [n for n in fnmatch.filter(os.listdir(base), pattern) if os.path.isfile(os.path.join(base, n))]
 
+    def clean_output_folder(self):
+
+        """
+        Cleans the destination folder and creates symbolic links for all files in the source folder.
+
+        Args:
+        destination_folder (str): Path to the destination folder.
+        source_folder (str): Path to the source folder.
+
+        """
+        dir_path = os.path.join(self.__location_output, "loc")
+
+        # Clean the destination folder
+        for item in os.listdir(dir_path):
+            item_path = os.path.join(dir_path, item)
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.unlink(item_path)  # Remove files or symbolic links
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)  # Remove
+
     @property
     def root_path(self):
         root_path = self.__location_output
@@ -331,12 +351,44 @@ class NllManager:
         df.to_csv(output, index=False, header=True, encoding='utf-8')
         return output
 
+    # def set_grid2time_template(self, latitude, longitude, depth, dimension, option, wave_type):
+    #     file_path = self.get_time_template_file_path
+    #     data = pd.read_csv(file_path)
+    #     df = pd.DataFrame(data)
+    #
+    #     df.iloc[1, 0] = "TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}".format(lat=latitude, lon=longitude, depth=0.0)
+    #     df.iloc[2, 0] = "GTFILES {modelpath} {timepath} {wavetype}". \
+    #         format(modelpath=os.path.join(self.get_model_dir, "layer"),
+    #                timepath=os.path.join(self.get_time_dir, "layer"), wavetype=wave_type)
+    #     df.iloc[3, 0] = "GTMODE {grid} {angles}".format(grid=dimension, angles=option)
+    #
+    #     output = os.path.join(self.get_temp_dir, "G2T_temp.txt")
+    #     df.to_csv(output, index=False, header=True, encoding='utf-8')
+    #     return output
+
     def set_grid2time_template(self, latitude, longitude, depth, dimension, option, wave_type):
         file_path = self.get_time_template_file_path
         data = pd.read_csv(file_path)
         df = pd.DataFrame(data)
 
-        df.iloc[1, 0] = "TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}".format(lat=latitude, lon=longitude, depth=0.0)
+        if dimension == "GRID3D":
+            x_node = int(self.nll_config.grid_configuration.x)
+            y_node = int(self.nll_config.grid_configuration.y)
+            z_node = int(self.nll_config.grid_configuration.z)
+            dx = self.nll_config.grid_configuration.dx
+            dy = self.nll_config.grid_configuration.dy
+            dz = self.nll_config.grid_configuration.dz
+            x_width = float((x_node - 1) * dx)
+            y_width = float((y_node - 1) * dy)
+            shift_x = -0.5 * x_width
+            shift_y = -0.5 * y_width
+            lat_geo, lon_geo = calculate_destination_coordinates(latitude, longitude, abs(shift_x), abs(shift_y))
+            df.iloc[1, 0] = "TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}".format(lat=lat_geo, lon=lon_geo,
+                                                                                  depth=depth)
+        else:
+            df.iloc[1, 0] = "TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}".format(lat=latitude, lon=longitude,
+                                                                                  depth=0.0)
+
         df.iloc[2, 0] = "GTFILES {modelpath} {timepath} {wavetype}". \
             format(modelpath=os.path.join(self.get_model_dir, "layer"),
                    timepath=os.path.join(self.get_time_dir, "layer"), wavetype=wave_type)
@@ -445,28 +497,25 @@ class NllManager:
             exc_cmd(command, cwd=output_path.parent)
 
     def run_nlloc(self, num_iter=1):
-
         """
         # Method to run the event locations from the picking file and config_file.ini #
         :return: locations files *hyp inside ./working_dir/loc
         template file at ./work_dir/temp/run_temp.txt
         """
-
-        print("Running Location Iteration", num_iter)
-
         latitude = self.nll_config.grid_configuration.latitude
         longitude = self.nll_config.grid_configuration.longitude
+        depth = self.nll_config.grid_configuration.depth
         transform = self.nll_config.grid_configuration.geo_transformation
 
         if transform == "SIMPLE":
-            output = self.set_run_template(latitude, longitude)
+            output = self.set_run_template(latitude, longitude, depth)
             output_path = Path(output)
             command = [self.get_bin_file("NLLoc"), output_path]
-
 
         elif transform == "GLOBAL":
             if num_iter == 1:
                 self.stations_to_nll_v2(latitude, longitude, limit=20000, transform="GLOBAL")
+
             stations_path = os.path.join(self.get_stations_template_file_path)
             temp_path = self.get_temp_dir
             shutil.copy(stations_path, temp_path)
@@ -480,7 +529,7 @@ class NllManager:
         if os.path.isfile(stats_file) and os.path.isfile(temp_run_file):
             self.__append_files(stats_file, temp_run_file)
 
-        return exc_cmd(command, cwd=output_path.parent)
+        return exc_nll(command, cwd=output_path.parent)
 
     def stations_to_nll_v2(self, latitude_f, longitude_f, depth=0, limit=20000, transform="SIMPLE"):
 

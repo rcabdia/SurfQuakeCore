@@ -184,8 +184,8 @@ def _pick():
     Key Arguments:
         -f, --project_file        Path to your seismic project file
         -d, --output_dir          Directory to save pick results
-        -p, --p_thresh            Threshold for P-wave probability (0–1)
-        -s, --s_thresh            Threshold for S-wave probability (0–1)
+        -p, --p_thresh            Threshold for P-wave probability (0–1) (default: 0.3)
+        -s, --s_thresh            Threshold for S-wave probability (0–1) (default: 0.3)
         --verbose                 Enable detailed logging
 
     Reference:
@@ -198,36 +198,34 @@ def _pick():
     )
 
     arg_parse.usage = ("Run picker: -f [path to your project file] "
-                       "-d [path to your pick saving directory] -p [P-wave threshoold] -s [S-wave threshold] --verbose")
+                       "-d [path to your pick saving directory] "
+                       "-p [P-wave threshold] -s [S-wave threshold] --verbose")
 
-    arg_parse.add_argument("-f", help="path to your project file", type=str, required=True)
+    arg_parse.add_argument("-f", help="Path to your project file", type=str, required=True)
+    arg_parse.add_argument("-d", help="Path to directory where picks will be saved", type=str, required=True)
 
-    arg_parse.add_argument("-d", help="Path to directory where picks will be saved", type=str,
-                           required=True)
+    arg_parse.add_argument("-p", "--p_thresh", help="P-wave threshold", type=float, default=0.3)
+    arg_parse.add_argument("-s", "--s_thresh", help="S-wave threshold", type=float, default=0.3)
 
-    arg_parse.add_argument("-p", help="P-wave threshoold", type=float,
-                           required=True)
-
-    arg_parse.add_argument("-s", help="S-wave threshold", type=float,
-                           required=True)
-
-    arg_parse.add_argument("-v", "--verbose", help="information of files included on the project",
-                           action="store_true")
+    arg_parse.add_argument("-v", "--verbose", help="Show detailed log output", action="store_true")
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
     sp_loaded = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.f))
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
+        picker = PhasenetISP(
+            sp_loaded.project,
+            amplitude=True,
+            min_p_prob=parsed_args.p_thresh,
+            min_s_prob=parsed_args.s_thresh,
+            output=make_abs(parsed_args.d)
+        )
 
-        picker = PhasenetISP(sp_loaded.project, amplitude=True, min_p_prob=parsed_args.p,
-                             min_s_prob=parsed_args.s, output=make_abs(parsed_args.d))
-
-        # Running Stage
+        # Run PhaseNet picking
         picks = picker.phasenet()
-        #
-        """ PHASENET OUTPUT TO REAL INPUT """
-        #
+
+        # Process and save results
         picks_results = PhasenetUtils.split_picks(picks)
         PhasenetUtils.convert2real(picks_results, parsed_args.d)
         PhasenetUtils.save_original_picks(picks_results, parsed_args.d)
@@ -383,6 +381,8 @@ def _locate():
                              make_abs(parsed_args.inventory_file_path),
                              make_abs(parsed_args.out_dir_path))
 
+    nll_manager.clean_output_folder()
+
     if parsed_args.generate_grid:
         print("Generating Velocity Grid")
         nll_manager.vel_to_grid()
@@ -394,10 +394,13 @@ def _locate():
         if parsed_args.number_iterations:
             num_iter = int(parsed_args.number_iterations)
         else:
-            num_iter = 10
+            num_iter = 5
+
         # including stations_corrections
-        for i in range(1, (num_iter + 1)):
-            nll_manager.run_nlloc(num_iter=i)
+        for i in range(num_iter):
+            print("Running Location iteration", i)
+            nll_manager.run_nlloc(num_iter=i + 1)
+
     else:
         nll_manager.run_nlloc()
     print("Finished Locations see output at, ", os.path.join(make_abs(parsed_args.out_dir_path), "loc"))
