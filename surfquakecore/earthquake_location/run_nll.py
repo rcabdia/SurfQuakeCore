@@ -28,7 +28,7 @@ from surfquakecore.binaries import BINARY_NLL_DIR
 from surfquakecore.earthquake_location.nll_parse import load_nll_configuration
 from surfquakecore.earthquake_location.structures import NLLConfig
 from surfquakecore.utils.geodetic_conversion import calculate_destination_coordinates
-from surfquakecore.utils.subprocess_utils import exc_cmd
+from surfquakecore.utils.subprocess_utils import exc_cmd, exc_nll
 from surfquakecore.utils.obspy_utils import ObspyUtil
 
 _os = platform.system()
@@ -257,7 +257,7 @@ class NllManager:
 
         self.__obs_file_path = self.nll_config.grid_configuration.path_to_picks
 
-    def set_run_template(self, latitude, longitude):
+    def set_run_template(self, latitude, longitude, depth):
         files = self.find_files(self.get_time_dir, 'layer.P.mod.hdr')
         file_name = os.path.join(self.get_time_dir, files[0])
         fa = open(file_name)
@@ -273,40 +273,59 @@ class NllManager:
         locationpath = os.path.join(self.get_loc_dir, "location")
 
         # Grid search inside for location robustness 1% inside the grid
-        yNum = yNum * dy - round(0.02 * (yNum * dy) + 1)
-        xNum = yNum * dy
-        zNum = zNum * dz - round(0.02 * (zNum * dz) + 1)
+        yNum_delta = yNum * dy - round(0.02 * (yNum * dy) + 1)
+        xNum_delta = xNum * dx - round(0.02 * (xNum * dx) + 1)
+        # xNum = yNum*dy
+        zNum_delta = zNum * dz - round(0.02 * (zNum * dz) + 1)
+
+        if (self.nll_config.grid_configuration.p_wave_type == True and
+                self.nll_config.grid_configuration.s_wave_type == True):
+            vp_vs = -1 * 1.73
+        else:
+            vp_vs = 1.73
 
         if self.nll_config.grid_configuration.model == "1D":
+            # the shift is zero because is centered in the left-down corner
             xOrig = round(0.01 * (xNum * dx) + 1)
             yOrig = round(0.01 * (yNum * dy) + 1)
-            zOrig = zOrig + round(0.01 * zNum + 1)
+            zOrig = zOrig + 1 * round(0.01 * zOrig + 1)
+            xNum_delta = yNum_delta
         else:
-            xOrig = round(0.01 * xOrig + 1)
-            yOrig = round(0.01 * yOrig + 1)
-            zOrig = zOrig + round(0.01 * zOrig + 1)
+            # the shift is centered in the center of the grid
+            x_node = int(self.nll_config.grid_configuration.x)
+            y_node = int(self.nll_config.grid_configuration.y)
+
+            dx = self.nll_config.grid_configuration.dx
+            dy = self.nll_config.grid_configuration.dy
+            dz = self.nll_config.grid_configuration.dz
+
+            x_width = float((x_node - 1) * dx)
+            y_width = float((y_node - 1) * dy)
+            shift_x = -0.5 * x_width
+            shift_y = -0.5 * y_width
+            latitude, longitude = calculate_destination_coordinates(latitude, longitude, abs(shift_x), abs(shift_y))
+
+            xOrig = xOrig + -1 * round(0.01 * xOrig + 1)
+            yOrig = yOrig + -1 * round(0.01 * yOrig + 1)
+            zOrig = zOrig + 1 * round(0.01 * zOrig + 1)
 
         df = pd.DataFrame(data)
-        df.iloc[1, 0] = 'TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}'.format(lat=latitude, lon=longitude, depth=0.0)
+
+        df.iloc[1, 0] = 'TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}'.format(lat=latitude, lon=longitude, depth=depth)
         df.iloc[3, 0] = 'LOCFILES {obspath} NLLOC_OBS {timepath} {locpath}'.format(
             obspath=self.nll_config.grid_configuration.path_to_picks, timepath=travetimepath, locpath=locationpath)
 
-        xNum = int(yNum)
-        yNum = int(yNum)
-        df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(x=int(xNum),
-                                                                                                       y=int(yNum),
-                                                                                                       z=int(zNum),
-                                                                                                       xo=xOrig,
-                                                                                                       yo=yOrig,
-                                                                                                       zo=zOrig, dx=dx,
-                                                                                                       dy=dy, dz=dz)
+        df.iloc[6, 0] = 'LOCGRID  {x} {y} {z} {xo} {yo} {zo} {dx} {dy} {dz} PROB_DENSITY  SAVE'.format(
+            x=int(xNum_delta),
+            y=int(yNum_delta), z=int(zNum_delta), xo=xOrig, yo=yOrig, zo=zOrig, dx=dx, dy=dy, dz=dz)
 
         if self.nll_config.location_parameters.method == 'GAU_ANALYTIC':
             df.iloc[8, 0] = ('LOCMETH GAU_ANALYTIC {maxDistStaGrid} {minNumberPhases} {maxNumberPhases} '
                              '{minNumberSphases} {VpVsRatio} {maxNum3DGridMemory} {minDistStaGrid} '
                              '{iRejectDuplicateArrivals}'.format(maxDistStaGrid=9999.0, minNumberPhases=4,
                                                                  maxNumberPhases=-1, minNumberSphases=-1,
-                                                                 VpVsRatio=1.68, maxNum3DGridMemory=6, minDistStaGrid=5,
+                                                                 VpVsRatio=vp_vs, maxNum3DGridMemory=6,
+                                                                 minDistStaGrid=5,
                                                                  iRejectDuplicateArrivals=0))
 
         # GAU_ANALYTIC 9999.0 4 - 1 - 1 1.68 6
@@ -699,23 +718,33 @@ class NllManager:
             aslow.astype('float32').tofile(output)
 
     def read_modfiles(self, file_name):
-
         xNum, yNum, zNum, xOrig, yOrig, zOrig, dx, dy, dz = self.__read_header(file_name)
-        aslow = np.empty([xNum, yNum, zNum])
+        aslow = np.empty((xNum, yNum, zNum), dtype=np.float32)
+
+        # Precompute constants
+        min_vel = 1E-2
+        dx_inv = 1.0 / dx
 
         for k in range(zNum):
-            new_k = k * int(dz)
-            depth = int(zOrig) + new_k
-            strdepth = str(depth)
-            fm_name = file_name + strdepth + '.mod'
-            fm = open(fm_name)
-            for j in range(yNum):
-                line = fm.readline().split()
-                for i in range(xNum):
-                    vel = float(line[i])
-                    slow = dx * 1. / vel
-                    aslow[i, j, k] = slow
-        fm.close()
+
+            depth = zOrig + k * dz
+            # Dynamically format depth based on whether dz is integer-like or float
+            if depth.is_integer():  # Check if depth is equivalent to an integer
+                depth_str = f"{int(depth)}"  # Format as an integer
+            else:
+                depth_str = f"{depth:.1f}"  # Format as a float with 2 decimal places
+            print("processing layer", depth_str, " km")
+            fm_name = f"{file_name}{depth_str}.mod"  # Construct the filename
+
+            # Read the file and process data
+            with open(fm_name, 'r') as fm:
+                file_data = [line.split() for line in fm.readlines()]
+
+            # Convert to NumPy array for faster processing
+            file_array = np.array(file_data, dtype=np.float64)
+            file_array[file_array <= min_vel] = min_vel  # Replace velocities ≤ min_vel
+
+            aslow[:, :, k] = dx_inv / file_array.T
         return aslow, xNum, yNum, zNum
 
     def __read_header(self, file_name):
@@ -741,7 +770,7 @@ class NllManager:
             file_name = os.path.join(self.get_local_models_dir3D, "layer.S.mod.hdr")
 
         x_width = float((x_node - 1) * dx)
-        y_width = float((x_node - 1) * dx)
+        y_width = float((y_node - 1) * dx)
         shift_x = -0.5 * x_width
         shift_y = -0.5 * y_width
         lat_geo, lon_geo = calculate_destination_coordinates(latitude, longitude, abs(shift_x), abs(shift_y))
