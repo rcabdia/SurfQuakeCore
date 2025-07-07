@@ -770,7 +770,7 @@ class NllManager:
             file_name = os.path.join(self.get_local_models_dir3D, "layer.S.mod.hdr")
 
         x_width = float((x_node - 1) * dx)
-        y_width = float((y_node - 1) * dx)
+        y_width = float((y_node - 1) * dy)
         shift_x = -0.5 * x_width
         shift_y = -0.5 * y_width
         lat_geo, lon_geo = calculate_destination_coordinates(latitude, longitude, abs(shift_x), abs(shift_y))
