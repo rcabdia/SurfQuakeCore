@@ -556,7 +556,7 @@ def _mti():
         project=sp,
         inventory_file=make_abs(parsed_args.inventory_file_path),
         output_directory=make_abs(parsed_args.output_dir_path),
-        save_plots=make_abs(parsed_args.save_plots),
+        save_plots=parsed_args.save_plots,
     )
 
     print("Starting Inversion")
@@ -600,9 +600,8 @@ def _csv2xml():
     """
     )
 
-    arg_parse.add_argument("-c", "--csv_file_path", help="Net Station Lat Lon elevation "
-                                                         "start_date starttime end_date endtime", type=str,
-                           required=True)
+    arg_parse.add_argument("-c", "--csv_file_path", help="file containing Net Station Lat Lon elevation "
+        "start_date starttime end_date endtime, single spacing", type=str, required=True)
 
     arg_parse.add_argument("-r", "--resp_files_path", help="Path to the folder containing the response file",
                            type=str, required=False)
@@ -657,17 +656,16 @@ def _buildcatalog():
     """
     )
 
-    arg_parse.add_argument("-e", "--path_event_files_folder", help="Net Station Lat Lon elevation "
-                                                                   "start_date starttime end_date endtime", type=str,
+    arg_parse.add_argument("-e", "--path_event_files_folder", help="Folder where are places your *hyp files", type=str,
                            required=True)
 
     arg_parse.add_argument("-s", "--path_source_summary_file", help='Path to the file containing '
-                                                                    'the source spectrum results',
+                                                                    'the source spectrum results, source_summary.txt',
                            type=str, required=False, default=None)
 
     arg_parse.add_argument("-m", "--path_mti_summary_file", help="Path to the file containing the "
-                                                                 "moment tensor results", type=str, required=False,
-                           default=None)
+                                                                 "moment tensor results, summary_mti.txt",
+                           type=str, required=False, default=None)
 
     arg_parse.add_argument("-f", "--catalog_format", help="catalog format, default QUAKEML", type=str, required=False,
                            default="QUAKEML")
@@ -1341,7 +1339,6 @@ Examples:
     beam_obj = TraceBeamResult.from_pickle(make_abs(args.file))
 
     # Process peak detection if requested
-
     if args.find_solutions:
         try:
             baz_range = tuple(args.baz_range) if args.baz_range else None
