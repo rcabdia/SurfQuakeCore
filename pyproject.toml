@@ -27,6 +27,7 @@ dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "tests*", "examples*"]
+where = ["."]
 
 [tool.setuptools.package-data]
 "surfquakecore.binaries.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
@@ -39,6 +40,12 @@ exclude = ["docs*", "tests*", "examples*"]
 ]
 "surfquakecore.models" = ["190703-214543/*", "global_earth_model.nd"]
 "surfquakecore.real" = ["tt_db/*"]
+"surfquakecore.cython_module" = ["*.pyx", "*.pxd", "*.h"]
 
 [project.scripts]
 surfquake = "surfquakecore.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+
