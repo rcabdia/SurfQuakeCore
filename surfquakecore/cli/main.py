@@ -846,28 +846,36 @@ def _processing():
 
     Usage Example:
         surfquake processing \\
-            -w "./waveforms/*Z" \\
+            -p "./project.pkl" \\
             -i inventory.xml \\
             -e events.xml \\
             -c config.yaml \\
             -o ./output_folder \\
+            -l \\
             --phases P,S,PcP \\
             --plot_config plot_settings.yaml \\
             --post_script custom_postproc.py \\
             --post_script_stage after
 
     Key Arguments:
-        -p, --project_file         Path to an existing project file
-        -w, --wave_files           Path or glob pattern to waveform files
-        -i, --inventory_file       Station metadata file (XML, RESP)
-        -e, --event_file           Event catalog in QuakeML format
-        -c, --config_file          Processing configuration file (YAML)
-        -o, --output_folder        Folder where processed files are saved
-        -a, --auto                 Run in automatic mode (no plotting or prompts)
-        --phases                   Comma-separated list of phases for arrival estimation (e.g., P,S)
-        --plot_config              Optional plot configuration file (YAML)
-        --post_script              Python script to apply per event stream
-        --post_script_stage        When to apply the post-script: before | after (default: after)
+        -p, --project_file         [OPTIONAL] Path to an existing project file
+        -w, --wave_files           [OPTIONAL] Path or glob pattern to waveform files
+        -i, --inventory_file       [OPTIONAL] Station metadata file (XML, RESP)
+        -e, --event_file           [OPTIONAL] Event catalog in QuakeML format
+        -c, --config_file          [OPTIONAL] Processing configuration file (YAML)
+        -l, --plots                [OPTIONAL] In case user wants seismograms interactivity
+        -o, --output_folder        [OPTIONAL] Folder where processed files are saved
+        -n, --net                  [OPTIONAL] project net filter Example: NET1,NET2,NET3
+        -s, --station              [OPTIONAL] project station filter Example: STA1,STA2,STA3
+        -ch, --channel,            [OPTIONAL]  project channel filter Example: HHZ,BHN
+        -t, --cut_time             [OPTIONAL] pre & post first arrival in seconds (symmetric)
+        -cs, --cut_start_time      [OPTIONAL] cut pre-first arrival in seconds
+        -ce, --cut_end_time        [OPTIONAL] cut ppost-first arrival in seconds
+        -r, --reference            [OPTIONAL] Reference |event_time| if set the pick event origin time is the cut reference.
+        --phases                   [OPTIONAL] Comma-separated list of phases for arrival estimation (e.g., P,S)
+        --plot_config              [OPTIONAL] Optional plot configuration file (YAML)
+        --post_script              [OPTIONAL] Python script to apply per event stream
+        --post_script_stage        [OPTIONAL] When to apply the post-script: before | after (default: before)
     """
     )
 
@@ -914,8 +922,7 @@ def _processing():
     arg_parse.add_argument("-ce", "--cut_end_time", help="cut post-first arrival  in seconds", type=float,
                            required=False)
 
-    arg_parse.add_argument("-l", "--plots", help=" In case user wants to plot seismograms",
-                           action="store_true")
+    arg_parse.add_argument("-l", "--plots", help="In case user wants to plot seismograms", action="store_true")
 
     arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)",
                            type=str)
@@ -1011,7 +1018,8 @@ def _processing():
 
         sd = AnalysisEvents(make_abs(parsed_args.output_folder), make_abs(parsed_args.inventory_file),
                             make_abs(parsed_args.config_file),
-                            sp, post_script=make_abs(parsed_args.post_script), post_script_stage=parsed_args.post_script_stage,
+                            sp, post_script=make_abs(parsed_args.post_script),
+                            post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=make_abs(parsed_args.plot_config),
                             reference=parsed_args.reference, phase_list=phase_list)
         sd.run_waveform_analysis(auto=parsed_args.auto)
@@ -1181,9 +1189,26 @@ def _quickproc():
         description="Quick waveform processing. Designed for rapid, raw file-based workflows.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
+Overview:
+        Process seismic traces.
+        You can:
+            - Apply processing steps (filtering, normalization, etc.)
+            - Optionally visualize the waveforms (interactive mode)
+            - Apply a user-defined post-processing script before or after plotting
+
+    Modes:
+        Default  : Interactive mode (plotting + user prompts)
+        --auto   : Non-interactive mode (no plots, no prompts, outputs written automatically)
+
+    Post-Script Logic:
+        Use `--post_script` to apply a custom script to each event stream.
+        Use `--post_script_stage` to control **when** it runs:
+            • before : script runs before plotting (good for filtering, editing headers)
+            • after  : script runs after plotting (good if picks or metadata are added)
+
         Examples:
             Process waveform files with a config and plot interactively:
-                surfquake quickproc \\
+                surfquake quick \\
                     -w "./data/*.mseed" \\
                     -c ./config.yaml \\
                     -i ./inventory.xml \\
@@ -1195,7 +1220,7 @@ def _quickproc():
             -c, --config_file        [OPTIONAL] YAML config defining processing steps
             -i, --inventory_file     [OPTIONAL] Station metadata (StationXML or RESP)
             -o, --output_folder      [OPTIONAL] Directory to save processed traces
-            -a, --auto               Run in automatic (non-interactive) mode
+            -a, --auto               [OPTIONAL] Run in automatic (non-interactive) mode
             --plot_config            [OPTIONAL] Plotting settings YAML
             --post_script            [OPTIONAL] Python script to apply to each stream
             --post_script_stage      When to run post-script: 'before' or 'after' (default: after)
