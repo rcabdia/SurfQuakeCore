@@ -262,8 +262,11 @@ class AnalysisEvents:
                             self._set_header
                         ))
 
-                    with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                        results = pool.map(self._process_station_analysis, tasks)
+                    if self.post_script_func:
+                        results = [self._process_station_analysis(task) for task in tasks]
+                    else:
+                        with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                            results = pool.map(self._process_station_analysis, tasks)
 
                     all_traces = [tr for group in results for tr in group if tr is not None]
                     full_stream = self._clean_traces(all_traces)
@@ -372,7 +375,7 @@ class AnalysisEvents:
 
                         # --- Process stations (parallel if no post-script) ---
                         if self.post_script_func:
-                            print("[INFO] Using sequential mode due to post-script")
+                            #print("[INFO] Using sequential mode due to post-script")
                             results = [self._process_station_traces(task) for task in tasks]
                         else:
                             with Pool(processes=min(cpu_count(), len(tasks))) as pool:
@@ -485,8 +488,12 @@ class AnalysisEvents:
 
         try:
             while True:
-                with Pool(processes=min(cpu_count(), len(tasks))) as pool:
-                    results = pool.map(self._process_station_analysis, tasks)
+                if self.post_script_func:
+
+                    results = [self._process_station_analysis(task) for task in tasks]
+                else:
+                    with Pool(processes=min(cpu_count(), len(tasks))) as pool:
+                        results = pool.map(self._process_station_analysis, tasks)
 
                 all_traces = [tr for group in results for tr in group if tr is not None]
                 full_stream = self._clean_traces(all_traces)

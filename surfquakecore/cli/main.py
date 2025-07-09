@@ -851,7 +851,6 @@ def _processing():
             -e events.xml \\
             -c config.yaml \\
             -o ./output_folder \\
-            -l \\
             --phases P,S,PcP \\
             --plot_config plot_settings.yaml \\
             --post_script custom_postproc.py \\
@@ -863,7 +862,7 @@ def _processing():
         -i, --inventory_file       [OPTIONAL] Station metadata file (XML, RESP)
         -e, --event_file           [OPTIONAL] Event catalog in QuakeML format
         -c, --config_file          [OPTIONAL] Processing configuration file (YAML)
-        -l, --plots                [OPTIONAL] In case user wants seismograms interactivity
+        -a, --auto                 [OPTIONAL] Run in automatic mode
         -o, --output_folder        [OPTIONAL] Folder where processed files are saved
         -n, --net                  [OPTIONAL] project net filter Example: NET1,NET2,NET3
         -s, --station              [OPTIONAL] project station filter Example: STA1,STA2,STA3
@@ -921,8 +920,6 @@ def _processing():
 
     arg_parse.add_argument("-ce", "--cut_end_time", help="cut post-first arrival  in seconds", type=float,
                            required=False)
-
-    arg_parse.add_argument("-l", "--plots", help="In case user wants to plot seismograms", action="store_true")
 
     arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)",
                            type=str)
@@ -1070,7 +1067,7 @@ def _processing_daily():
         --max_date                End date   (format: YYYY-MM-DD HH:MM:SS)
         --plot_config             Optional plotting configuration (YAML)
         --post_script             Path to Python script for custom post-processing
-        --post_script_stage       When to apply the post-script: before | after (default: after)
+        --post_script_stage       When to apply the post-script: before | after (default: before)
     """
     )
 
@@ -1223,7 +1220,7 @@ Overview:
             -a, --auto               [OPTIONAL] Run in automatic (non-interactive) mode
             --plot_config            [OPTIONAL] Plotting settings YAML
             --post_script            [OPTIONAL] Python script to apply to each stream
-            --post_script_stage      When to run post-script: 'before' or 'after' (default: after)
+            --post_script_stage      When to run post-script: 'before' or 'after' (default: before)
         """
     )
 
@@ -1251,7 +1248,7 @@ Overview:
         "--post_script_stage",
         help="When to apply the post-script: 'before' or 'after' plotting",
         choices=["before", "after"],
-        default="after"
+        default="before"
     )
 
     parsed_args = parser.parse_args()
