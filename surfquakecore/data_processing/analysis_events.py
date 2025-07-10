@@ -35,13 +35,14 @@ class AnalysisEvents:
                  post_script: Optional[str] = None,
                  post_script_stage: Optional[str] = "before", time_segment_start: Optional[str] = None,
                  time_segment_end: Optional[str] = None, reference: Optional[str] = None,
-                 phase_list: Optional[list] = None):
+                 phase_list: Optional[list] = None, vel: Optional[float] = None):
 
         self.model = TauPyModel("iasp91")
         self.output = output
         self._exist_folder = False
         self.inventory = None
         self.post_script_func = None
+        self.vel = vel
         self.reference = reference
         self.all_traces = []
         self.surf_projects = surf_projects
@@ -119,36 +120,48 @@ class AnalysisEvents:
             origin = event["origin_time"]
             distance_m = baz = az = incidence_angle = -1
             lat = lon = depth = None
+            arrivals_info = []
 
             if self.reference == "event_time":
+
                 lat, lon, depth = event["latitude"], event["longitude"], event["depth"]
                 inv_sta = inventory.select(network=net, station=sta)
                 sta_coords = inv_sta[0][0].latitude, inv_sta[0][0].longitude, inv_sta[0][0].elevation
                 distance_m, az, baz = gps2dist_azimuth(sta_coords[0], sta_coords[1], lat, lon)
                 distance_deg = distance_m / 1000 / 111.19
 
-                if self.phase_list:
-                    arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg,
-                                                      phase_list=self.phase_list)
+                if self.vel:  # Use velocity-based travel time estimate
+
+                    travel_time = distance_m*1E-3 / float(self.vel)  # seconds
+                    arrival_time = origin + travel_time
+                    t1 = arrival_time - cut_start
+                    t2 = arrival_time + cut_end
+                    st.trim(starttime=t1, endtime=t2)
+
                 else:
-                    arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg)
-                if not arrivals:
-                    raise ValueError("No valid arrivals returned by TauPyModel.")
 
-                arrivals_info = []
-                for arr in arrivals:
-                    arrivals_info.append({
-                        "phase": arr.name,
-                        "time": (origin + arr.time).timestamp,
-                        "ray_param": arr.ray_param_sec_degree,
-                        "incident_angle": arr.incident_angle
-                    })
+                    if self.phase_list:
+                        arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg,
+                                                      phase_list=self.phase_list)
+                    else:
+                        arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg)
+                    if not arrivals:
+                        raise ValueError("No valid arrivals returned by TauPyModel.")
 
-                incidence_angle = arrivals[0].incident_angle
-                first_arrival = origin + arrivals[0].time
-                t1 = first_arrival - cut_start
-                t2 = first_arrival + cut_end
-                st.trim(starttime=t1, endtime=t2)
+
+                    for arr in arrivals:
+                        arrivals_info.append({
+                            "phase": arr.name,
+                            "time": (origin + arr.time).timestamp,
+                            "ray_param": arr.ray_param_sec_degree,
+                            "incident_angle": arr.incident_angle
+                        })
+
+                    incidence_angle = arrivals[0].incident_angle
+                    first_arrival = origin + arrivals[0].time
+                    t1 = first_arrival - cut_start
+                    t2 = first_arrival + cut_end
+                    st.trim(starttime=t1, endtime=t2)
 
             else:
                 t1 = origin - cut_start

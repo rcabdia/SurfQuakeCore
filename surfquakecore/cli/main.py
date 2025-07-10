@@ -869,9 +869,10 @@ def _processing():
         -ch, --channel,            [OPTIONAL]  project channel filter Example: HHZ,BHN
         -t, --cut_time             [OPTIONAL] pre & post first arrival in seconds (symmetric)
         -cs, --cut_start_time      [OPTIONAL] cut pre-first arrival in seconds
-        -ce, --cut_end_time        [OPTIONAL] cut ppost-first arrival in seconds
-        -r, --reference            [OPTIONAL] Reference |event_time| if set the pick event origin time is the cut reference.
+        -ce, --cut_end_time        [OPTIONAL] cut post-first arrival in seconds
+        -r, --reference            [OPTIONAL] The pick time for cutting the waveforms is the origin time of the event
         --phases                   [OPTIONAL] Comma-separated list of phases for arrival estimation (e.g., P,S)
+        --vel                      [OPTIONAL] Phase speed to estimate the first arrival time (reference for cutting waveform)
         --plot_config              [OPTIONAL] Optional plot configuration file (YAML)
         --post_script              [OPTIONAL] Python script to apply per event stream
         --post_script_stage        [OPTIONAL] When to apply the post-script: before | after (default: before)
@@ -899,12 +900,14 @@ def _processing():
     arg_parse.add_argument("-e", "--event_file", help="absolute path to event file", type=str,
                            required=False)
 
-    arg_parse.add_argument("-r", "--reference", help="Reference |event_time| if the first arrival "
-                                                     "needs to be estimated else pick time is the reference, default event",
+    arg_parse.add_argument("-r", "--reference", help="The pick time for cutting "
+                                                     "the waveforms is the origin time of the event",
                            type=str, required=False)
 
     arg_parse.add_argument("--phases", help="Comma-separated list of phases to use for travel "
                                             "time estimation (e.g., P,S,PcP)", type=str, required=False)
+
+    arg_parse.add_argument("--vel", help="Phase speed to estimate the first arriva time ", type=str, required=False)
 
     arg_parse.add_argument("-n", "--net", help="project net filter", type=str, required=False)
 
@@ -1008,7 +1011,7 @@ def _processing():
                             sp_sub_projects, post_script=make_abs(parsed_args.post_script),
                             post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=make_abs(parsed_args.plot_config), reference=parsed_args.reference,
-                            phase_list=phase_list)
+                            phase_list=phase_list, vel=parsed_args.vel)
         sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
     else:
@@ -1220,7 +1223,7 @@ Overview:
             -a, --auto               [OPTIONAL] Run in automatic (non-interactive) mode
             --plot_config            [OPTIONAL] Plotting settings YAML
             --post_script            [OPTIONAL] Python script to apply to each stream
-            --post_script_stage      When to run post-script: 'before' or 'after' (default: before)
+            --post_script_stage      [OPTIONAL] When to run post-script: 'before' or 'after' (default: before)
         """
     )
 
