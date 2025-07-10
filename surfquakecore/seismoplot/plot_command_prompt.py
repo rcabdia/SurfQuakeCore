@@ -9,8 +9,8 @@ import os
 import readline
 import atexit
 from typing import Optional
-
 from surfquakecore.data_processing.processing_methods import filter_trace
+import matplotlib.pyplot as plt
 
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
@@ -48,49 +48,47 @@ class PlotCommandPrompt:
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(path) if path else None
 
+
     def _cmd_exit(self, args):
-        print("[INFO] Returning to picking mode...")
-        self.prompt_active = False
-        self._exit_code = "p"
 
-    # def _cmd_exit(self, args):
+         import warnings
+         warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
 
-    #     import warnings
-    #     warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
     #     """
     #     Exit the plot and close the interactive session.
     #     Usage: exit
     #     """
-    #     import matplotlib.pyplot as plt
-    #     import gc
-    #     import multiprocessing as mp
-    #     import warnings
+
+         import matplotlib.pyplot as plt
+         import gc
+         import multiprocessing as mp
+         import warnings
+
+         print("[INFO] Exiting interactive plotting session.")
+         self.prompt_active = False
+         self._exit_code = "exit"
     #
-    #     print("[INFO] Exiting interactive plotting session.")
-    #     self.prompt_active = False
-    #     self._exit_code = "exit"
-    #
-    #     try:
-    #         if self.plot_proj and hasattr(self.plot_proj, "fig"):
-    #             plt.close(self.plot_proj.fig)
-    #             self.plot_proj.fig = None
-    #     except Exception:
-    #         pass
-    #
-    #     # Explicitly call garbage collector to release mpl backends/semaphores
-    #     gc.collect()
-    #
-    #     # On macOS, also consider forcibly terminating child processes if you're using any (e.g., in FK)
-    #     try:
-    #         mp.active_children()
-    #         mp.get_context().get_logger().setLevel("ERROR")  # suppress log noise
-    #     except Exception:
-    #         pass
-    #
-    #     # Suppress final cleanup warning from multiprocessing
-    #     warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
-    #
-    #     print("[INFO] Cleanup complete.")
+         try:
+             if self.plot_proj and hasattr(self.plot_proj, "fig"):
+                 plt.close(self.plot_proj.fig)
+                 self.plot_proj.fig = None
+         except Exception:
+             pass
+
+         # Explicitly call garbage collector to release mpl backends/semaphores
+         gc.collect()
+
+         # On macOS, also consider forcibly terminating child processes if you're using any (e.g., in FK)
+         try:
+             mp.active_children()
+             mp.get_context().get_logger().setLevel("ERROR")  # suppress log noise
+         except Exception:
+             pass
+
+         # Suppress final cleanup warning from multiprocessing
+         warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
+
+         print("[INFO] Cleanup complete.")
 
     def run(self) -> str:
         """
@@ -213,6 +211,7 @@ class PlotCommandPrompt:
             print("Usage: spectrogram <index> [<win_sec> <overlap%>]")
 
     def _cmd_spectrum(self, args):
+
         if len(args) < 2 or len(args) > 3:
             print("Usage: spectrum <index>|all [axis_type]")
             return
@@ -222,10 +221,13 @@ class PlotCommandPrompt:
 
         if target == "all":
             self.plot_proj._plot_all_spectra(axis_type=axis_type)
+
         elif target.isdigit():
             self.plot_proj._plot_single_spectrum(int(target), axis_type=axis_type)
+
         else:
             print("[ERROR] Invalid spectrum command")
+
 
     def _cmd_cwt(self, args):
         if len(args) not in [4, 6]:
@@ -837,7 +839,7 @@ class PlotCommandPrompt:
                 Run FK (or other) beamforming method on current traces.
 
                 Options:
-                    --method    : Beamforming type ('FK', 'CAPON' or 'MUSIC)
+                    --method    : Beamforming type ('FK', 'MTP.COHERENCE', 'CAPON' or 'MUSIC)
                     --fmin      : Min frequency (Hz)
                     --fmax      : Max frequency (Hz)
                     --smax      : Max slowness (s/km)
@@ -887,21 +889,21 @@ class PlotCommandPrompt:
 
         # General summary
         print("Available commands:")
-        print("  p                             Return to interactive picking mode")
-        print("  n                             Next set of traces / exit prompt")
-        print("  b                             Previous set of traces")
-        print("  filter <type> <fmin> <fmax>   Filter traces (type: help filter for details)")
-        print("  spectrum <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
-        print("  spec <idx> [win overlap]      Plot spectrogram for one trace")
-        print("  cwt <idx> <wavelet> <param>   Continuous wavelet transform")
-        print("  fk [--fmin ...]               FK analysis (type: help fk for options)")
-        print("  plot_type <type>              Change plot mode: standard, record, overlay")
-        print("  concat                        Merge/concatenate traces")
-        print("  shift --phase <name>          Shift by pick (type: help shift for info)")
-        print("  cut --phase <name> ...        Trim traces (type: help cut for usage)")
-        print("  write --folder_path <path>    Export displayed traces to HDF5")
-        print("  exit                          Close command line and exit to interactive picking mode")
-        print("  help [command]                Show general or detailed help")
+        print(" p                             Return to interactive picking mode")
+        print(" n                             Next set of traces / exit prompt")
+        print(" b                             Previous set of traces")
+        print(" filter <type> <fmin> <fmax>   Filter traces (type: help filter for details)")
+        print(" spectrum <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
+        print(" spec <idx> [win overlap]      Plot spectrogram for one trace")
+        print(" cwt <idx> <wavelet> <param>   Continuous wavelet transform")
+        print(" beam [--fmin --fmax ...]      Beamforming analysis (type: help beam for options)")
+        print(" plot_type <type>              Change plot mode: standard, record, overlay")
+        print(" concat                        Merge/concatenate traces")
+        print(" shift --phase <name>          Shift by pick (type: help shift for info)")
+        print(" cut --phase <name> ...        Trim traces (type: help cut for usage)")
+        print(" write --folder_path <path>    Export displayed traces to HDF5")
+        print(" exit                          Close command line and exit to interactive picking mode")
+        print(" help [command]                Show general or detailed help")
 
 if __name__ == "__main__":
     import multiprocessing as mp

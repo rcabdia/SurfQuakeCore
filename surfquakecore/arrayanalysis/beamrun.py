@@ -143,7 +143,7 @@ class TraceBeamResult:
                 selection = MseedUtil.filter_inventory_by_stream(traces_slow, self.inventory)
                 wavenumber = array_analysis.array()
 
-                if self.method_beam == "FK" or self.method_beam == "CAPON":
+                if self.method_beam == "FK" or self.method_beam == 'MTP.COHERENCE' or self.method_beam == "CAPON":
                     Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
                         traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow,
                         self.slow_grid, self.method_beam)

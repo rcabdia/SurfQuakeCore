@@ -82,6 +82,7 @@ class PlotProj:
         self.utc_start = None
         self.utc_end = None
 
+
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
         Returns distance (km) and back-azimuth from trace header.
@@ -94,10 +95,11 @@ class PlotProj:
 
     def plot(self, page=0):
 
-        if platform.system() == 'Darwin':
-            mplt.use("MacOSX")
-        else:
-            mplt.use("TkAgg")
+        #if platform.system() == 'Darwin':
+        #     mplt.use("MacOSX")
+        #else:
+
+        mplt.use("Qt5Agg")
 
         self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
@@ -248,13 +250,19 @@ class PlotProj:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
             plt.pause(0.5)
+
             print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' for picking mode")
-            prompt = PlotCommandPrompt(self)
-            result = prompt.run()
-            if result == "p":
-                self.enable_command_prompt = False
-                self._register_span_selector()
-                plt.show(block=True)
+
+            while True:
+                prompt = PlotCommandPrompt(self)
+                result = prompt.run()
+                if result == "p":
+                    self.enable_command_prompt = False
+                    self._register_span_selector()
+                    plt.show(block=True)
+                    break
+                elif result == "exit":
+                    break
         else:
             self._register_span_selector()
             plt.show(block=True)
@@ -764,9 +772,9 @@ class PlotProj:
 
     def _plot_single_spectrum(self, idx, axis_type):
 
+
         trace = self.displayed_traces[idx]
         spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
-        trace = self.displayed_traces[idx]
 
         try:
             stime = self.utc_start
@@ -778,31 +786,32 @@ class PlotProj:
         except:
             etime = trace.stats.endtime
 
-        print("Spectrum window: ", stime, etime)
-
         trace.trim(starttime=stime, endtime=etime)
-        self.fig_spec, self.ax_spec = plt.subplots()
+
+        fig, ax = plt.subplots()
 
         if axis_type == "loglog":
-            self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+            ax.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
         elif axis_type == "xlog":
-            self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
+            ax.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
         elif axis_type == "ylog":
-            self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
+            ax.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
 
-        self.ax_spec.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
-        self.ax_spec.set_xlabel("Frequency (Hz)")
-        self.ax_spec.set_ylabel("Amplitude")
-        self.ax_spec.set_title(f"Spectrum for {trace.id}")
-        self.ax_spec.legend()
+        ax.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Amplitude")
+        ax.set_title(f"Spectrum for {trace.id}")
+        ax.legend()
         plt.grid(True, which="both", ls="-", color='grey', alpha=0.4)
         plt.tight_layout()
-        plt.show(block=False)
 
         # Poll until the figure is closed
-        while plt.fignum_exists(self.fig_spec.number):
+        plt.show(block=False)
+        while plt.fignum_exists(fig.number):
             plt.pause(0.2)
             time.sleep(0.1)
+
+
 
     def _plot_all_spectra(self, axis_type):
 
@@ -995,6 +1004,7 @@ class PlotProj:
 
 
     def _run_fk(self, **kwargs):
+
         try:
             plt.close(self.fig_fk)
             plt.close(self.fig_slow_map)
@@ -1092,7 +1102,7 @@ class PlotProj:
                 selection = MseedUtil.filter_inventory_by_stream(traces_slow, self.inventory)
                 wavenumber = array_analysis.array()
 
-                if self.method_beam == "FK" or self.method_beam == "CAPON":
+                if self.method_beam == "FK" or self.method_beam == "CAPON" or self.method_beam == "MTP.COHERENCE":
                     Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
                         traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow,
                         self.slow_grid, self.method_beam)
@@ -1126,6 +1136,7 @@ class PlotProj:
                 #
 
                 # Plot
+
                 self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
                 contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
                 ax_slow.set_xlabel("Sx (s/km)")
