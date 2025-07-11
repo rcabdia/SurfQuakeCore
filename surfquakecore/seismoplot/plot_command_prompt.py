@@ -10,7 +10,6 @@ import readline
 import atexit
 from typing import Optional
 from surfquakecore.data_processing.processing_methods import filter_trace
-import matplotlib.pyplot as plt
 
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
@@ -230,6 +229,13 @@ class PlotCommandPrompt:
 
 
     def _cmd_cwt(self, args):
+
+        """
+                Run continuous wavelet transform
+                Available wavelets Complex Morlet (cm), Mexican Hat and Paul Wavelet (pa)
+                param is the main wavelet parameter, recomended set to 6 to coincidence with fourier frequencies
+        """
+
         if len(args) not in [4, 6]:
             print("Usage: cwt <index> <wavelet> <param> [<fmin> <fmax>]")
             return
@@ -875,7 +881,43 @@ class PlotCommandPrompt:
 
                 Example:
                     >> xcorr --ref 0 --mode full --normalize full --trim False
-            """
+            """,
+
+            "cwt": """
+            cwt <index> <wavelet> <param> [<fmin> <fmax>]
+                Perform Continuous Wavelet Transform (CWT) on a trace.
+
+                Parameters:
+                    index      : Index of the trace in the current plot
+                    wavelet    : Wavelet type. Options:
+                                   - cm : Complex Morlet
+                                   - mh : Mexican Hat
+                                   - pa : Paul
+                    param      : Wavelet-specific parameter (e.g., 6 for cm for Fourier match)
+                    fmin/fmax  : Optional frequency band to display (Hz)
+
+                Example:
+                    >> cwt 0 cm 6
+                    >> cwt 2 pa 4 0.5 10
+        """,
+        "spectrogram": """
+            spectrogram <index> [<win_sec> <overlap_percent>]
+            spec <index> [<win_sec> <overlap_percent>]
+                Plot spectrogram of the selected trace using a moving FFT window, using multitaper.
+
+                Parameters:
+                    index        : Index of the trace in the current view
+                    win_sec      : (Optional) Window length in seconds (default: 5.0)
+                    overlap      : (Optional) Window overlap percentage (default: 50%)
+
+                Notes:
+                    - Spectrogram shows how power varies with time and frequency.
+                    - Use 'spec' or 'spectrogram' — both work the same.
+
+                Examples:
+                    >> spectrogram 1
+                    >> spec 0 3.0 75
+        """
         }
 
         # Check if specific command is requested
@@ -894,8 +936,8 @@ class PlotCommandPrompt:
         print(" b                             Previous set of traces")
         print(" filter <type> <fmin> <fmax>   Filter traces (type: help filter for details)")
         print(" spectrum <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
-        print(" spec <idx> [win overlap]      Plot spectrogram for one trace")
-        print(" cwt <idx> <wavelet> <param>   Continuous wavelet transform")
+        print(" spec <idx> [win overlap]      Plot multitaper-spectrogram of trace, (help spectrogram)")
+        print(" cwt <idx> <wavelet> <param>   Continuous wavelet transform (help cwt)")
         print(" beam [--fmin --fmax ...]      Beamforming analysis (type: help beam for options)")
         print(" plot_type <type>              Change plot mode: standard, record, overlay")
         print(" concat                        Merge/concatenate traces")
