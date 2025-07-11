@@ -1142,7 +1142,7 @@ class PlotProj:
                 if self.method_beam == "FK":
                     clabel = "FK Normalized Power"
                 elif  self.method_beam == "CAPON":
-                    clabel = "CAPON Normalized Power"
+                    clabel = "CAPON Power"
                 elif self.method_beam == "MTP.COHERENCE":
                     clabel = "Multitaper Magnitude Coherence"
                 elif self.method_beam == "MUSIC":

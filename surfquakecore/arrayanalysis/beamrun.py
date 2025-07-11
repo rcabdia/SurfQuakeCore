@@ -175,10 +175,12 @@ class TraceBeamResult:
                     f"Power: {np.max(Z):.2f}")
                 print(info_text)
 
-                if self.method_beam == "FK" or self.method_beam == "CAPON":
-                    clabel = "Power"
+                if self.method_beam == "FK":
+                    clabel = "FK Normalized Power"
+                elif  self.method_beam == "CAPON":
+                    clabel = "CAPON Power"
                 elif self.method_beam == "MTP.COHERENCE":
-                    clabel = "Magnitude Coherence"
+                    clabel = "Multitaper Magnitude Coherence"
                 elif self.method_beam == "MUSIC":
                     clabel = "MUSIC Pseudospectrum"
 
