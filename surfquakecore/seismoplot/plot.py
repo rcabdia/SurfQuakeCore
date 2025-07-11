@@ -1084,6 +1084,17 @@ class PlotProj:
             print("A time window span needs to be selected")
 
     def _on_fk_key_press(self, event):
+        method_map = {
+            '1': "FK",
+            '2': "CAPON",
+            '3': "MTP.COHERENCE",
+            '4': "MUSIC"
+        }
+
+        if event.key in method_map:
+            self.method_beam = method_map[event.key]
+            print(f"[INFO] Method selected: {self.method_beam}")
+            return
 
         if event.key == 'e':
             self._exit = False
@@ -1099,25 +1110,23 @@ class PlotProj:
                 return
 
             try:
-                # Get data
                 traces = Stream(self.trace_list)
                 traces_slow = traces.copy()
                 selection = MseedUtil.filter_inventory_by_stream(traces_slow, self.inventory)
                 wavenumber = array_analysis.array()
 
-                if self.method_beam == "FK" or self.method_beam == "CAPON" or self.method_beam == "MTP.COHERENCE":
+                if self.method_beam in ["FK", "CAPON", "MTP.COHERENCE"]:
                     Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
                         traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow,
                         self.slow_grid, self.method_beam)
-
                 elif self.method_beam == "MUSIC":
-                    Z, Sxpow, Sypow, coord = wavenumber.run_music(traces, selection, xdata, self.fmin, self.fmax,
-                                                              self.smax, self.timewindow, self.slow_grid, "MUSIC")
+                    Z, Sxpow, Sypow, coord = wavenumber.run_music(
+                        traces, selection, xdata, self.fmin, self.fmax,
+                        self.smax, self.timewindow, self.slow_grid, "MUSIC")
 
                 backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
                 slowness = np.abs(Sxpow, Sypow)
 
-                # Build slowness grid
                 Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
                 nx = len(Sx[0])
                 x = y = np.linspace(-1 * self.smax, self.smax, nx)
@@ -1130,21 +1139,19 @@ class PlotProj:
                     f"Power: {np.max(Z):.2f}")
                 print(info_text)
 
-                if self.method_beam == "FK" or self.method_beam == "CAPON":
-                    clabel = "Power"
+                if self.method_beam == "FK":
+                    clabel = "FK Normalized Power"
+                elif  self.method_beam == "CAPON":
+                    clabel = "CAPON Normalized Power"
                 elif self.method_beam == "MTP.COHERENCE":
-                    clabel = "Magnitude Coherence"
+                    clabel = "Multitaper Magnitude Coherence"
                 elif self.method_beam == "MUSIC":
                     clabel = "MUSIC Pseudospectrum"
-                #
-
-                # Plot
 
                 self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
                 contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
                 ax_slow.set_xlabel("Sx (s/km)")
                 ax_slow.set_ylabel("Sy (s/km)")
-                # Add top-left annotation text (instead of title)
                 ax_slow.text(
                     0.02, 0.98, info_text,
                     transform=ax_slow.transAxes,
@@ -1153,7 +1160,6 @@ class PlotProj:
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.8)
                 )
 
-                #ax_slow.set_title(f"Beam Power at {time_clicked.strftime('%H:%M:%S')}")
                 cbar = plt.colorbar(contour, ax=ax_slow)
                 cbar.set_label(clabel)
                 plt.tight_layout()
