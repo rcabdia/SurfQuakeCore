@@ -33,6 +33,7 @@ from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
 from matplotlib.backend_bases import MouseButton
+
 # Choose the best backend before importing pyplot,
 # more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
@@ -82,7 +83,6 @@ class PlotProj:
         self.utc_start = None
         self.utc_end = None
 
-
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
         Returns distance (km) and back-azimuth from trace header.
@@ -95,11 +95,10 @@ class PlotProj:
 
     def plot(self, page=0):
 
-        #if platform.system() == 'Darwin':
-        #     mplt.use("MacOSX")
-        #else:
-
-        mplt.use("Qt5Agg")
+        if platform.system() == 'Darwin':
+             mplt.use("MacOSX")
+        else:
+            mplt.use("TkAgg")
 
         self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
@@ -147,8 +146,7 @@ class PlotProj:
         self.fig, self.axs = plt.subplots(
             len(sub_traces), 1, figsize=(12, max_traces),
             sharex=True, sharey=self.plot_config["sharey"],
-            gridspec_kw={'hspace': self.plot_config["vspace"]}
-        )
+            gridspec_kw={'hspace': self.plot_config["vspace"]})
 
         # Ensure axs is always a list
         if len(sub_traces) == 1:
@@ -506,7 +504,8 @@ class PlotProj:
 
     def _on_key_press(self, event):
         """Handle key presses for pick management."""
-
+        if event.key in ("escape", "enter"):
+            self._exit = True
         # Reference marker key
         if event.key == 'w' and event.inaxes in self.axs:
             ref_time = mdt.num2date(event.xdata).replace(tzinfo=None)
@@ -772,7 +771,7 @@ class PlotProj:
 
     def _plot_single_spectrum(self, idx, axis_type):
 
-
+        self._exit = False
         trace = self.displayed_traces[idx]
         spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
 
@@ -804,17 +803,16 @@ class PlotProj:
         ax.legend()
         plt.grid(True, which="both", ls="-", color='grey', alpha=0.4)
         plt.tight_layout()
-
+        cid = fig.canvas.mpl_connect("key_press_event", self._on_key_press)
         # Poll until the figure is closed
         plt.show(block=False)
-        while plt.fignum_exists(fig.number):
-            plt.pause(0.2)
-            time.sleep(0.1)
-
-
+        while plt.fignum_exists(fig.number) and not self._exit:
+             plt.pause(0.2)
+             time.sleep(0.1)
+        fig.canvas.mpl_disconnect(cid)
 
     def _plot_all_spectra(self, axis_type):
-
+        self._exit = False
         stime_trim = etime_trim = None
         self.fig_spec, self.ax_spec = plt.subplots()
 
@@ -850,18 +848,20 @@ class PlotProj:
             self.ax_spec.legend(fontsize=6)
             plt.grid(True, which="both", ls="-", color='grey')
             plt.tight_layout()
+            cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
             plt.show(block=False)
 
             # Poll until the figure is closed
-            while plt.fignum_exists(self.fig_spec.number):
+            while plt.fignum_exists(self.fig_spec.number) and not self._exit:
                 plt.pause(0.2)
                 time.sleep(0.1)
+            self.fig_spec.canvas.mpl_disconnect(cid)
         else:
             print("Please select set starttime and endtime using span selector, "
                   "click right mouse and dragging it to the right")
 
     def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0):
-
+        self._exit = False
         trace = self.displayed_traces[idx]
         try:
             stime = self.utc_start
@@ -915,15 +915,15 @@ class PlotProj:
         # --- Add colorbar without shifting axes ---
         cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
         cbar.set_label("Power [dB]")
-
+        cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
         plt.show(block=False)
 
-        while plt.fignum_exists(self.fig_spec.number):
+        while plt.fignum_exists(self.fig_spec.number) and not self._exit:
             plt.pause(0.2)
             time.sleep(0.1)
-
+        self.fig_spec.canvas.mpl_disconnect(cid)
     def _plot_wavelet(self, idx, wavelet_type, param, **kwargs):
-
+        self._exit = False
         if wavelet_type == "cm":
             wavelet_type = "Complex Morlet"
         elif wavelet_type == "mh":
@@ -995,16 +995,17 @@ class PlotProj:
         # --- Add colorbar without shifting axes ---
         cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
         cbar.set_label("Power [dB]")
-
+        cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
         plt.show(block=False)
 
-        while plt.fignum_exists(self.fig_spec.number):
+        while plt.fignum_exists(self.fig_spec.number) and not self._exit:
             plt.pause(0.2)
             time.sleep(0.1)
+        self.fig_spec.canvas.mpl_disconnect(cid)
 
 
     def _run_fk(self, **kwargs):
-
+        self._exit = False
         try:
             plt.close(self.fig_fk)
             plt.close(self.fig_slow_map)
@@ -1069,12 +1070,14 @@ class PlotProj:
                 cbar.set_label("Relative Power")
 
                 plt.tight_layout()
+                cid = self.fig_fk.canvas.mpl_connect("key_press_event", self._on_key_press)
                 plt.show(block=False)
 
                 # Keep figure open
-                while plt.fignum_exists(self.fig_fk.number):
+                while plt.fignum_exists(self.fig_fk.number) and not self._exit:
                     plt.pause(0.2)
                     time.sleep(0.1)
+                self.fig_fk.canvas.mpl_disconnect(cid)
             except:
                 print("annot compute fk analysis, please review the inventory and parameter values")
         else:
@@ -1083,7 +1086,7 @@ class PlotProj:
     def _on_fk_key_press(self, event):
 
         if event.key == 'e':
-
+            self._exit = False
             xdata = event.xdata
             if xdata is None:
                 return
@@ -1154,12 +1157,13 @@ class PlotProj:
                 cbar = plt.colorbar(contour, ax=ax_slow)
                 cbar.set_label(clabel)
                 plt.tight_layout()
+                cid = self.fig_slow_map.canvas.mpl_connect("key_press_event", self._on_key_press)
                 plt.show(block=False)
 
-                while plt.fignum_exists(self.fig_slow_map.number):
+                while plt.fignum_exists(self.fig_slow_map.number) and not self._exit:
                     plt.pause(0.2)
                     time.sleep(0.1)
-
+                self.fig_slow_map.canvas.mpl_disconnect(cid)
             except Exception as e:
                 print(f"[ERROR] Could not compute or plot FK coherence: {e}")
 
