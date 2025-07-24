@@ -1279,7 +1279,7 @@ Overview:
         post_script_stage=parsed_args.post_script_stage
     )
 
-    ae.run_fast_waveform_analysis(data_files, auto=False)
+    ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto)
 
 def _specplot():
 
