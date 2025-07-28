@@ -95,10 +95,10 @@ class PlotProj:
 
     def plot(self, page=0):
 
-        if platform.system() == 'Darwin':
-             mplt.use("MacOSX")
-        else:
-            mplt.use("TkAgg")
+        # if platform.system() == 'Darwin':
+        #      mplt.use("MacOSX")
+        # else:
+        mplt.use("TkAgg")
 
         self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
