@@ -11,7 +11,7 @@ import scipy, numpy as np
 import math
 import pywt
 from matplotlib import pyplot as plt
-from obspy import UTCDateTime, Trace, Stream
+from obspy import UTCDateTime, Trace, Stream, read
 from obspy.signal.cross_correlation import correlate_template
 from obspy.signal.polarization import flinn
 from obspy.signal.trigger import classic_sta_lta, recursive_sta_lta, z_detect
@@ -1015,6 +1015,87 @@ def particle_motion(z, n, e, save_path: str = None):
         plt.tight_layout()
         fig_part.savefig(plt_output, dpi=300)
         plt.close(fig_part)
+
+
+def print_surfquake_trace_headers(file_list, max_columns=3):
+    """
+    Display one trace per file, side-by-side in columns, for up to `max_columns` at a time.
+    Includes units and full timestamp formatting for picks and references.
+    Press Enter to page through if more files remain.
+    """
+
+    def format_field(val, width=25):
+        return str(val)[:width - 1].ljust(width)
+
+    def format_picks(picks):
+        if not picks:
+            return "None"
+        return ", ".join(
+            f"{p.get('phase', '?')}@{UTCDateTime(p.get('time')).strftime('%Y-%m-%d %H:%M:%S')}"
+            for p in picks[:2]
+        )
+
+    def format_refs(refs):
+        if not refs:
+            return "None"
+        return ", ".join(UTCDateTime(r).strftime("%Y-%m-%d %H:%M:%S") for r in refs[:2])
+
+    def format_arrivals(arrivals):
+        if not arrivals:
+            return "None"
+        return ", ".join(f"{k}:{UTCDateTime(v).strftime('%Y-%m-%d %H:%M:%S')}" for k, v in list(arrivals.items())[:2])
+
+    # Define fields to show
+    fields = [
+        ("File", lambda f, s: f),
+        ("Network", lambda f, s: s.network),
+        ("Station", lambda f, s: s.station),
+        ("Location", lambda f, s: s.location),
+        ("Channel", lambda f, s: s.channel),
+        ("Start Time", lambda f, s: s.starttime.isoformat()),
+        ("End Time", lambda f, s: s.endtime.isoformat()),
+        ("Sampling Rate (Hz)", lambda f, s: s.sampling_rate),
+        ("Delta (s)", lambda f, s: 1/s.sampling_rate),
+        ("Npts", lambda f, s: s.npts),
+        ("Picks", lambda f, s: format_picks(getattr(s, "picks", []))),
+        ("References", lambda f, s: format_refs(getattr(s, "references", []))),
+        ("Distance (km)", lambda f, s: getattr(s.geodetic, "distance", "N/A") if hasattr(s, "geodetic") else "N/A"),
+        ("Baz (°)", lambda f, s: getattr(s.geodetic, "baz", "N/A") if hasattr(s, "geodetic") else "N/A"),
+        ("Az (°)", lambda f, s: getattr(s.geodetic, "az", "N/A") if hasattr(s, "geodetic") else "N/A"),
+        ("Incidence (°)", lambda f, s: getattr(s.geodetic, "incidence", "N/A") if hasattr(s, "geodetic") else "N/A"),
+        ("Arrivals", lambda f, s: format_arrivals(getattr(s.geodetic, "arrivals", {})) if hasattr(s, "geodetic") else "None"),
+    ]
+
+    total = len(file_list)
+    for start in range(0, total, max_columns):
+        chunk = file_list[start:start + max_columns]
+        traces = []
+
+        for file_path in chunk:
+            try:
+                st = read(file_path, headonly=True)
+                tr = st[0]
+                traces.append((os.path.basename(file_path), tr))
+            except Exception as e:
+                print(f"Error reading {file_path}: {e}")
+
+        if not traces:
+            print("No valid traces in this chunk.")
+            continue
+
+        for label, accessor in fields:
+            row = [label.ljust(20)]
+            for fname, tr in traces:
+                try:
+                    val = accessor(fname, tr.stats)
+                except Exception:
+                    val = "ERR"
+                row.append(format_field(val))
+            print(" | ".join(row))
+
+        # Only prompt if more files remain
+        if start + max_columns < total:
+            input("\nPress Enter to continue...\n")
 
 
 

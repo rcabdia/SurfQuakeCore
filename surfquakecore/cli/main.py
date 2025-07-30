@@ -17,6 +17,7 @@ from multiprocessing import freeze_support
 from typing import Optional
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
+from surfquakecore.data_processing.processing_methods import print_surfquake_trace_headers
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
@@ -83,7 +84,10 @@ def _create_actions():
             name="specplot", run=_specplot, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "beamplot": _CliActions(
-            name="beamplot", run=_beamplot, description=f"Type {__entry_point_name} -h for help.\n")
+            name="beamplot", run=_beamplot, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "info": _CliActions(
+            name="info", run=_info, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -1393,6 +1397,40 @@ Examples:
 
         beam_obj.plot_beam(save_path=make_abs(args.save_path) if args.save_path else None)
 
+
+
+def _info():
+    parser = ArgumentParser(
+        prog="surfquake info",
+        description="Prints waveform information ",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Example usage:
+
+  surfquake info -w './data/*.mseed' -c 3
+  surfquake info -w 'trace1.mseed, trace2.mseed' --columns 5
+
+Supports standard and SurfQuake-extended headers such as picks, references, and geodetic attributes.
+
+    """
+    )
+
+    parser.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
+    parser.add_argument("-c", "--columns",help="Number of traces (columns) to show per file (default = 5).",
+                        type=int, default=1)
+    args = parser.parse_args()
+
+    if "," in args.wave_files or " " in args.wave_files:
+        # Explicit list of files
+        wave_paths = [make_abs(f.strip()) for f in args.wave_files.split(",") if f.strip()]
+
+    else:
+        # Wildcard path
+        wave_paths = make_abs(args.wave_files)
+     # Build project on-the-fly using wildcard path
+
+    data_files = SurfProject.collect_files(root_path=wave_paths)
+    print_surfquake_trace_headers(data_files, max_columns=args.columns)
 
 def resolve_path(path: Optional[str]) -> Optional[str]:
     if path is None:
