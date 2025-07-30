@@ -1053,24 +1053,28 @@ def _processing_daily():
             -o ./output_folder \\
             --min_date "2024-01-01 00:00:00" \\
             --max_date "2024-01-02 00:00:00" \\
+            --span_seconds  86400\\
             --plot_config plot_settings.yaml \\
             --post_script my_custom.py \\
             --post_script_stage after
 
     Key Arguments:
-        -p, --project_file        Path to a saved project files
-        -o, --output_folder       Directory for processed output
-        -i, --inventory_file      Station metadata (XML/RESP)
-        -c, --config_file         Processing configuration (YAML)
-        -a, --auto                Run in automatic mode
-        -n, --net                 Network code filter
-        -s, --station             Station code filter
-        -ch, --channel            Channel filter
-        --min_date                Start date (format: YYYY-MM-DD HH:MM:SS)
-        --max_date                End date   (format: YYYY-MM-DD HH:MM:SS)
-        --plot_config             Optional plotting configuration (YAML)
-        --post_script             Path to Python script for custom post-processing
-        --post_script_stage       When to apply the post-script: before | after (default: before)
+        -p, --project_file        [REQUIRED] Path to a saved project files
+        -o, --output_folder       [OPTIONAL] Directory for processed output
+        -i, --inventory_file      [OPTIONAL] Station metadata (XML/RESP)
+        -c, --config_file         [OPTIONAL] Processing configuration (YAML)
+        -a, --auto                [OPTIONAL] Run in automatic mode
+        -n, --net                 [OPTIONAL] Network code filter
+        -s, --station             [OPTIONAL] Station code filter
+        -ch, --channel            [OPTIONAL] Channel filter
+        --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
+        --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
+        --time_tolerance          [OPTIONAL] Tolerance in seconds for time filtering, excluded files with smaller time span
+        --span_seconds            [OPTIONAL] Select and merge files in sets of time spans, DEFAULT 86400
+        --time_segment            [OPTIONAL] If set, process entire time window as a single merged stream of traces
+        --plot_config             [OPTIONAL] Optional plotting configuration (YAML)
+        --post_script             [OPTIONAL] Path to Python script for custom post-processing
+        --post_script_stage       [OPTIONAL] When to apply the post-script: before | after (default: before)
     """
     )
 
@@ -1091,7 +1095,7 @@ def _processing_daily():
                            help="Time span to split your dataset (in seconds), default 86400s")
 
     arg_parse.add_argument("--time_segment", action="store_true",
-                           help="If set, process entire time window as a single merged stream")
+                           help="If set, process entire time window as a single merged stream of traces")
 
     arg_parse.add_argument("--time_tolerance", type=int, default=120,
                            help="Tolerance in seconds for time filtering")
