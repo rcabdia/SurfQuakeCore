@@ -191,7 +191,7 @@ class SeismogramData:
 
                 if _config['name'] == 'spectrum':
                     spec = TraceSpectrumResult(tr)
-                    spec.compute_spectrum()
+                    spec.compute_spectrum(method=_config['method'])
                     spec.to_pickle(folder_path=_config['output_path'])
 
                 if _config['name'] == 'spectrogram':
@@ -218,7 +218,7 @@ class SeismogramData:
                     else:
                         fmax = None
 
-                    cwt.compute_cwt(wavelet_type="cm", param=6.0, fmin=fmin, fmax=fmax, nf=80)
+                    cwt.compute_cwt(wavelet_type=_config['wavelet'], param=_config["param"], fmin=fmin, fmax=fmax, nf=80)
                     cwt.to_pickle(folder_path=_config['output_path'])
 
                 if _config['name'] == 'entropy':

@@ -57,7 +57,7 @@ class TraceCWTResult:
 
         self.cwt_data = (t, f, scalogram2, pred, pred_comp)
 
-    def plot_cwt(self, save_path: str = None, clip: int = None):
+    def plot_cwt(self, save_path: str = None, clip: float = None):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
@@ -74,6 +74,7 @@ class TraceCWTResult:
         tr = self.trace
 
         if clip is not None:
+            clip = float(clip)
             scalogram = np.clip(scalogram, a_min=clip, a_max=0)
 
         self.fig_spec = plt.figure(figsize=(10, 5))
@@ -102,10 +103,9 @@ class TraceCWTResult:
 
         # Plot scalogram
         x, y = np.meshgrid(t, f)
-        if clip is not None:
-            pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow',  vmin=clip, vmax=0)
-        else:
-            pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow')
+        pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow',  vmin=np.min(scalogram), vmax=0)
+
+
         ax_spec.fill_between(pred, f, 0, color="black", edgecolor="red", alpha=0.3)
         ax_spec.fill_between(pred_comp, f, 0, color="black", edgecolor="red", alpha=0.3)
         ax_waveform.set_ylabel('Amplitude')

@@ -199,15 +199,41 @@ class PlotCommandPrompt:
         self.plot_proj.clear_plot()
         self.plot_proj.plot(page=self.plot_proj.current_page)
 
-
     def _cmd_spectrogram(self, args):
-        if len(args) >= 2:
+        """
+        Usage:
+            spectrogram <index> [<win_sec> <overlap%>] [<clip> (negative value)]
+        """
+        if len(args) < 2:
+            print("Usage: spectrogram <index> [<win_sec> <overlap%>] [<clip> (negative value)]")
+            return
+
+        try:
             idx = int(args[1])
-            win = float(args[2]) if len(args) > 2 else 5.0
-            overlap = float(args[3]) if len(args) > 3 else 50.0
-            self.plot_proj._plot_spectrogram(idx, win, overlap)
-        else:
-            print("Usage: spectrogram <index> [<win_sec> <overlap%>]")
+            win = 5.0
+            overlap = 50.0
+            clip = None
+
+            # Detect clip if last arg is negative
+            if len(args) >= 3 and float(args[-1]) < 0:
+                clip = float(args[-1])
+                extra_args = args[2:-1]
+            else:
+                extra_args = args[2:]
+
+            if len(extra_args) >= 1:
+                win = float(extra_args[0])
+            if len(extra_args) == 2:
+                overlap = float(extra_args[1])
+            elif len(extra_args) > 2:
+                print("Error: Too many arguments.")
+                return
+
+            kwargs = {"clip": clip} if clip is not None else {}
+            self.plot_proj._plot_spectrogram(idx, win, overlap, **kwargs)
+
+        except ValueError:
+            print("Error: index, win_sec, overlap%, and clip must be numeric where applicable.")
 
     def _cmd_spectrum(self, args):
 
@@ -227,27 +253,51 @@ class PlotCommandPrompt:
         else:
             print("[ERROR] Invalid spectrum command")
 
-
     def _cmd_cwt(self, args):
-
         """
-                Run continuous wavelet transform
-                Available wavelets Complex Morlet (cm), Mexican Hat and Paul Wavelet (pa)
-                param is the main wavelet parameter, recomended set to 6 to coincidence with fourier frequencies
-        """
+        Run continuous wavelet transform.
+        Available wavelets: Complex Morlet (cm), Mexican Hat, and Paul Wavelet (pa).
+        'param' is the main wavelet parameter; recommended value is 6 for Fourier frequency alignment.
 
-        if len(args) not in [4, 6]:
-            print("Usage: cwt <index> <wavelet> <param> [<fmin> <fmax>]")
+        Usage:
+            cwt <index> <wavelet> <param> [<fmin> <fmax>] [<clip> (negative value)]
+        """
+        if len(args) < 4:
+            print("Usage: cwt <index> <wavelet> <param> [<fmin> <fmax>] [<clip> (negative value)]")
             return
-        idx = int(args[1])
-        wavelet = args[2]
-        param = float(args[3])
-        if len(args) == 6:
-            fmin = float(args[4])
-            fmax = float(args[5])
-            self.plot_proj._plot_wavelet(idx, wavelet, param, fmin=fmin, fmax=fmax)
-        else:
-            self.plot_proj._plot_wavelet(idx, wavelet, param)
+
+        try:
+            idx = int(args[1])
+            wavelet = args[2]
+            param = float(args[3])
+            clip = None
+            fmin = fmax = None
+
+            # Detect clip value (if last arg is negative float)
+            if len(args) >= 5 and float(args[-1]) < 0:
+                clip = float(args[-1])
+                extra_args = args[4:-1]
+            else:
+                extra_args = args[4:]
+
+            # Parse fmin/fmax if present
+            if len(extra_args) == 2:
+                fmin = float(extra_args[0])
+                fmax = float(extra_args[1])
+            elif len(extra_args) != 0:
+                print("Error: Must provide both fmin and fmax, or neither.")
+                return
+
+            # Call with only the parameters that are not None
+            kwargs = {"clip": clip}
+            if fmin is not None and fmax is not None:
+                kwargs["fmin"] = fmin
+                kwargs["fmax"] = fmax
+
+            self.plot_proj._plot_wavelet(idx, wavelet, param, **kwargs)
+
+        except ValueError:
+            print("Error: index, param, fmin, fmax, and clip must be numeric where applicable.")
 
     def _cmd_beam(self, args):
         """
@@ -894,11 +944,14 @@ class PlotCommandPrompt:
                                    - mh : Mexican Hat
                                    - pa : Paul
                     param      : Wavelet-specific parameter (e.g., 6 for cm for Fourier match)
-                    fmin/fmax  : Optional frequency band to display (Hz)
+                    fmin       : Optional minimum frequency band to display (Hz)
+                    fmax       : Optional maximum frequency band to display (Hz)
+                    clip       : (Optional) Minimum Power dB (e.g., -100) accepted (default: Minimum Power of the full scalogram)
 
                 Example:
                     >> cwt 0 cm 6
-                    >> cwt 2 pa 4 0.5 10
+                    >> cwt 2 mh 6 0.5 10
+                    >> cwt 2 pa 6 0.5 10 -120
         """,
         "spectrogram": """
             spectrogram <index> [<win_sec> <overlap_percent>]
@@ -909,6 +962,7 @@ class PlotCommandPrompt:
                     index        : Index of the trace in the current view
                     win_sec      : (Optional) Window length in seconds (default: 5.0)
                     overlap      : (Optional) Window overlap percentage (default: 50%)
+                    clip         : (Optional) Minimum Power dB (e.g., -100) accepted (default: Minimum Power of the full spectrogram)
 
                 Notes:
                     - Spectrogram shows how power varies with time and frequency.
@@ -917,6 +971,7 @@ class PlotCommandPrompt:
                 Examples:
                     >> spectrogram 1
                     >> spec 0 3.0 75
+                    >> spec 0 5.0 50 -120
         """
         }
 

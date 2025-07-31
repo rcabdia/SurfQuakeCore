@@ -133,7 +133,7 @@ class TraceSpectrogramResult:
             SpectrumTool.compute_spectrogram(self.trace.data, int(win * self.trace.stats.sampling_rate),
                                              self.trace.stats.delta, linf, lsup, step_percentage)
 
-    def plot_spectrogram(self, save_path: str = None, clip: int = None):
+    def plot_spectrogram(self, save_path: str = None, clip: float = None):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
@@ -177,11 +177,11 @@ class TraceSpectrogramResult:
 
         # --- Plot spectrogram ---
         if clip is not None:
-            pcm = ax_spec.pcolormesh(
-                self.time, self.freq, spectrogram, shading='auto', cmap='rainbow', vmin=clip, vmax=0)
-        else:
-            pcm = ax_spec.pcolormesh(self.time, self.freq, spectrogram, shading='auto', cmap='rainbow',
-                                     vmin=clip, vmax=0)
+            clip = float(clip)
+            spectrogram = np.clip(spectrogram, a_min=clip, a_max=0)
+
+        pcm = ax_spec.pcolormesh(self.time, self.freq, spectrogram, shading='auto', cmap='rainbow'
+                                 , vmin=np.min(spectrogram), vmax=0)
 
         ax_waveform.set_ylabel('Amplitude')
         ax_spec.set_ylabel('Frequency [Hz]')

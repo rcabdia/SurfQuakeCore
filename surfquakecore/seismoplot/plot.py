@@ -860,7 +860,7 @@ class PlotProj:
             print("Please select set starttime and endtime using span selector, "
                   "click right mouse and dragging it to the right")
 
-    def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0):
+    def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0, clip=None):
         self._exit = False
         trace = self.displayed_traces[idx]
         try:
@@ -902,12 +902,16 @@ class PlotProj:
         ax_waveform.plot(trace.times(), trace.data, linewidth=0.75)
         ax_waveform.set_title(f"Spectrogram for {trace.id}")
         ax_waveform.tick_params(labelbottom=False)
+        spectrum = 10 * np.log10(spectrum / np.max(spectrum))
+
+        # Computer water_level
+        if clip:
+            spectrum = np.clip(spectrum, a_min=clip, a_max=0)
 
         # --- Plot spectrogram ---
-        pcm = ax_spec.pcolormesh(
-            t, f, 10 * np.log10(spectrum / np.max(spectrum)),
-            shading='auto', cmap='rainbow'
-        )
+        pcm = ax_spec.pcolormesh(t, f, spectrum, shading='auto', cmap='rainbow',
+                                 vmin=np.min(spectrum), vmax=0)
+
         ax_waveform.set_ylabel('Amplitude')
         ax_spec.set_ylabel('Frequency [Hz]')
         ax_spec.set_xlabel('Time [s]')
@@ -935,6 +939,7 @@ class PlotProj:
         tr = self.displayed_traces[idx]
         f_min = kwargs.pop("fmin", 0.5)
         f_max = kwargs.pop("fmax", tr.stats.sampling_rate//2)
+        clip = kwargs.pop("clip", None)
 
         try:
             stime = self.utc_start
@@ -955,6 +960,9 @@ class PlotProj:
         cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=f_min, fmax=f_max, nf=80,
                          use_wavelet=wavelet_type, m=param, decimate=False)
         scalogram2 = cw.scalogram_in_dbs()
+        # Computer water_level
+        if clip:
+            scalogram2 = np.clip(scalogram2, a_min=clip, a_max=0)
 
         t = np.linspace(0, tr.stats.delta * scalogram2.shape[1], scalogram2.shape[1])
         f = np.logspace(np.log10(f_min), np.log10(f_max), scalogram2.shape[0])
@@ -984,7 +992,8 @@ class PlotProj:
         ax_waveform.tick_params(labelbottom=False)
 
         # --- Plot scalogram ---
-        pcm = ax_spec.pcolormesh(x, y, scalogram2, shading='auto', cmap='rainbow')
+        pcm = ax_spec.pcolormesh(x, y, scalogram2, shading='auto', cmap='rainbow',
+                                 vmin=np.min(scalogram2), vmax=0)
         ax_spec.fill_between(pred, ff, 0, color="black", edgecolor="red", alpha=0.3)
         ax_spec.fill_between(pred_comp, ff, 0, color="black", edgecolor="red", alpha=0.3)
         ax_waveform.set_ylabel('Amplitude')

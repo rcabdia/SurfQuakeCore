@@ -1305,7 +1305,7 @@ Examples:
         surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp --type spectrum
 
     Plot a saved spectrogram:
-        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --type spectrogram
+        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --type spectrogram --clip -120.0
         
     Save plot to a file:
         surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec -t spectrogram --save_path output.png
@@ -1317,7 +1317,7 @@ Examples:
     parser.add_argument("--type", "-t", required=True, choices=["spectrum", "spectrogram", "cwt"],
         help="Type of spectral result to plot")
 
-    parser.add_argument("--clip", "-c", type=int, required=False)
+    parser.add_argument("--clip", "-c", type=float, required=False)
 
     parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
 
@@ -1329,7 +1329,7 @@ Examples:
 
     elif args.type == "spectrogram":
         obj = TraceSpectrogramResult.from_pickle(args.file)
-        obj.plot_spectrogram(save_path=args.save_path)
+        obj.plot_spectrogram(save_path=args.save_path, clip=args.clip)
 
     elif args.type == "cwt":
         obj = TraceCWTResult.from_pickle(args.file)
