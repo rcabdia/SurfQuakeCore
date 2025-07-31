@@ -25,6 +25,7 @@ from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
 from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.real.real_core import RealCore
+from surfquakecore.seismoplot.availability import PlotExplore
 from surfquakecore.spectral.cwtrun import TraceCWTResult
 from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
 from surfquakecore.utils.create_station_xml import Convert
@@ -87,7 +88,10 @@ def _create_actions():
             name="beamplot", run=_beamplot, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "info": _CliActions(
-            name="info", run=_info, description=f"Type {__entry_point_name} -h for help.\n")
+            name="info", run=_info, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "explore": _CliActions(
+            name="explore", run=_explore, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -1397,8 +1401,6 @@ Examples:
 
         beam_obj.plot_beam(save_path=make_abs(args.save_path) if args.save_path else None)
 
-
-
 def _info():
     parser = ArgumentParser(
         prog="surfquake info",
@@ -1431,6 +1433,36 @@ Supports standard and SurfQuake-extended headers such as picks, references, and 
 
     data_files = SurfProject.collect_files(root_path=wave_paths)
     print_surfquake_trace_headers(data_files, max_columns=args.columns)
+
+
+def _explore():
+    parser = ArgumentParser(
+        prog="surfquake info",
+        description="Explore data availability ",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Example usage:
+
+  surfquake info -w './data/*.mseed'
+  
+    """
+    )
+
+    parser.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
+    args = parser.parse_args()
+
+    if "," in args.wave_files or " " in args.wave_files:
+        # Explicit list of files
+        wave_paths = [make_abs(f.strip()) for f in args.wave_files.split(",") if f.strip()]
+
+    else:
+        # Wildcard path
+        wave_paths = make_abs(args.wave_files)
+     # Build project on-the-fly using wildcard path
+
+    data_files = SurfProject.collect_files(root_path=wave_paths)
+    PlotExplore.data_availability_new(data_files)
+
 
 def resolve_path(path: Optional[str]) -> Optional[str]:
     if path is None:
