@@ -3,6 +3,7 @@
 """
 availability
 """
+from collections import defaultdict
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdt
@@ -59,7 +60,7 @@ class PlotExplore:
         print(f"🔍 Starting processing of {len(list_files)} waveform files...\n")
         start_overall = time.time()
 
-        # Submit tasks
+        # Process in parallel
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             future_to_file = {executor.submit(PlotExplore.process_waveform_file, f): f for f in list_files}
@@ -76,6 +77,8 @@ class PlotExplore:
 
         print(f"\n✅ Finished all files in {time.time() - start_overall:.2f} seconds.\n")
 
+        year_ranges = defaultdict(list)
+
         for res in results:
             if 'error' in res:
                 continue
@@ -87,6 +90,8 @@ class PlotExplore:
 
             starttimes.append(res['start'])
             endtimes.append(res['end'])
+
+            year_ranges[res['start'].year].append((res['start'], res['end']))
 
             for gap_start, gap_end in res['gaps']:
                 hax.hlines(name, gap_start.matplotlib_date, gap_end.matplotlib_date,
@@ -103,22 +108,29 @@ class PlotExplore:
 
             plt.setp(hax.xaxis.get_majorticklabels(), rotation=45, ha='right', fontsize=8)
 
+            # Vertical lines and year labels
             years = range(start_time.year, end_time.year + 1)
             for y in years:
-                dt = datetime(y, 1, 1)
-                x = mdt.date2num(dt)
-                hax.axvline(x, color='gray', linestyle='--', lw=1)
-                hax.annotate(
-                    str(y),
-                    xy=(x, 1.01),
-                    xycoords=('data', 'axes fraction'),
-                    ha='center',
-                    va='bottom',
-                    fontsize=9,
-                    rotation=0,
-                    color='gray',
-                    fontweight='bold'
-                )
+                dt_line = datetime(y, 1, 1)
+                x_line = mdt.date2num(dt_line)
+                hax.axvline(x_line, color='gray', linestyle='--', lw=1)
+
+                # Text label only if there’s data that year
+                if y in year_ranges:
+                    starts = [r[0].matplotlib_date for r in year_ranges[y]]
+                    ends = [r[1].matplotlib_date for r in year_ranges[y]]
+                    mid_x = (min(starts) + max(ends)) / 2
+
+                    hax.text(
+                        mid_x, 1.01,
+                        str(y),
+                        transform=hax.get_xaxis_transform(),
+                        ha='center',
+                        va='bottom',
+                        fontsize=9,
+                        color='gray',
+                        fontweight='bold'
+                    )
 
         plt.tight_layout()
         plt.show(block=True)
