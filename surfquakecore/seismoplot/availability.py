@@ -69,13 +69,13 @@ class PlotExplore:
                 results.append(result)
 
                 if 'error' in result:
-                    print(f"❌ [{idx}/{len(list_files)}] Error processing {result['file']}: {result['error']}")
+                    print(f"Failed [{idx}/{len(list_files)}] Error processing {result['file']}: {result['error']}")
                 else:
-                    print(f"✅ [{idx}/{len(list_files)}] Processed {result['file']} "
+                    print(f"OK [{idx}/{len(list_files)}] Processed {result['file']} "
                           f"({result['name']}) - Duration: {result['duration']:.1f}s - "
                           f"Read time: {result['elapsed']:.2f}s")
 
-        print(f"\n✅ Finished all files in {time.time() - start_overall:.2f} seconds.\n")
+        print(f"\nOK Finished all files in {time.time() - start_overall:.2f} seconds.\n")
 
         year_ranges = defaultdict(list)
 

@@ -1294,7 +1294,6 @@ Overview:
     ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto)
 
 def _specplot():
-
     parser = ArgumentParser(
         prog="surfquake specplot",
         description="Plot serialized spectral analysis (spectrum, spectrogram or cwt)",
@@ -1302,38 +1301,43 @@ def _specplot():
         epilog="""
 Examples:
     Plot a saved spectrum:
-        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp --type spectrum
+        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp
 
     Plot a saved spectrogram:
-        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --type spectrogram --clip -120.0
-        
+        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0
+
     Save plot to a file:
-        surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec -t spectrogram --save_path output.png
+        surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec --save_path output.png
 """
     )
 
-    parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp or .spec file")
-
-    parser.add_argument("--type", "-t", required=True, choices=["spectrum", "spectrogram", "cwt"],
-        help="Type of spectral result to plot")
-
+    parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
     parser.add_argument("--clip", "-c", type=float, required=False)
-
     parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
 
     args = parser.parse_args()
+    filepath = args.file
+    _, ext = os.path.splitext(filepath)
 
-    if args.type == "spectrum":
-        obj = TraceSpectrumResult.from_pickle(args.file)
+    ext = ext.lower()
+
+    if ext == ".sp":
+        obj = TraceSpectrumResult.from_pickle(filepath)
         obj.plot_spectrum(save_path=args.save_path)
 
-    elif args.type == "spectrogram":
-        obj = TraceSpectrogramResult.from_pickle(args.file)
+    elif ext == ".spec":
+        obj = TraceSpectrogramResult.from_pickle(filepath)
         obj.plot_spectrogram(save_path=args.save_path, clip=args.clip)
 
-    elif args.type == "cwt":
-        obj = TraceCWTResult.from_pickle(args.file)
+    elif ext == ".cwt":
+        obj = TraceCWTResult.from_pickle(filepath)
         obj.plot_cwt(save_path=args.save_path, clip=args.clip)
+
+    else:
+        raise ValueError(
+            f"Unsupported file extension '{ext}'. "
+            "Expected one of: .sp (spectrum), .spec (spectrogram), .cwt (cwt)."
+        )
 
 
 def _beamplot():
