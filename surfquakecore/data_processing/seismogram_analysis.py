@@ -120,7 +120,7 @@ class SeismogramData:
                             tr.remove_response(inventory=inventory, pre_filt=_config['pre_filt'],
                                                output=_config['units'], water_level=_config['water_level'])
                         except:
-                            print("Coudn't deconvolve", tr.stats)
+                            print("Coudn't Remove Instrument Response, Review Inventory ", tr.id)
                             tr.data = np.array([])
 
                     elif _config['units'] == "Wood Anderson":
