@@ -1020,8 +1020,7 @@ def particle_motion(z, n, e, save_path: str = None):
 def print_surfquake_trace_headers(file_list, max_columns=3):
     """
     Display one trace per file, side-by-side in columns, for up to `max_columns` at a time.
-    Includes units and full timestamp formatting for picks and references.
-    Press Enter to page through if more files remain.
+    Includes SurfQuake geodetic/event headers. Skips event info if missing.
     """
 
     def format_field(val, width=25):
@@ -1040,31 +1039,14 @@ def print_surfquake_trace_headers(file_list, max_columns=3):
             return "None"
         return ", ".join(UTCDateTime(r).strftime("%Y-%m-%d %H:%M:%S") for r in refs[:2])
 
-    def format_arrivals(arrivals):
-        if not arrivals:
-            return "None"
-        return ", ".join(f"{k}:{UTCDateTime(v).strftime('%Y-%m-%d %H:%M:%S')}" for k, v in list(arrivals.items())[:2])
+    def has_arrivals(arrivals):
+        return "Yes" if arrivals else "None"
 
-    # Define fields to show
-    fields = [
-        ("File", lambda f, s: f),
-        ("Network", lambda f, s: s.network),
-        ("Station", lambda f, s: s.station),
-        ("Location", lambda f, s: s.location),
-        ("Channel", lambda f, s: s.channel),
-        ("Start Time", lambda f, s: s.starttime.isoformat()),
-        ("End Time", lambda f, s: s.endtime.isoformat()),
-        ("Sampling Rate (Hz)", lambda f, s: s.sampling_rate),
-        ("Delta (s)", lambda f, s: 1/s.sampling_rate),
-        ("Npts", lambda f, s: s.npts),
-        ("Picks", lambda f, s: format_picks(getattr(s, "picks", []))),
-        ("References", lambda f, s: format_refs(getattr(s, "references", []))),
-        ("Distance (km)", lambda f, s: getattr(s.geodetic, "distance", "N/A") if hasattr(s, "geodetic") else "N/A"),
-        ("Baz (°)", lambda f, s: getattr(s.geodetic, "baz", "N/A") if hasattr(s, "geodetic") else "N/A"),
-        ("Az (°)", lambda f, s: getattr(s.geodetic, "az", "N/A") if hasattr(s, "geodetic") else "N/A"),
-        ("Incidence (°)", lambda f, s: getattr(s.geodetic, "incidence", "N/A") if hasattr(s, "geodetic") else "N/A"),
-        ("Arrivals", lambda f, s: format_arrivals(getattr(s.geodetic, "arrivals", {})) if hasattr(s, "geodetic") else "None"),
-    ]
+    def fmt2(val):
+        try:
+            return f"{float(val):.2f}"
+        except Exception:
+            return "N/A"
 
     total = len(file_list)
     for start in range(0, total, max_columns):
@@ -1083,6 +1065,43 @@ def print_surfquake_trace_headers(file_list, max_columns=3):
             print("No valid traces in this chunk.")
             continue
 
+        # Check if all traces in chunk have event info
+        all_have_event = all(
+            hasattr(tr.stats, "geodetic")
+            and "otime" in tr.stats.geodetic
+            and "event" in tr.stats.geodetic
+            for _, tr in traces
+        )
+
+        # Fields to always show
+        fields = [
+            ("File", lambda f, s: f),
+            ("Network", lambda f, s: s.network),
+            ("Station", lambda f, s: s.station),
+            ("Location", lambda f, s: s.location),
+            ("Channel", lambda f, s: s.channel),
+            ("Start Time", lambda f, s: s.starttime.isoformat()),
+            ("End Time", lambda f, s: s.endtime.isoformat()),
+            ("Sampling Rate (Hz)", lambda f, s: s.sampling_rate),
+            ("Delta (s)", lambda f, s: round(1 / s.sampling_rate, 6)),
+            ("Npts", lambda f, s: s.npts),
+            ("Picks", lambda f, s: format_picks(getattr(s, "picks", []))),
+            ("References", lambda f, s: format_refs(getattr(s, "references", []))),
+
+        ]
+
+        if all_have_event:
+            fields.extend([
+                ("Origin Time", lambda f, s: UTCDateTime(s.geodetic["otime"]).strftime("%Y-%m-%d %H:%M:%S")),
+                ("Event Lat", lambda f, s: s.geodetic["event"][0]),
+                ("Event Long", lambda f, s: s.geodetic["event"][1]),
+                ("Distance (km)", lambda f, s: fmt2(s.geodetic["geodetic"][0]) if hasattr(s, "geodetic") else "N/A"),
+            ("Az (°)", lambda f, s: fmt2(s.geodetic["geodetic"][1]) if hasattr(s, "geodetic") else "N/A"),
+            ("Baz (°)", lambda f, s: fmt2(s.geodetic["geodetic"][2]) if hasattr(s, "geodetic") else "N/A"),
+            ("Incidence (°)", lambda f, s: fmt2(s.geodetic["geodetic"][3]) if hasattr(s, "geodetic") else "N/A"),
+            ("Arrivals", lambda f, s: has_arrivals(s.geodetic.get("arrivals", [])) if hasattr(s, "geodetic") else "None"),
+            ])
+
         for label, accessor in fields:
             row = [label.ljust(20)]
             for fname, tr in traces:
@@ -1093,7 +1112,6 @@ def print_surfquake_trace_headers(file_list, max_columns=3):
                 row.append(format_field(val))
             print(" | ".join(row))
 
-        # Only prompt if more files remain
         if start + max_columns < total:
             input("\nPress Enter to continue...\n")
 
