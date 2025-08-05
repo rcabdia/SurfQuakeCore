@@ -35,7 +35,8 @@ class AnalysisEvents:
                  post_script: Optional[str] = None,
                  post_script_stage: Optional[str] = "before", time_segment_start: Optional[str] = None,
                  time_segment_end: Optional[str] = None, reference: Optional[str] = None,
-                 phase_list: Optional[list] = None, vel: Optional[float] = None):
+                 phase_list: Optional[list] = None, vel: Optional[float] = None,
+                 time_segment: Optional[bool] = False):
 
         self.model = TauPyModel("iasp91")
         self.output = output
@@ -60,8 +61,11 @@ class AnalysisEvents:
             except:
                 print("Warning NO VALID inventory file: ", inventory_file)
 
+
+
         self.config = None
         self.df_events = None
+        self.time_segment=time_segment
 
         if self.reference is None:
             self.reference = "event_time"
@@ -584,8 +588,10 @@ class AnalysisEvents:
                 st += read(trace_path)
 
             # TODO: This line is very important, default behaviour is not merging traces /
-            #  on the contrary when selecting events
-            #st.merge(method=1, fill_value='interpolate')
+            #  in processing_daily when time_segment automatically merge the stream
+
+            if self.time_segment:
+                st.merge(method=1, fill_value='interpolate')
 
             # Trim to time segment if defined
             if hasattr(self, "time_segment_start") and hasattr(self, "time_segment_end"):

@@ -1190,7 +1190,8 @@ def _processing_daily():
         time_segment_start=parsed_args.min_date,
         time_segment_end=parsed_args.max_date,
         post_script=make_abs(parsed_args.post_script),
-        post_script_stage=parsed_args.post_script_stage
+        post_script_stage=parsed_args.post_script_stage,
+        time_segment=parsed_args.time_segment
     )
     ae.run_waveform_analysis(auto=parsed_args.auto)
 
