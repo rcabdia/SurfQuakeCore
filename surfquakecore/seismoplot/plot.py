@@ -12,7 +12,6 @@
 
 import math
 import os
-import platform
 import time
 from collections import defaultdict
 from typing import Optional, Tuple
@@ -82,6 +81,7 @@ class PlotProj:
         self.prompt_active = False
         self.utc_start = None
         self.utc_end = None
+        self._last_click_info = None  # stores (ax, xdata) after 'e' press
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
@@ -503,42 +503,31 @@ class PlotProj:
                     self.pick_lines.append(line)
 
     def _on_key_press(self, event):
-
         """Handle key presses for pick management."""
         key = event.key.lower() if event.key else ''
 
-        """Handle key presses for pick management."""
         if key in ("escape", "enter"):
             self._exit = True
 
-
-        # Reference marker key
         if key == 'w' and event.inaxes in self.axs:
             ref_time = mdt.num2date(event.xdata).replace(tzinfo=None)
             utc_ref_time = UTCDateTime(ref_time)
             self.last_reference = utc_ref_time
-            # Store the reference in all traces
             for tr in self.trace_list:
                 if not hasattr(tr.stats, "references"):
                     tr.stats.references = []
                 tr.stats.references.append(utc_ref_time.timestamp)
-
-            # Draw the reference line on all axes
             for ax in self.axs:
                 ax.axvline(x=mdt.date2num(ref_time), color='g', linestyle='--', alpha=0.5)
-
             self.fig.canvas.draw()
             print(f"[INFO] Reference time added at {utc_ref_time.isoformat()}")
 
         elif key == 'd' and self.current_pick:
             trace_id, pick_time = self.current_pick
-            # Remove from in-memory picks
             if trace_id in self.picks:
                 self.picks[trace_id] = [p for p in self.picks[trace_id] if p[0] != pick_time]
                 if not self.picks[trace_id]:
                     del self.picks[trace_id]
-
-            # Remove from trace.stats
             for tr in self.trace_list:
                 if tr.id == trace_id and hasattr(tr.stats, "picks"):
                     tr.stats.picks = [p for p in tr.stats.picks if p["time"] != UTCDateTime(pick_time)]
@@ -546,7 +535,6 @@ class PlotProj:
                         del tr.stats.picks
 
         elif key == 'n':
-            # Go to next page
             if (self.current_page + 1) * self.plot_config["traces_per_fig"] < len(self.trace_list):
                 self.current_page += 1
                 self._plot_standard_traces(self.current_page)
@@ -554,13 +542,11 @@ class PlotProj:
                 print("[INFO] Already at last page.")
 
         elif key == 'b':
-            # Go back to previous page
             if self.current_page > 0:
                 self.current_page -= 1
                 self._plot_standard_traces(self.current_page)
             else:
                 print("[INFO] Already at first page.")
-
             self._redraw_picks()
             self._update_info_box()
             self.current_pick = None
@@ -572,7 +558,7 @@ class PlotProj:
             removed_any = False
             for tr in self.trace_list:
                 if hasattr(tr.stats, "references") and tr.stats.references:
-                    last_ref = tr.stats.references.pop()
+                    tr.stats.references.pop()
                     removed_any = True
                     if not tr.stats.references:
                         del tr.stats.references
@@ -581,8 +567,6 @@ class PlotProj:
                 print("[INFO] Last reference time removed from all traces.")
             else:
                 print("[INFO] No reference times to remove.")
-
-            # Redraw to remove last green line (could be refined for exact removal)
             self._redraw_all_reference_lines()
             self.fig.canvas.draw()
 
@@ -590,16 +574,13 @@ class PlotProj:
             self._remove_last_reference()
 
         elif key == 'v':
-
             self.enable_command_prompt = True
             self.plot(page=self.current_page)
 
         elif key == 'e':
-            # Ignore invalid clicks
             if event.inaxes not in self.axs:
                 return
 
-            # Check which subplot was clicked
             ax = event.inaxes
             try:
                 tr_idx = next(i for i, a in enumerate(self.axs) if a == ax)
@@ -661,6 +642,61 @@ class PlotProj:
             self._draw_pick_lines(trace.id, ax, pick_time)
             self._update_info_box()
             self.fig.canvas.draw()
+
+        elif key in ['1', '2', '3', '4', '5', '6']:
+            if event.inaxes not in self.axs or event.xdata is None:
+                print("[WARNING] Move your mouse over a trace before pressing 1–6 to pick.")
+                return
+
+            key_map = {
+                '1': ("P", "?"),
+                '2': ("P", "U"),
+                '3': ("P", "D"),
+                '4': ("S", "?"),
+                '5': ("S", "U"),
+                '6': ("S", "D"),
+            }
+            phase, polarity = key_map[key]
+            ax = event.inaxes
+            try:
+                tr_idx = next(i for i, a in enumerate(self.axs) if a == ax)
+            except StopIteration:
+                print("[WARNING] Could not find axis index.")
+                return
+
+            trace = self.trace_list[tr_idx]
+            pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
+            rel_time = (pick_time - trace.stats.starttime.datetime).total_seconds()
+            amplitude = np.interp(rel_time, trace.times(), trace.data)
+
+            pick_entry = {
+                "time": UTCDateTime(pick_time).timestamp,
+                "phase": phase,
+                "amplitude": amplitude,
+                "polarity": polarity
+            }
+
+            if not hasattr(trace.stats, "picks"):
+                trace.stats.picks = []
+            trace.stats.picks.append(pick_entry)
+
+            if trace.id not in self.picks:
+                self.picks[trace.id] = []
+            self.picks[trace.id].append((pick_time, phase, amplitude, polarity))
+
+            csv_path = self.plot_config.get("pick_output_file")
+            if csv_path:
+                header_needed = not os.path.exists(csv_path)
+                with open(csv_path, "a") as f:
+                    if header_needed:
+                        f.write("id,time,phase,amplitude,polarity\n")
+                    f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
+
+            self.current_pick = (trace.id, pick_time)
+            self._draw_pick_lines(trace.id, ax, pick_time)
+            self._update_info_box()
+            self.fig.canvas.draw()
+            print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')} ({phase},{polarity})")
 
     def _redraw_picks(self):
         """Redraw all pick lines only on their corresponding axes."""
