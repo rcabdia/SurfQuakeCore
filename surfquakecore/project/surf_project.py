@@ -498,9 +498,6 @@ class SurfProject:
         if isinstance(starttime, str):
             start = datetime.strptime(starttime, date_format)
             start = UTCDateTime(start)
-        elif isinstance(starttime, datetime):
-            start = UTCDateTime(starttime)
-
         elif isinstance(starttime, UTCDateTime):
             start = starttime
         else:
@@ -509,9 +506,6 @@ class SurfProject:
         if isinstance(endtime, str):
             end = datetime.strptime(endtime, date_format)
             end = UTCDateTime(end)
-        elif isinstance(endtime, datetime):
-            end = UTCDateTime(endtime)
-
         elif isinstance(endtime, UTCDateTime):
             end = endtime
         else:
