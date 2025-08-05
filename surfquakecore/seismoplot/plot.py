@@ -721,7 +721,7 @@ class PlotProj:
 
         """Update the side info box with picks."""
 
-        lines = ["Picks:"]
+        lines = []
         for tr_id, pick_list in self.picks.items():
             for pick in pick_list:
                 if len(pick) == 4:
