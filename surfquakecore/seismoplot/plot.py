@@ -503,11 +503,17 @@ class PlotProj:
                     self.pick_lines.append(line)
 
     def _on_key_press(self, event):
+
         """Handle key presses for pick management."""
-        if event.key in ("escape", "enter"):
+        key = event.key.lower() if event.key else ''
+
+        """Handle key presses for pick management."""
+        if key in ("escape", "enter"):
             self._exit = True
+
+
         # Reference marker key
-        if event.key == 'w' and event.inaxes in self.axs:
+        if key == 'w' and event.inaxes in self.axs:
             ref_time = mdt.num2date(event.xdata).replace(tzinfo=None)
             utc_ref_time = UTCDateTime(ref_time)
             self.last_reference = utc_ref_time
@@ -524,7 +530,7 @@ class PlotProj:
             self.fig.canvas.draw()
             print(f"[INFO] Reference time added at {utc_ref_time.isoformat()}")
 
-        elif event.key == 'd' and self.current_pick:
+        elif key == 'd' and self.current_pick:
             trace_id, pick_time = self.current_pick
             # Remove from in-memory picks
             if trace_id in self.picks:
@@ -539,7 +545,7 @@ class PlotProj:
                     if not tr.stats.picks:
                         del tr.stats.picks
 
-        elif event.key == 'n':
+        elif key == 'n':
             # Go to next page
             if (self.current_page + 1) * self.plot_config["traces_per_fig"] < len(self.trace_list):
                 self.current_page += 1
@@ -547,7 +553,7 @@ class PlotProj:
             else:
                 print("[INFO] Already at last page.")
 
-        elif event.key == 'b':
+        elif key == 'b':
             # Go back to previous page
             if self.current_page > 0:
                 self.current_page -= 1
@@ -559,10 +565,10 @@ class PlotProj:
             self._update_info_box()
             self.current_pick = None
 
-        elif event.key == 'c':
+        elif key == 'c':
             self._clear_picks()
 
-        elif event.key == 'p':
+        elif key == 'p':
             removed_any = False
             for tr in self.trace_list:
                 if hasattr(tr.stats, "references") and tr.stats.references:
@@ -580,15 +586,15 @@ class PlotProj:
             self._redraw_all_reference_lines()
             self.fig.canvas.draw()
 
-        elif event.key == 'm':
+        elif key == 'm':
             self._remove_last_reference()
 
-        elif event.key == 'v':
+        elif key == 'v':
 
             self.enable_command_prompt = True
             self.plot(page=self.current_page)
 
-        elif event.key == 'e':
+        elif key == 'e':
             # Ignore invalid clicks
             if event.inaxes not in self.axs:
                 return
@@ -1100,12 +1106,15 @@ class PlotProj:
             '4': "MUSIC"
         }
 
-        if event.key in method_map:
+        """Handle key presses for pick management."""
+        key = event.key.lower() if event.key else ''
+
+        if key in method_map:
             self.method_beam = method_map[event.key]
             print(f"[INFO] Method selected: {self.method_beam}")
             return
 
-        if event.key == 'e':
+        if key == 'e':
             self._exit = False
             xdata = event.xdata
             if xdata is None:
