@@ -1054,6 +1054,99 @@ class PlotProj:
             time.sleep(0.1)
         self.fig_spec.canvas.mpl_disconnect(cid)
 
+    def _slowness_map(self, **kwargs):
+
+        self._exit = False
+        try:
+            plt.close(self.fig_slow_map)
+        except:
+            pass
+
+        self.fmin = kwargs.pop("fmin", 0.8)
+        self.fmax = kwargs.pop("fmax", 2.2)
+        self.smax = kwargs.pop("smax", 0.3)
+        self.slow_grid = kwargs.pop("slow_grid", 0.05)
+        self.method_beam = kwargs.pop("method", "FK")
+
+        traces = Stream(self.trace_list)
+
+        try:
+            stime = self.utc_start
+        except:
+            stime = traces.stats.starttime
+
+        try:
+            etime = self.utc_end
+        except:
+            etime = traces.stats.endtime
+
+        print("FK window: ", stime, etime)
+
+        traces_fk = traces.copy()
+        traces_fk.trim(starttime=stime, endtime=etime)
+
+        try:
+            timewindow = etime - stime
+
+            selection = MseedUtil.filter_inventory_by_stream(traces_fk, self.inventory)
+            wavenumber = array_analysis.array()
+
+            if self.method_beam in ["FK", "CAPON", "MTP.COHERENCE"]:
+                Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
+                    traces, selection, stime, self.fmin, self.fmax, self.smax, timewindow,
+                    self.slow_grid, self.method_beam)
+            elif self.method_beam == "MUSIC":
+                Z, Sxpow, Sypow, coord = wavenumber.run_music(
+                    traces, selection, stime, self.fmin, self.fmax,
+                    self.smax, timewindow, self.slow_grid, "MUSIC")
+
+            backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
+            slowness = np.abs(Sxpow, Sypow)
+
+            Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
+            nx = len(Sx[0])
+            x = y = np.linspace(-1 * self.smax, self.smax, nx)
+            X, Y = np.meshgrid(x, y)
+
+            info_text = (
+                f"Slowness: {slowness[0]:.2f} s/km\n"
+                f"Azimuth: {backacimuth[0]:.2f}°\n"
+                f"Power: {np.max(Z):.2f}")
+            print(info_text)
+
+            if self.method_beam == "FK":
+                clabel = "FK Normalized Power"
+            elif self.method_beam == "CAPON":
+                clabel = "CAPON Power"
+            elif self.method_beam == "MTP.COHERENCE":
+                clabel = "Multitaper Magnitude Coherence"
+            elif self.method_beam == "MUSIC":
+                clabel = "MUSIC Pseudospectrum"
+
+            self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
+            contour = ax_slow.contourf(X, Y, Z, cmap="rainbow", levels=50)
+            ax_slow.set_xlabel("Sx (s/km)")
+            ax_slow.set_ylabel("Sy (s/km)")
+            ax_slow.text(
+                0.02, 0.98, info_text,
+                transform=ax_slow.transAxes,
+                ha="left", va="top",
+                fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.8)
+            )
+
+            cbar = plt.colorbar(contour, ax=ax_slow)
+            cbar.set_label(clabel)
+            plt.tight_layout()
+            cid = self.fig_slow_map.canvas.mpl_connect("key_press_event", self._on_key_press)
+            plt.show(block=False)
+
+            while plt.fignum_exists(self.fig_slow_map.number) and not self._exit:
+                plt.pause(0.2)
+                time.sleep(0.1)
+            self.fig_slow_map.canvas.mpl_disconnect(cid)
+        except Exception as e:
+            print(f"[ERROR] Could not compute or plot FK coherence: {e}")
 
     def _run_fk(self, **kwargs):
         self._exit = False

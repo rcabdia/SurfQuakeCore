@@ -34,6 +34,7 @@ class PlotCommandPrompt:
             "pm": self._cmd_pm,
             "p": self._cmd_pick,
             "beam": self._cmd_beam,
+            "smap":self._cmd_smap,
             "xcorr": self._cmd_xcorr,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
@@ -298,6 +299,54 @@ class PlotCommandPrompt:
 
         except ValueError:
             print("Error: index, param, fmin, fmax, and clip must be numeric where applicable.")
+
+    def _cmd_smap(self, args):
+        """
+        Run slowness map analysis and show output.
+
+        Usage: smap [--method fk] [--fmin 0.8][--fmax 2.2] [--smax 0.3] [--grid 0.05]
+        """
+        # Default parameters
+        params = {
+            "method": "FK",
+            "fmin": 0.8,
+            "fmax": 2.2,
+            "smax": 0.3,
+            "slow_grid": 0.01}
+
+        # Allowed keys and their types
+        valid_keys = {
+            "method": str,
+            "fmin": float,
+            "fmax": float,
+            "smax": float,
+            "grid": float}  # maps to slow_grid
+
+        # Parse arguments
+        it = iter(args[1:])  # Skip 'beam'
+        for arg in it:
+            if arg.startswith("--"):
+                key = arg[2:]
+                if key not in valid_keys:
+                    print(f"[WARNING] Unknown option '--{key}' ignored.")
+                    continue
+                try:
+                    val_str = next(it)
+                    val = valid_keys[key](val_str)
+                    if key == "grid":
+                        params["slow_grid"] = val
+                    else:
+                        params[key] = val
+                except (StopIteration, ValueError):
+                    print(f"[ERROR] Invalid value for --{key}")
+                    return
+
+        print(f"[INFO] Running beamforming method '{params['method']}' with parameters: {params}")
+
+        try:
+            self.plot_proj._slowness_map(**params)
+        except Exception as e:
+            print(f"[ERROR] Beamforming run failed: {e}")
 
     def _cmd_beam(self, args):
         """

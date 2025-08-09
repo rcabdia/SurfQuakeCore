@@ -111,7 +111,10 @@ class array:
 
     def FKCoherence(self, st_ini, inv, t1, linf, lsup, slim, win_len, sinc, method):
 
-        t_start_utc = UTCDateTime(mdt.num2date(t1))
+        if isinstance(t1, UTCDateTime):
+            t_start_utc = t1
+        else:
+            t_start_utc = UTCDateTime(mdt.num2date(t1))
         t_end_utc = t_start_utc + win_len
         st = st_ini.copy()
         def find_nearest(array, value):
@@ -262,7 +265,11 @@ class array:
 
     def run_music(self, st, inv, starttime, linf, lsup, slim, win_len, sinc, n_signals=1):
 
-        t_start_utc = UTCDateTime(mdt.num2date(starttime))
+        if isinstance(starttime, UTCDateTime):
+            t_start_utc = starttime
+        else:
+            t_start_utc = UTCDateTime(mdt.num2date(starttime))
+
         t_end_utc = t_start_utc + win_len
         st.detrend(type="linear")
         st.taper(type="cosine", max_percentage=0.05)
