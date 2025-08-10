@@ -854,53 +854,52 @@ class PlotProj:
         fig.canvas.mpl_disconnect(cid)
 
     def _plot_all_spectra(self, axis_type):
+
         self._exit = False
-        stime_trim = etime_trim = None
         self.fig_spec, self.ax_spec = plt.subplots()
 
         st = Stream(self.displayed_traces)
+        common_start = max(tr.stats.starttime for tr in st)
+        common_end = min(tr.stats.endtime for tr in st)
+        st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
 
-        try:
+        if self.utc_start is not None:
+
             stime_trim = self.utc_start
-        except:
-            print("Not starttime set")
-
-        try:
-            etime_trim = self.utc_end
-        except:
-            print("Not endtime set")
-
-        if stime_trim is not None and etime_trim is not None:
-
-            print("Spectrum window: ", stime_trim, etime_trim)
-            st.trim(starttime=stime_trim, endtime=etime_trim)
-
-
-            for trace in st:
-                spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
-                if axis_type == "loglog":
-                    self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
-                elif axis_type == "xlog":
-                    self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
-                elif axis_type == "ylog":
-                    self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
-
-            self.ax_spec.set_xlabel("Frequency (Hz)")
-            self.ax_spec.set_ylabel("Amplitude")
-            self.ax_spec.legend(fontsize=6)
-            plt.grid(True, which="both", ls="-", color='grey')
-            plt.tight_layout()
-            cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
-            plt.show(block=False)
-
-            # Poll until the figure is closed
-            while plt.fignum_exists(self.fig_spec.number) and not self._exit:
-                plt.pause(0.2)
-                time.sleep(0.1)
-            self.fig_spec.canvas.mpl_disconnect(cid)
         else:
-            print("Please select set starttime and endtime using span selector, "
-                  "click right mouse and dragging it to the right")
+            stime_trim = st[0].stats.starttime
+
+        if self.utc_end is not None:
+
+            etime_trim = self.utc_end
+        else:
+            etime_trim = st[0].stats.endtime
+
+        print("Spectrum window: ", stime_trim, etime_trim)
+
+        for trace in st:
+            spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
+            if axis_type == "loglog":
+                self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+            elif axis_type == "xlog":
+                self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
+            elif axis_type == "ylog":
+                self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
+
+        self.ax_spec.set_xlabel("Frequency (Hz)")
+        self.ax_spec.set_ylabel("Amplitude")
+        self.ax_spec.legend(fontsize=6)
+        plt.grid(True, which="both", ls="-", color='grey')
+        plt.tight_layout()
+        cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
+        plt.show(block=False)
+
+        # Poll until the figure is closed
+        while plt.fignum_exists(self.fig_spec.number) and not self._exit:
+            plt.pause(0.2)
+            time.sleep(0.1)
+        self.fig_spec.canvas.mpl_disconnect(cid)
+
 
     def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0, clip=None):
         self._exit = False
@@ -968,6 +967,7 @@ class PlotProj:
             plt.pause(0.2)
             time.sleep(0.1)
         self.fig_spec.canvas.mpl_disconnect(cid)
+
     def _plot_wavelet(self, idx, wavelet_type, param, **kwargs):
         self._exit = False
         if wavelet_type == "cm":
@@ -1149,6 +1149,7 @@ class PlotProj:
             print(f"[ERROR] Could not compute or plot FK coherence: {e}")
 
     def _run_fk(self, **kwargs):
+
         self._exit = False
         try:
             plt.close(self.fig_fk)
@@ -1156,7 +1157,6 @@ class PlotProj:
         except:
             pass
 
-        # TODO IMPLEMENT THE METHOD "CAPON or MUSIC"
         self.timewindow = kwargs.pop("timewindow", 3)
         self.overlap = kwargs.pop("overlap", 0.05)
         self.fmin = kwargs.pop("fmin", 0.8)
@@ -1165,69 +1165,82 @@ class PlotProj:
         self.slow_grid = kwargs.pop("slow_grid", 0.05)
         self.method_beam = kwargs.pop("method", "FK")
 
+        traces = Stream(self.trace_list)
+        common_start = max(tr.stats.starttime for tr in traces)
+        common_end = min(tr.stats.endtime for tr in traces)
+        traces.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
 
-        if self.utc_start is not None and self.utc_end is not None:
-            try:
-                stime = self.utc_start
-                etime = self.utc_end
+        if self.utc_start is not None:
 
-                print("FK window: ", stime, etime)
-                traces = Stream(self.trace_list)
-                traces_fk = traces.copy()
-                traces_fk.trim(starttime=stime, endtime=etime)
-                selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
-                wavenumber = array_analysis.array()
-                self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces_fk, selection, stime, etime,
-                               self.fmin, self.fmax, self.smax, self.slow_grid, self.timewindow, self.overlap)
-
-                # --- Create grid layout with reserved space for colorbar ---
-                self.fig_fk = plt.figure(figsize=(9, 6))
-                #self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
-                self.fig_fk.canvas.mpl_connect('key_press_event', self._on_fk_key_press)
-                gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
-                                       wspace=0.02)
-
-                # Create subplots
-                ax0 = self.fig_fk.add_subplot(gs[0, 0])
-                ax1 = self.fig_fk.add_subplot(gs[1, 0], sharex=ax0)
-                ax2 = self.fig_fk.add_subplot(gs[2, 0], sharex=ax0)
-                ax_cbar = self.fig_fk.add_subplot(gs[:, 1])  # colorbar takes all rows
-
-                # Scatter plots
-                sc0 = ax0.scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
-                sc1 = ax1.scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
-                sc2 = ax2.scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
-
-                # Labels and formatting
-                ax0.set_ylabel("Rel. Power")
-                ax1.set_ylabel("Slowness\n(s/km)")
-                ax2.set_ylabel("BackAzimuth")
-                ax2.set_xlabel("Time (UTC)")
-                ax0.set_title("FK Analysis - Relative Power")
-
-                formatter = mdt.DateFormatter('%H:%M:%S')
-                ax2.xaxis.set_major_formatter(formatter)
-                ax2.tick_params(axis='x', rotation=0)
-
-                # Add colorbar
-                cbar = self.fig_fk.colorbar(sc2, cax=ax_cbar)
-                cbar.set_label("Relative Power")
-
-                plt.tight_layout()
-                cid = self.fig_fk.canvas.mpl_connect("key_press_event", self._on_key_press)
-                plt.show(block=False)
-
-                # Keep figure open
-                while plt.fignum_exists(self.fig_fk.number) and not self._exit:
-                    plt.pause(0.2)
-                    time.sleep(0.1)
-                self.fig_fk.canvas.mpl_disconnect(cid)
-            except:
-                print("annot compute fk analysis, please review the inventory and parameter values")
+            stime = self.utc_start
         else:
-            print("A time window span needs to be selected")
+            stime = traces[0].stats.starttime
+
+        if self.utc_end is not None:
+
+            etime = self.utc_end
+        else:
+            etime = traces[0].stats.endtime
+
+        try:
+
+            print("FK window: ", stime, etime)
+
+            traces_fk = traces.copy()
+            traces_fk.trim(starttime=stime, endtime=etime)
+            selection = MseedUtil.filter_inventory_by_stream(traces, self.inventory)
+            wavenumber = array_analysis.array()
+            self.relpower, self.abspower, self.AZ, self.Slowness, self.T = wavenumber.FK(traces_fk, selection, stime, etime,
+                           self.fmin, self.fmax, self.smax, self.slow_grid, self.timewindow, self.overlap)
+
+            # --- Create grid layout with reserved space for colorbar ---
+            self.fig_fk = plt.figure(figsize=(9, 6))
+            #self.fig_fk.canvas.mpl_connect("button_press_event", self._on_fk_doubleclick)
+            self.fig_fk.canvas.mpl_connect('key_press_event', self._on_fk_key_press)
+            gs = gridspec.GridSpec(3, 2, width_ratios=[35, 1], height_ratios=[1, 1, 1], hspace=0.0,
+                                   wspace=0.02)
+
+            # Create subplots
+            ax0 = self.fig_fk.add_subplot(gs[0, 0])
+            ax1 = self.fig_fk.add_subplot(gs[1, 0], sharex=ax0)
+            ax2 = self.fig_fk.add_subplot(gs[2, 0], sharex=ax0)
+            ax_cbar = self.fig_fk.add_subplot(gs[:, 1])  # colorbar takes all rows
+
+            # Scatter plots
+            sc0 = ax0.scatter(self.T, self.relpower, c=self.relpower, cmap='rainbow', s=20)
+            sc1 = ax1.scatter(self.T, self.Slowness, c=self.relpower, cmap='rainbow', s=20)
+            sc2 = ax2.scatter(self.T, self.AZ, c=self.relpower, cmap='rainbow', s=20)
+
+            # Labels and formatting
+            ax0.set_ylabel("Rel. Power")
+            ax1.set_ylabel("Slowness\n(s/km)")
+            ax2.set_ylabel("BackAzimuth")
+            ax2.set_xlabel("Time (UTC)")
+            ax0.set_title("FK Analysis - Relative Power")
+
+            formatter = mdt.DateFormatter('%H:%M:%S')
+            ax2.xaxis.set_major_formatter(formatter)
+            ax2.tick_params(axis='x', rotation=0)
+
+            # Add colorbar
+            cbar = self.fig_fk.colorbar(sc2, cax=ax_cbar)
+            cbar.set_label("Relative Power")
+
+            plt.tight_layout()
+            cid = self.fig_fk.canvas.mpl_connect("key_press_event", self._on_key_press)
+            plt.show(block=False)
+
+            # Keep figure open
+            while plt.fignum_exists(self.fig_fk.number) and not self._exit:
+                plt.pause(0.2)
+                time.sleep(0.1)
+            self.fig_fk.canvas.mpl_disconnect(cid)
+        except:
+            print("Cannot compute fk analysis, please review the inventory and parameter values")
+
 
     def _on_fk_key_press(self, event):
+
         method_map = {
             '1': "FK",
             '2': "CAPON",
@@ -1266,6 +1279,7 @@ class PlotProj:
                     Z, Sxpow, Sypow, coord = wavenumber.FKCoherence(
                         traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow,
                         self.slow_grid, self.method_beam)
+
                 elif self.method_beam == "MUSIC":
                     Z, Sxpow, Sypow, coord = wavenumber.run_music(
                         traces, selection, xdata, self.fmin, self.fmax,

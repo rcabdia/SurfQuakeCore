@@ -11,6 +11,7 @@ import atexit
 from typing import Optional
 from surfquakecore.data_processing.processing_methods import filter_trace
 
+
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
         self.plot_proj = plot_proj
@@ -34,7 +35,7 @@ class PlotCommandPrompt:
             "pm": self._cmd_pm,
             "p": self._cmd_pick,
             "beam": self._cmd_beam,
-            "smap":self._cmd_smap,
+            "smap": self._cmd_smap,
             "xcorr": self._cmd_xcorr,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
@@ -48,47 +49,46 @@ class PlotCommandPrompt:
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(path) if path else None
 
-
     def _cmd_exit(self, args):
 
-         import warnings
-         warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
+        import warnings
+        warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
 
-    #     """
-    #     Exit the plot and close the interactive session.
-    #     Usage: exit
-    #     """
+        #     """
+        #     Exit the plot and close the interactive session.
+        #     Usage: exit
+        #     """
 
-         import matplotlib.pyplot as plt
-         import gc
-         import multiprocessing as mp
-         import warnings
+        import matplotlib.pyplot as plt
+        import gc
+        import multiprocessing as mp
+        import warnings
 
-         print("[INFO] Exiting interactive plotting session.")
-         self.prompt_active = False
-         self._exit_code = "exit"
-    #
-         try:
-             if self.plot_proj and hasattr(self.plot_proj, "fig"):
-                 plt.close(self.plot_proj.fig)
-                 self.plot_proj.fig = None
-         except Exception:
-             pass
+        print("[INFO] Exiting interactive plotting session.")
+        self.prompt_active = False
+        self._exit_code = "exit"
+        #
+        try:
+            if self.plot_proj and hasattr(self.plot_proj, "fig"):
+                plt.close(self.plot_proj.fig)
+                self.plot_proj.fig = None
+        except Exception:
+            pass
 
-         # Explicitly call garbage collector to release mpl backends/semaphores
-         gc.collect()
+        # Explicitly call garbage collector to release mpl backends/semaphores
+        gc.collect()
 
-         # On macOS, also consider forcibly terminating child processes if you're using any (e.g., in FK)
-         try:
-             mp.active_children()
-             mp.get_context().get_logger().setLevel("ERROR")  # suppress log noise
-         except Exception:
-             pass
+        # On macOS, also consider forcibly terminating child processes if you're using any (e.g., in FK)
+        try:
+            mp.active_children()
+            mp.get_context().get_logger().setLevel("ERROR")  # suppress log noise
+        except Exception:
+            pass
 
-         # Suppress final cleanup warning from multiprocessing
-         warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
+        # Suppress final cleanup warning from multiprocessing
+        warnings.filterwarnings("ignore", message="resource_tracker: There appear to be")
 
-         print("[INFO] Cleanup complete.")
+        print("[INFO] Cleanup complete.")
 
     def run(self) -> str:
         """
@@ -101,7 +101,7 @@ class PlotCommandPrompt:
             - 'next': User typed 'n' to continue
             - 'pick': User wants to return to picking mode
         """
-        
+
         if self.prompt_active:
             return "next"  # Prevent re-entry
 
@@ -437,7 +437,8 @@ class PlotCommandPrompt:
 
         new_mode = args[1].lower()
         if new_mode not in self.plot_proj.available_modes:
-            print(f"[ERROR] Unknown mode '{new_mode}'. Available plot types: {', '.join(self.plot_proj.available_types)}")
+            print(
+                f"[ERROR] Unknown mode '{new_mode}'. Available plot types: {', '.join(self.plot_proj.available_types)}")
             return
 
         self.plot_proj.plot_config["plot_type"] = new_mode
@@ -634,7 +635,8 @@ class PlotCommandPrompt:
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
 
-        elif len(args)==1 and isinstance(self.plot_proj.utc_start, UTCDateTime) and isinstance(self.plot_proj.utc_end, UTCDateTime):
+        elif len(args) == 1 and isinstance(self.plot_proj.utc_start, UTCDateTime) and isinstance(self.plot_proj.utc_end,
+                                                                                                 UTCDateTime):
             for tr in self.plot_proj.trace_list:
                 try:
                     tr_cut = tr.copy().trim(starttime=self.plot_proj.utc_start, endtime=self.plot_proj.utc_end,
@@ -939,22 +941,32 @@ class PlotCommandPrompt:
             >> cut --reference 5 20
             >> cut --start "2023-01-01 12:00:00" --end "2023-01-01 12:01:00"
     """,
-            "beam": """
-            beam [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>] [--method fk]
-                Run FK (or other) beamforming method on current traces.
 
-                Options:
-                    --method    : Beamforming type ('FK', 'MTP.COHERENCE', 'CAPON' or 'MUSIC)
+            "beam": """
+            
+            Run FK beamforming method in sliding windows on current traces.
+            
+            beam [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>]
+                
+                    Options:
                     --fmin      : Min frequency (Hz)
                     --fmax      : Max frequency (Hz)
                     --smax      : Max slowness (s/km)
                     --grid      : Slowness grid spacing
                     --win       : Window length in seconds
                     --overlap   : Overlap ratio [0-1]
-
+                    
+                Later, you can point with the mouse over the plot higher power hills and do:
+                
+                press "1" and then "e" for FK slowness map
+                press "2" and then "e"  for FK slowness map
+                press "3" and then "e" for MTP.COHERENCE slowness map
+                press "4" and then "e" for MUSIC slowness map
+                
                 Example:
-                    >> beam --method FK --fmin 1.0 --fmax 3.0 --grid 0.025 --win 3 --overlap 0.05
+                    >> beam --fmin 1.0 --fmax 3.0 --grid 0.025 --win 3 --overlap 0.05
             """,
+
             "pm": """
             pm
                 Perform particle motion analysis on all valid 3-component trace groups
@@ -1002,7 +1014,8 @@ class PlotCommandPrompt:
                     >> cwt 2 mh 6 0.5 10
                     >> cwt 2 pa 6 0.5 10 -120
         """,
-        "spectrogram": """
+
+            "spectrogram": """
             spectrogram <index> [<win_sec> <overlap_percent>]
             spec <index> [<win_sec> <overlap_percent>]
                 Plot spectrogram of the selected trace using a moving FFT window, using multitaper.
@@ -1021,6 +1034,24 @@ class PlotCommandPrompt:
                     >> spectrogram 1
                     >> spec 0 3.0 75
                     >> spec 0 5.0 50 -120
+        """,
+
+            "smap": """
+            
+            Run slowness map using the FK (or other) beamforming method on all traces.
+            smap [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--method FK]
+                
+                Options:
+                
+                    --method    : Beamforming type ('FK', 'MTP.COHERENCE', 'CAPON' or 'MUSIC), DEFAULT FK
+                    --fmin      : Min frequency (Hz)
+                    --fmax      : Max frequency (Hz)
+                    --smax      : Max slowness (s/km)
+                    --grid      : Slowness grid spacing
+                
+                Example:
+                    >> smap --method CAPON --fmin 1.0 --fmax 3.0 --grid 0.01 
+        
         """
         }
 
@@ -1042,7 +1073,8 @@ class PlotCommandPrompt:
         print(" spectrum <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
         print(" spec <idx> [win overlap]      Plot multitaper-spectrogram of trace, (help spectrogram)")
         print(" cwt <idx> <wavelet> <param>   Continuous wavelet transform (help cwt)")
-        print(" beam [--fmin --fmax ...]      Beamforming analysis (type: help beam for options)")
+        print(" beam [--fmin --fmax --overlap ....] Beamforming analysis (type: help beam for options)")
+        print(" smap [--method --fmin --fmax ....] Slowness map (type: help smap for options)")
         print(" plot_type <type>              Change plot mode: standard, record, overlay")
         print(" concat                        Merge/concatenate traces")
         print(" shift --phase <name>          Shift by pick (type: help shift for info)")
@@ -1051,6 +1083,8 @@ class PlotCommandPrompt:
         print(" exit                          Close command line and exit to interactive picking mode")
         print(" help [command]                Show general or detailed help")
 
+
 if __name__ == "__main__":
     import multiprocessing as mp
+
     mp.set_start_method("fork", force=True)  # 'fork' is safest for Matplotlib on macOS
