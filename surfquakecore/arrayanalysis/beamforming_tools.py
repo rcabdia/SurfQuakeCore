@@ -62,7 +62,7 @@ def extract_coordinates(st, inv):
 def get_covariance_matrix(data_array):
 
     R = np.dot(data_array, data_array.T.conj()) / data_array.shape[1]
-    print("Covariance Matrix (Hilbert):", R)
+    #print("Covariance Matrix (Hilbert):", R)
     if np.any(np.isnan(R)) or np.any(np.isinf(R)):
         raise ValueError("Covariance matrix unstable")
     return R
@@ -78,26 +78,26 @@ def convert_to_array(st, inv):
     index_list = []
     for i, tr in enumerate(st):
         if len(tr.data) != npts:
-            raise ValueError(f"Todas las trazas deben tener igual longitud. Traza {tr.id} tiene {len(tr.data)} muestras")
+            raise ValueError(f"All traces must have same length. Trace {tr.id} have {len(tr.data)} samples")
         data_array[i, :] = hilbert(tr.data)
         index_list.append(tr.id)
-    print(f"Array convertido: {data_array.shape} (sensores x muestras)")
+    #print(f"Array convertido: {data_array.shape} (sensores x muestras)")
 
     sensor_positions = []
     for tr_id in index_list:
         x, y = relative_coords_km[tr_id]
         sensor_positions.append([x, y])
-        print(f"Sensor {tr_id}: Este={x:.3f} km, Norte={y:.3f} km")
+        #print(f"Sensor {tr_id}: Este={x:.3f} km, Norte={y:.3f} km")
 
     return data_array, sensor_positions
 
-def get_noise_subspace(R, n_signals):
+def get_noise_subspace(R, n_signals=1):
     eigvals, eigvecs = eigh(R)
     print("Eigen_Values:", eigvals)
     idx = np.argsort(eigvals)[::-1]
     eigvecs = eigvecs[:, idx]
     signal_vec = eigvecs[:, :n_signals]
-    print(f"Vector(es) propio(s) dominante(s) (subespacio de señal) para n_signals={n_signals}:", signal_vec)
+    print(f"Eigen Value dominant subspace for signal for n_signals={n_signals}:", signal_vec)
     En = eigvecs[:, n_signals:]
     print("Shape of En:", En.shape)
     return En, signal_vec

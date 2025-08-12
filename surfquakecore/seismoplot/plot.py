@@ -1067,6 +1067,7 @@ class PlotProj:
         self.smax = kwargs.pop("smax", 0.3)
         self.slow_grid = kwargs.pop("slow_grid", 0.05)
         self.method_beam = kwargs.pop("method", "FK")
+        self.nsignals = kwargs.pop("nsignals", 1)
 
         traces = Stream(self.trace_list)
 
@@ -1080,7 +1081,7 @@ class PlotProj:
         except:
             etime = traces.stats.endtime
 
-        print("FK window: ", stime, etime)
+        print("Slowness Map time window: ", stime, etime)
 
         traces_fk = traces.copy()
         traces_fk.trim(starttime=stime, endtime=etime)
@@ -1098,7 +1099,7 @@ class PlotProj:
             elif self.method_beam == "MUSIC":
                 Z, Sxpow, Sypow, coord = wavenumber.run_music(
                     traces, selection, stime, self.fmin, self.fmax,
-                    self.smax, timewindow, self.slow_grid, "MUSIC")
+                    self.smax, timewindow, self.slow_grid, self.nsignals)
 
             backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
             slowness = np.abs(Sxpow, Sypow)

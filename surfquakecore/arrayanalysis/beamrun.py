@@ -125,7 +125,9 @@ class TraceBeamResult:
             '1': "FK",
             '2': "CAPON",
             '3': "MTP.COHERENCE",
-            '4': "MUSIC"
+            '4': "MUSIC",
+            '5': "MUSIC_2_signals",
+            '6': "MUSIC_3_signals"
         }
 
         if event.key in method_map:
@@ -156,9 +158,20 @@ class TraceBeamResult:
                         traces, selection, xdata, self.fmin, self.fmax, self.smax, self.timewindow,
                         self.slow_grid, self.method_beam)
                 elif self.method_beam == "MUSIC":
+                    n_signals = 1
                     Z, Sxpow, Sypow, coord = wavenumber.run_music(
                         traces, selection, xdata, self.fmin, self.fmax,
-                        self.smax, self.timewindow, self.slow_grid, "MUSIC")
+                        self.smax, self.timewindow, self.slow_grid, n_signals)
+                elif self.method_beam == "MUSIC_2_signals":
+                    n_signals = 2
+                    Z, Sxpow, Sypow, coord = wavenumber.run_music(
+                        traces, selection, xdata, self.fmin, self.fmax,
+                        self.smax, self.timewindow, self.slow_grid, n_signals)
+                elif self.method_beam == "MUSIC_3_signals":
+                    n_signals = 3
+                    Z, Sxpow, Sypow, coord = wavenumber.run_music(
+                        traces, selection, xdata, self.fmin, self.fmax,
+                        self.smax, self.timewindow, self.slow_grid, n_signals)
 
                 backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
                 slowness = np.abs(Sxpow, Sypow)

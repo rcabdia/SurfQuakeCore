@@ -288,7 +288,7 @@ class array:
 
         R = get_covariance_matrix(data_array)
 
-        En, signal_vec = get_noise_subspace(R, 1)
+        En, signal_vec = get_noise_subspace(R, n_signals)
 
         music_map = compute_music_spectrum(sensor_positions, En, slim, sinc=sinc, freq_range=(linf, lsup))
         music_map = np.fliplr(music_map)

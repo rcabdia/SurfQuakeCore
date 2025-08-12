@@ -304,7 +304,7 @@ class PlotCommandPrompt:
         """
         Run slowness map analysis and show output.
 
-        Usage: smap [--method fk] [--fmin 0.8][--fmax 2.2] [--smax 0.3] [--grid 0.05]
+        Usage: smap [--method fk] [--fmin 0.8][--fmax 2.2] [--smax 0.3] [--grid 0.05] [--nsignals 1]
         """
         # Default parameters
         params = {
@@ -312,7 +312,8 @@ class PlotCommandPrompt:
             "fmin": 0.8,
             "fmax": 2.2,
             "smax": 0.3,
-            "slow_grid": 0.01}
+            "slow_grid": 0.01,
+            "nsignals": 1}
 
         # Allowed keys and their types
         valid_keys = {
@@ -320,7 +321,8 @@ class PlotCommandPrompt:
             "fmin": float,
             "fmax": float,
             "smax": float,
-            "grid": float}  # maps to slow_grid
+            "grid": float,
+            "nsignals": int}  # maps to slow_grid
 
         # Parse arguments
         it = iter(args[1:])  # Skip 'beam'
@@ -1048,9 +1050,11 @@ class PlotCommandPrompt:
                     --fmax      : Max frequency (Hz)
                     --smax      : Max slowness (s/km)
                     --grid      : Slowness grid spacing
+                    --nsignals  : number of expected signals arriving in the time window (at the same time). For MUSIC algorythm
                 
                 Example:
-                    >> smap --method CAPON --fmin 1.0 --fmax 3.0 --grid 0.01 
+                    >> smap --method CAPON --fmin 1.0 --fmax 3.0 --grid 0.01
+                    >> smap --method MUSIC --fmin 1.0 --fmax 3.0 --grid 0.01  --nsignals 1
         
         """
         }
