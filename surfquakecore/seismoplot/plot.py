@@ -1246,7 +1246,9 @@ class PlotProj:
             '1': "FK",
             '2': "CAPON",
             '3': "MTP.COHERENCE",
-            '4': "MUSIC"
+            '4': "MUSIC",
+            '5': "MUSIC_2_signals",
+            '6': "MUSIC_3_signals"
         }
 
         """Handle key presses for pick management."""
@@ -1282,9 +1284,22 @@ class PlotProj:
                         self.slow_grid, self.method_beam)
 
                 elif self.method_beam == "MUSIC":
+                    n_signals = 1
                     Z, Sxpow, Sypow, coord = wavenumber.run_music(
                         traces, selection, xdata, self.fmin, self.fmax,
-                        self.smax, self.timewindow, self.slow_grid, "MUSIC")
+                        self.smax, self.timewindow, self.slow_grid, n_signals)
+
+                elif self.method_beam == "MUSIC_2_signals":
+                    n_signals = 2
+                    Z, Sxpow, Sypow, coord = wavenumber.run_music(
+                        traces, selection, xdata, self.fmin, self.fmax,
+                        self.smax, self.timewindow, self.slow_grid, n_signals)
+
+                elif self.method_beam == "MUSIC_3_signals":
+                    n_signals = 3
+                    Z, Sxpow, Sypow, coord = wavenumber.run_music(
+                        traces, selection, xdata, self.fmin, self.fmax,
+                        self.smax, self.timewindow, self.slow_grid, n_signals)
 
                 backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
                 slowness = np.abs(Sxpow, Sypow)
@@ -1303,11 +1318,12 @@ class PlotProj:
 
                 if self.method_beam == "FK":
                     clabel = "FK Normalized Power"
-                elif  self.method_beam == "CAPON":
+                elif self.method_beam == "CAPON":
                     clabel = "CAPON Power"
                 elif self.method_beam == "MTP.COHERENCE":
                     clabel = "Multitaper Magnitude Coherence"
-                elif self.method_beam == "MUSIC":
+                elif (self.method_beam == "MUSIC" or self.method_beam == "MUSIC_2_signals" or
+                          self.method_beam == "MUSIC_3_signals"):
                     clabel = "MUSIC Pseudospectrum"
 
                 self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))

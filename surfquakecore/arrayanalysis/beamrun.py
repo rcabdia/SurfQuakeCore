@@ -190,11 +190,12 @@ class TraceBeamResult:
 
                 if self.method_beam == "FK":
                     clabel = "FK Normalized Power"
-                elif  self.method_beam == "CAPON":
+                elif self.method_beam == "CAPON":
                     clabel = "CAPON Power"
                 elif self.method_beam == "MTP.COHERENCE":
                     clabel = "Multitaper Magnitude Coherence"
-                elif self.method_beam == "MUSIC":
+                elif (self.method_beam == "MUSIC" or self.method_beam == "MUSIC_2_signals" or
+                      self.method_beam == "MUSIC_3_signals"):
                     clabel = "MUSIC Pseudospectrum"
 
                 self.fig_slow_map, ax_slow = plt.subplots(figsize=(8, 5))
