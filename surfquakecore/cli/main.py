@@ -1442,13 +1442,13 @@ Supports standard and SurfQuake-extended headers such as picks, references, and 
 
 def _explore():
     parser = ArgumentParser(
-        prog="surfquake info",
+        prog="surfquake explore",
         description="Explore data availability ",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
         Example usage:
 
-  surfquake info -w './data/*.mseed'
+  surfquake explore -w './data/*.mseed'
   
     """
     )

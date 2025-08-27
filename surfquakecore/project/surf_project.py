@@ -578,9 +578,7 @@ class SurfProject:
 
         else:
 
-            # for file in data_files:
-
-            for file in self.data_files:
+            for file in data_files:
 
                 pos_file = file[0]
                 st0 = file[1]
