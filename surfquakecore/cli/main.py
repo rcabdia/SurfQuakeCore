@@ -95,7 +95,11 @@ def _create_actions():
             name="explore", run=_explore, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "polarity": _CliActions(
-            name="polarity", run=_polarity, description=f"Type {__entry_point_name} -h for help.\n")
+            name="polarity", run=_polarity, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "focmec": _CliActions(
+            name="focmec", run=_focmec, description=f"Type {__entry_point_name} -h for help.\n"),
+
     }
 
     return _actions
@@ -272,6 +276,41 @@ def _polarity():
     project = SurfProject.load_project(project_file)
     RunPolarity(project, picking_file, args.output_file, args.thresh).send_polarities()
 
+
+def _focmec():
+    parser = ArgumentParser(
+        prog="surfquake focmec",
+        description="Focal Mechanism from P-Wave polarity ",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+            Example usage:
+
+      surfquake focmec -f './folder_hyp_path' -o './output_folder'
+        """
+    )
+
+
+    parser.add_argument("-f", "--hyp_folder", required=True, help="path to folder containing hyp files", type=str)
+    parser.add_argument("-o", "--output_folder", required=True, help="output folder", type=str)
+
+    args = parser.parse_args()
+
+    hyp_folder = make_abs(args.hyp_folder)
+    output_folder = make_abs(args.output_folder)
+    nllcatalog = Nllcatalog(hyp_folder)
+    nllcatalog.find_files()
+    files_list = nllcatalog.obsfiles
+    for file in files_list:
+        try:
+            header = FirstPolarity.set_head(file)
+            if file is not None:
+                firstpolarity_manager = FirstPolarity()
+                file_input = firstpolarity_manager.create_input(file, header)
+
+                if FirstPolarity.check_no_empty(file_input):
+                    firstpolarity_manager.run_focmec(file_input, self.accepted_polarities.value())
+        except:
+            pass
 
 def _associate():
 

@@ -7,6 +7,7 @@ TT_DB_PATH = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "real", "t
 POLARITY_NETWORK = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "first_polarity", "Polarcap", "PolarCAP.h5")
 nll_templates = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "earthquake_location/loc_structure/run")
 nll_ak135 = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "earthquake_location/loc_structure/ak135")
+
 def create_logger():
 
     # create logger.
