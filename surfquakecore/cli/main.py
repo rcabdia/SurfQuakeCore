@@ -19,6 +19,7 @@ from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
 from surfquakecore.data_processing.processing_methods import print_surfquake_trace_headers
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
+from surfquakecore.first_polarity.get_pol import RunPolarity
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
 from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
@@ -91,7 +92,10 @@ def _create_actions():
             name="info", run=_info, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "explore": _CliActions(
-            name="explore", run=_explore, description=f"Type {__entry_point_name} -h for help.\n")
+            name="explore", run=_explore, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "polarity": _CliActions(
+            name="polarity", run=_polarity, description=f"Type {__entry_point_name} -h for help.\n")
     }
 
     return _actions
@@ -240,6 +244,33 @@ def _pick():
         PhasenetUtils.write_nlloc_format(picks_results, parsed_args.d)
     else:
         print("Empty Project, Nothing to pick!")
+
+
+def _polarity():
+    parser = ArgumentParser(
+        prog="surfquake polarity",
+        description="Explore data availability ",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+            Example usage:
+
+      surfquake polarity -f './picking_file' -p './project_file' -o 'output_file' -t 0.95 
+
+        """
+    )
+
+    parser.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
+    parser.add_argument("-f", "--picking_file", required=True, help="path to picking file", type=str)
+    parser.add_argument("-o", "--output_file", required=True, help="output file", type=str)
+    parser.add_argument("-t", "--thresh", required=False, help="P-wave threshold", type=float, default=0.9)
+
+    args = parser.parse_args()
+
+    picking_file = make_abs(args.picking_file)
+    project_file = make_abs(args.project_file)
+
+    project = SurfProject.load_project(project_file)
+    RunPolarity(project, picking_file, args.output_file, args.thresh).send_polarities()
 
 
 def _associate():

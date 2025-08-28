@@ -351,6 +351,80 @@ class ObspyUtil:
 
         return None
 
+    @classmethod
+    def get_NLL_phase_picks(cls, input_file=None, delimiter='\s+'):
+        """
+        Reads a NonLinLoc output file and returns a dictionary of phase picks.
+
+        Parameters:
+            input_file (str, optional): Path to the NonLinLoc output file.
+                                        If not provided, raises an error.
+            delimiter (str, optional): Delimiter used in the file (default is a space).
+            **kwargs: Additional arguments for customization.
+
+        Returns:
+            dict: Dictionary of picks with the structure:
+              {
+                  "Station.Component": [
+                      ["Station_name", "Instrument", "Component", "P_phase_onset", "P_phase_descriptor",
+                            "First_Motion", "Date", "Hour_min", "Seconds", "Err", "ErrMag", "Coda_duration",
+                            "Amplitude", "Period"
+                  ],
+                  ...
+              }
+        """
+        if input_file is None:
+            raise ValueError("An input file must be provided.")
+
+        if not os.path.isfile(input_file):
+            raise FileNotFoundError(f"The file {input_file} does not exist.")
+
+        pick_times = {}
+
+        try:
+            # Load the file into a DataFrame
+            df = pd.read_csv(input_file, delimiter=delimiter)
+
+            # Validate necessary columns
+
+            required_columns = ["Station_name", "Instrument", "Component", "P_phase_onset", "P_phase_descriptor",
+                                "First_Motion", "Date", "Hour_min", "Seconds", "Err", "ErrMag", "Coda_duration",
+                                "Amplitude", "Period"]
+
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                raise ValueError(f"The input file is missing required columns: {missing_columns}")
+
+            # Process each row
+            for _, row in df.iterrows():
+                try:
+                    # Construct timestamp
+                    tt = f"{row['Date']}T{str(row['Hour_min']).zfill(4)}:{float(row['Seconds']):06.3f}"
+                    timestamp = UTCDateTime(tt)
+
+                    # Construct ID
+                    id = f"{row['Station_name']}.{row['Component']}"
+
+                    # Collect pick details
+                    pick_details = [
+                        row["P_phase_descriptor"], timestamp, row["Component"],
+                        row["First_Motion"], row["Err"], row["ErrMag"],
+                        row["Coda_duration"], row["Amplitude"], row["Period"]
+                    ]
+
+                    # Add to dictionary
+                    if id not in pick_times:
+                        pick_times[id] = []
+                    pick_times[id].append(pick_details)
+
+                except Exception as e:
+                    print(f"Error processing row {row.to_dict()}: {e}")
+
+        except Exception as e:
+            raise RuntimeError(f"Error reading or processing the file {input_file}: {e}")
+
+        return pick_times
+
     # def _compute_distance_azimuth(trace: Trace) -> Tuple[float, float]:
     #     """
     #     Prefer distance and backazimuth from trace header if available.
