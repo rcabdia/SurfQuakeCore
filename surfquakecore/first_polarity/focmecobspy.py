@@ -482,9 +482,6 @@ def parse_focmec_file(file_path: str) -> FocmecData:
     return data
 
 
-
-
-
 if __name__ == '__main__':
     import doctest
     doctest.testmod(exclude_empty=True)

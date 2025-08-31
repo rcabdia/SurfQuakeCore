@@ -1,6 +1,5 @@
 import os
 import platform
-import warnings
 
 
 def __get_binary_dir():
@@ -25,10 +24,11 @@ _bin_dir = __get_binary_dir()
 BINARY_REAL_FILE = os.path.join(_bin_dir, "REAL", "REAL")
 BINARY_NLL_DIR = os.path.join(_bin_dir, "NLL")
 BINARY_GREEN_DIR = os.path.join(_bin_dir, "mti_green")
-
+BINARY_FOCMEC_DIR = os.path.join(_bin_dir, "FOCMEC")
 
 __all__ = [
     'BINARY_NLL_DIR',
     'BINARY_REAL_FILE',
     'BINARY_GREEN_DIR',
+    'BINARY_FOCMEC_DIR'
 ]

@@ -10,6 +10,7 @@
 
 import os
 import sys
+import traceback
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from dataclasses import dataclass
 from dateutil import parser
@@ -19,6 +20,7 @@ from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.data_processing.analysis_events import AnalysisEvents
 from surfquakecore.data_processing.processing_methods import print_surfquake_trace_headers
 from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
+from surfquakecore.first_polarity.first_polarity import FirstPolarity
 from surfquakecore.first_polarity.get_pol import RunPolarity
 from surfquakecore.magnitudes.run_magnitudes import Automag
 from surfquakecore.magnitudes.source_tools import ReadSource
@@ -285,32 +287,30 @@ def _focmec():
         epilog="""
             Example usage:
 
-      surfquake focmec -f './folder_hyp_path' -o './output_folder'
+      surfquake focmec -d './folder_hyp_path' -o './output_folder'
         """
     )
 
-
-    parser.add_argument("-f", "--hyp_folder", required=True, help="path to folder containing hyp files", type=str)
-    parser.add_argument("-o", "--output_folder", required=True, help="output folder", type=str)
+    parser.add_argument("-d", "--hyp_folder", required=True, help="path to folder containing hyp files", type=str)
+    parser.add_argument("-a", "--accepted", required=False, help="Number of accepted wrong polarities", type=float, default=1.0)
+    parser.add_argument("-o", "--output_folder", required=False, help="output folder", type=str)
 
     args = parser.parse_args()
 
     hyp_folder = make_abs(args.hyp_folder)
     output_folder = make_abs(args.output_folder)
-    nllcatalog = Nllcatalog(hyp_folder)
-    nllcatalog.find_files()
-    files_list = nllcatalog.obsfiles
+    files_list = FirstPolarity.find_hyp_files(hyp_folder)
     for file in files_list:
         try:
             header = FirstPolarity.set_head(file)
             if file is not None:
-                firstpolarity_manager = FirstPolarity()
-                file_input = firstpolarity_manager.create_input(file, header)
+                file_input = FirstPolarity().create_input(file, header)
 
                 if FirstPolarity.check_no_empty(file_input):
-                    firstpolarity_manager.run_focmec(file_input, self.accepted_polarities.value())
-        except:
-            pass
+                    FirstPolarity().run_focmec(file_input, 3, output_folder)
+        except Exception as e:
+            print(f"Error processing file {file}: {e}")
+            traceback.print_exc()
 
 def _associate():
 

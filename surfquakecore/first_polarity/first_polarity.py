@@ -12,10 +12,15 @@ import pandas as pd
 import os
 from obspy import read_events, Catalog
 from obspy.core.event import Origin
-from isp import FOC_MEC_PATH, FOC_MEC_BASH_PATH, ROOT_DIR
-from surfquakecore.utils import ObspyUtil
-from isp.earthquakeAnalysis import focmecobspy
-from isp.Utils.subprocess_utils import exc_cmd
+
+from surfquakecore import FOC_MEC_BASH_PATH, ROOT_DIR
+from surfquakecore.binaries import BINARY_FOCMEC_DIR
+from surfquakecore.first_polarity import focmecobspy
+from surfquakecore.utils.obspy_utils import ObspyUtil
+
+from surfquakecore.utils.subprocess_utils import exc_cmd
+
+exc_cmd
 import re
 
 class FirstPolarity:
@@ -28,6 +33,28 @@ class FirstPolarity:
 
         :param obs_file_path: The file path of pick observations.
         """
+
+
+    @staticmethod
+    def find_hyp_files(working_directory):
+
+        obsfiles = []
+        pattern = re.compile(r'.*\.grid0\.loc\.hyp$')  # Match files ending with ".grid0.loc.hyp"
+
+        for top_dir, _, files in os.walk(working_directory):
+            for file in files:
+                # Exclude files starting with "._" or containing "sum"
+                if file.startswith("._") or "sum" in file:
+                    continue
+
+                # If the file matches the desired pattern, add it to the list
+                if pattern.match(file):
+                    obsfiles.append(os.path.join(top_dir, file))
+
+        # Remove specific file "location.sum.grid0.loc.hyp" from the results, if it exists
+        obsfiles = [file for file in obsfiles if not file.endswith("location.sum.grid0.loc.hyp")]
+
+        return obsfiles
 
     @staticmethod
     def check_no_empty(file_path):
@@ -158,14 +185,17 @@ class FirstPolarity:
          command=os.path.join(self.get_foc_dir, 'rfocmec_UW')
          exc_cmd(command)
 
-    def run_focmec(self, input_focmec_path, num_wrong_polatities):
+    def run_focmec(self, input_focmec_path, num_wrong_polatities, new_output_path=None):
 
         # binary file
-        command = os.path.join(FOC_MEC_PATH, 'focmec')
+        command = os.path.join(BINARY_FOCMEC_DIR, 'focmec')
         dir_name = os.path.dirname(input_focmec_path)
 
         # first_polarity/output
-        output_path = os.path.join(dir_name, "output")
+        if new_output_path:
+            output_path = new_output_path
+        else:
+            output_path = os.path.join(dir_name, "output")
 
         # first_polarity path
         focmec_bash_path = os.path.join(os.path.dirname(input_focmec_path), "focmec_run")

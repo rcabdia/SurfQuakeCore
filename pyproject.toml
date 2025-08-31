@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 dynamic = ["readme", "dependencies"]
 name = "surfquake"
-version = "0.1.3"
+version = "0.1.4"
 authors = [
   { name="Roberto Cabieces & Thiago Junqueira", email="rcabdia@roa.es"},
 ]
@@ -30,8 +30,8 @@ exclude = ["docs*", "tests*", "examples*"]
 where = ["."]
 
 [tool.setuptools.package-data]
-"surfquakecore.binaries.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
-"surfquakecore.binaries.mac_bin" = ["mti_green/*", "NLL/*", "REAL/*"]
+"surfquakecore.binaries.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*", "FOCMEC/*"]
+"surfquakecore.binaries.mac_bin" = ["mti_green/*", "NLL/*", "REAL/*", "FOCMEC/*"]
 "surfquakecore.binaries.win_bin" = ["mti_green/*"]
 
 "surfquakecore.earthquake_location.loc_structure" = [
@@ -41,6 +41,8 @@ where = ["."]
 "surfquakecore.models" = ["190703-214543/*", "global_earth_model.nd"]
 "surfquakecore.real" = ["tt_db/*"]
 "surfquakecore.cython_module" = ["*.pyx", "*.pxd", "*.h"]
+
+"surfquakecore.first_polarity" = ["focmec_bash/*"]
 
 [project.scripts]
 surfquake = "surfquakecore.cli:main"
