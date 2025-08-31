@@ -258,7 +258,7 @@ def _pick():
 def _polarity():
     parser = ArgumentParser(
         prog="surfquake polarity",
-        description="Explore data availability ",
+        description="Determines Polarities from P-wave first motion",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
         
@@ -301,7 +301,6 @@ def _focmec():
         https://seiscode.iris.washington.edu/projects/focmec
         
         Example usage:
-        > surfquake focmec -f './file.lst'
         > surfquake focmec -d './folder_hyp_path' -a 1.0 -o './output_folder'
         
         """
