@@ -102,6 +102,9 @@ def _create_actions():
         "focmec": _CliActions(
             name="focmec", run=_focmec, description=f"Type {__entry_point_name} -h for help.\n"),
 
+        "plotmec": _CliActions(
+            name="plotmec", run=_plotmec, description=f"Type {__entry_point_name} -h for help.\n")
+
     }
 
     return _actions
@@ -258,9 +261,10 @@ def _polarity():
         description="Explore data availability ",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-            Example usage:
+        
+        Example usage:
 
-      surfquake polarity -f './picking_file' -p './project_file' -o 'output_file' -t 0.95 
+        surfquake polarity -f './nll_picks.txt' -p './project_file.pkl' -o './nll_picks_polarities.txt' -t 0.95 
 
         """
     )
@@ -282,18 +286,33 @@ def _polarity():
 def _focmec():
     parser = ArgumentParser(
         prog="surfquake focmec",
-        description="Focal Mechanism from P-Wave polarity ",
+        description="Focal Mechanism from P-Wave first motion polarity",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-            Example usage:
-
-      surfquake focmec -d './folder_hyp_path' -o './output_folder'
+        
+        Overview:
+        
+        FOCal MEChanism determinations (FOCMEC) software  for determining and 
+        displaying double-couple earthquake focal mechanisms using the polarity and amplitude ratios of P and S waves.
+        
+        Reference:
+        Snoke, J. A. (2003). “FOCMEC: Focal Mechanism Determinations.” 
+        International Handbook of Earthquake and Engineering Seismology, Part B, Academic Press, pp. 1629–1630.
+        https://seiscode.iris.washington.edu/projects/focmec
+        
+        Example usage:
+        > surfquake focmec -f './file.lst'
+        > surfquake focmec -d './folder_hyp_path' -a 1.0 -o './output_folder'
+        
         """
     )
 
-    parser.add_argument("-d", "--hyp_folder", required=True, help="path to folder containing hyp files", type=str)
-    parser.add_argument("-a", "--accepted", required=False, help="Number of accepted wrong polarities", type=float, default=1.0)
+    parser.add_argument("-d", "--hyp_folder", required=True, help="path to folder containing hyp files",
+                        type=str)
+    parser.add_argument("-a", "--accepted", required=False, help="Number of accepted wrong polarities",
+                        type=float, default=1.0)
     parser.add_argument("-o", "--output_folder", required=False, help="output folder", type=str)
+
 
     args = parser.parse_args()
 
@@ -311,6 +330,87 @@ def _focmec():
         except Exception as e:
             print(f"Error processing file {file}: {e}")
             traceback.print_exc()
+
+def _plotmec():
+    parser = ArgumentParser(
+        prog="surfquake plotmec",
+        description="Focal Mechanism from P-wave polarity ",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Overview:
+        
+        Plot fault planes, T & P axis, and P-wave polarities.
+        
+        Example usage:
+
+        surfquake plotmec -d './focmec_folder_path' -o './output_folder'
+        surfquake plotmec -f './focmec_file_path' -o './output_folder'
+            
+        if output is not provided the beachball of the focal mechanism will be shown on screen, 
+        but if user provide output folder, the beach ball plot will be saved in the folder
+        
+            """
+    )
+    parser.add_argument("-f", "--focmec_file", required=False,
+                        help="file with focmec.lst solution", type=str)
+
+    parser.add_argument("-d", "--focmec_folder_path", required=False, help="path to folder with all *.lst "
+                                                                           "focmec solutions", type=str)
+    parser.add_argument("-o", "--output_folder", required=False, help="output folder", type=str)
+    parser.add_argument("-m", "--format", required=False, help="format output plot (defaults pdf)",
+                        type=str, default="pdf")
+    args = parser.parse_args()
+
+    firstpolarity_manager = FirstPolarity()
+
+    if args.focmec_file:
+        focmec_file = make_abs(args.focmec_file)
+        focmec_files = [focmec_file]
+    else:
+        focmec_files = firstpolarity_manager.find_files(make_abs(args.focmec_folder_path))
+
+    format = args.format
+
+    for file in focmec_files:
+
+        # Station, Az, Dip, Motion = firstpolarity_manager.get_dataframe(location_file)
+        Station, Az, Dip, Motion = FirstPolarity.extract_station_data(file)
+        cat, focal_mechanism = firstpolarity_manager.extract_focmec_info(file)
+        # TODO MIGHT BE FOR PLOTTING ALL POSSIBLE FAUL PLANES
+        # focmec_full_Data = parse_focmec_file(focmec_file)
+        file_output_name = FirstPolarity.extract_name(file)
+
+        if args.output_folder:
+            output_folder = make_abs(args.output_folder)
+            name_str = os.path.basename(file)[:-3] + format
+            output_folder_file = os.path.join(output_folder, name_str)
+        else:
+            output_folder_file = None
+
+        Plane_A = focal_mechanism.nodal_planes.nodal_plane_1
+        strike_A = Plane_A.strike
+        dip_A = Plane_A.dip
+        rake_A = Plane_A.rake
+        extra_info = firstpolarity_manager.parse_solution_block(focal_mechanism.comments[0]["text"])
+        P_Trend = extra_info['P,T']['Trend']
+        P_Plunge = extra_info['P,T']['Plunge']
+        T_Trend = extra_info['P,N']['Trend']
+        T_Plunge = extra_info['P,N']['Plunge']
+
+        misfit_first_polarity = focal_mechanism.misfit
+        azimuthal_gap = focal_mechanism.azimuthal_gap
+        number_of_polarities = focal_mechanism.station_polarity_count
+        #
+        first_polarity_results = {"First_Polarity": ["Strike", "Dip", "Rake", "misfit_first_polarity", "azimuthal_gap",
+                                                     "number_of_polarities", "P_axis_Trend", "P_axis_Plunge",
+                                                     "T_axis_Trend", "T_axis_Plunge"],
+                                  "results": [strike_A, dip_A, rake_A, misfit_first_polarity, azimuthal_gap,
+                                              number_of_polarities, P_Trend, P_Plunge, T_Trend, T_Plunge]}
+
+        FirstPolarity.print_first_polarity_info(file_output_name, first_polarity_results)
+        FirstPolarity.drawFocMec(strike_A, dip_A, rake_A, Station, Az, Dip, Motion, P_Trend, P_Plunge,
+                                              T_Trend, T_Plunge, output_folder_file)
+
 
 def _associate():
 
@@ -1482,12 +1582,17 @@ def _info():
         description="Prints waveform information ",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
+        
+        Overview:
+        
+        Extracts and prints on screen the traces header information
+        
         Example usage:
 
-  surfquake info -w './data/*.mseed' -c 3
-  surfquake info -w 'trace1.mseed, trace2.mseed' --columns 5
+    surfquake info -w './data/*.mseed' -c 3
+    surfquake info -w 'trace1.mseed, trace2.mseed' --columns 5
 
-Supports standard and SurfQuake-extended headers such as picks, references, and geodetic attributes.
+    Supports standard and SurfQuake-extended headers such as picks, references, and geodetic attributes.
 
     """
     )
@@ -1516,9 +1621,14 @@ def _explore():
         description="Explore data availability ",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-        Example usage:
+    
+    Overview:
+    
+    Plot the data availability of your seismogram files
+    
+    Example usage:
 
-  surfquake explore -w './data/*.mseed'
+    surfquake explore -w './data/*.mseed'
   
     """
     )

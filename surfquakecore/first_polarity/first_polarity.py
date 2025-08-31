@@ -5,7 +5,7 @@ Created on Tue Dec 17 20:26:28 2019
 
 @author: robertocabieces
 """
-
+import platform
 import shutil
 import subprocess
 import pandas as pd
@@ -414,11 +414,9 @@ class FirstPolarity:
         return None  # Return None if "Input" is not found
 
     @staticmethod
-    def find_files(base_path):
+    def find_files(path_to_find):
         pattern = re.compile(r'.*lst$')  # Match files ending with ".grid0.loc.hyp"
         obsfiles = []  # Initialize the list
-        path_to_find = os.path.join(base_path, 'first_polarity/output')
-
         for top_dir, _, files in os.walk(path_to_find):
             for file in files:
                 # If the file matches the desired pattern, add it to the list
@@ -518,6 +516,130 @@ class FirstPolarity:
                 file_found = file
 
         return file_found
+
+
+    @staticmethod
+    def drawFocMec(strike, dip, rake, sta, az, inc, pol, P_Trend, P_Plunge,
+                                      T_Trend, T_Plunge, output_folder_file):
+
+        from obspy.imaging.beachball import beach
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import matplotlib as mplt
+
+        if platform.system() == 'Darwin':
+            mplt.use("MacOSX")
+        else:
+            mplt.use("TkAgg")
+
+        azims_pos = []
+        incis_pos = []
+        azims_neg = []
+        incis_neg = []
+        polarities = []
+        bbox = dict(boxstyle="round, pad=0.2", fc="w", ec="k", lw=1.5, alpha=0.7)
+        beach2 = beach([strike, dip, rake], facecolor='r', linewidth=1., alpha=0.3, width=2)
+        fig, ax = plt.subplots()
+        fig.subplots_adjust(left=0.179, bottom=0.09, right=0.84, top=0.854, wspace=0.0, hspace=0.0)
+        ax.add_collection(beach2)
+        ax.set_ylim(-1, 1)
+        ax.set_xlim(-1, 1)
+
+        N= len(sta)
+        for j in range(N):
+            station = sta[j]
+            azim = az[j]
+            inci = inc[j]
+            polarity = str(pol[j])
+            polarity = polarity[0]
+            if inci > 90:
+                inci = 180. - inci
+                azim = -180. + azim
+            plotazim = (np.pi / 2.) - ((azim / 180.) * np.pi)
+            if polarity == "U":
+                azims_pos.append(plotazim)
+                incis_pos.append(inci)
+                x_pos = (inci * np.cos(plotazim))/90
+                y_pos = (inci * np.sin(plotazim))/90
+                polarities.append(polarity)
+                ax.text(x_pos, y_pos, "  " + station, va="top", bbox=bbox, zorder=2)
+            if polarity == "D":
+                azims_neg.append(plotazim)
+                incis_neg.append(inci)
+                x_neg = (inci * np.cos(plotazim)) / 90
+                y_neg = (inci * np.sin(plotazim)) / 90
+                polarities.append(polarity)
+                ax.text(x_neg, y_neg, "  " + station, va="top", bbox=bbox, zorder=2)
+
+        azims_pos = np.array(azims_pos)
+        incis_pos = np.array(incis_pos)
+        incis_pos=incis_pos/90
+        x_pos=incis_pos*np.cos(azims_pos)
+        y_pos=incis_pos*np.sin(azims_pos)
+        #polarities = np.array(polarities, dtype=bool)
+        ax.scatter(x_pos, y_pos, marker="o", lw=1, facecolor="b", edgecolor="k", s=50, zorder=3)
+
+        azims_neg = np.array(azims_neg)
+        incis_neg = np.array(incis_neg)
+        incis_neg = incis_neg / 90
+        x_neg = incis_neg * np.cos(azims_neg)
+        y_neg = incis_neg * np.sin(azims_neg)
+        ax.scatter(x_neg, y_neg, marker="o", lw=1, facecolor="w", edgecolor="k", s=50, zorder=3)
+        #lets plot P and T axes
+
+        Paz = P_Trend
+        Pinc = 90 - P_Plunge
+        Taz = T_Trend
+        Tinc = 90 - T_Plunge
+        if Pinc > 90:
+            Pinc = 180. - Pinc
+            Paz = -180. + Paz
+        Paz = (np.pi / 2.) - ((Paz / 180.) * np.pi)
+        x_pos = (Pinc * np.cos(Paz)) / 90
+        y_pos = (Pinc * np.sin(Paz)) / 90
+        ax.scatter(x_pos, y_pos, marker="P", lw=1, facecolor="green", edgecolor="k", s=50, zorder=4)
+        ax.text(x_pos, y_pos, "P-axis", va="top", bbox=bbox, zorder=4)
+
+        if Tinc > 90:
+            Tinc = 180. - Tinc
+            Taz = -180. + Taz
+        Taz = (np.pi / 2.) - ((Taz / 180.) * np.pi)
+        x_pos = (Tinc * np.cos(Taz)) / 90
+        y_pos = (Tinc * np.sin(Taz)) / 90
+        ax.scatter(x_pos, y_pos, marker="X", lw=1, facecolor="green", edgecolor="k", s=50, zorder=4)
+        ax.text(x_pos, y_pos, "T-axis", va="top", bbox=bbox, zorder=4)
+
+        #mask = (polarities == True)
+        #ax.set_title("Focal Mechanism")
+        ax.set_axis_off()
+        if output_folder_file:
+            plt.savefig(output_folder_file)
+        else:
+            plt.show()
+
+
+    @staticmethod
+    def print_first_polarity_info(file_output_name, first_polarity_results):
+        print("######")
+        print("First Polarity Results: {Date},{time}".format(Date=file_output_name["date"],
+                                                             time=file_output_name["time"]))
+        print("Latitude {latitude}, Longitude {longitude}, Depth (km) {depth}".format(
+            latitude=file_output_name["latitude"], longitude=file_output_name["longitude"],
+            depth=file_output_name["depth_km"]))
+        print("Strike: {Strike:.3f}".format(Strike=first_polarity_results["results"][0]))
+        print("Dip: {Dip:.3f}".format(Dip=first_polarity_results["results"][1]))
+        print("Rake: {Rake:.3f}".format(Rake=first_polarity_results["results"][2]))
+        print("P axis trend & plunge: {Ptrend:.1f} {Pplunge:.1f}".format(
+            Ptrend=first_polarity_results["results"][6],
+            Pplunge=first_polarity_results["results"][7]
+        ))
+        print("T axis trend & plunge: {Ptrend:.1f} {Pplunge:.1f}".format(
+            Ptrend=first_polarity_results["results"][8],
+            Pplunge=first_polarity_results["results"][9]
+        ))
+        print("Misfit: {Misfit:.3f}".format(Misfit=first_polarity_results["results"][3]))
+        print("GAP: {GAP:.3f}".format(GAP=first_polarity_results["results"][4]))
+        print("Number of polarities: {NP:.0f}".format(NP=first_polarity_results["results"][5]))
 
 
 
