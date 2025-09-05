@@ -10,7 +10,6 @@ def __get_binary_dir():
     _os_bin_folder = ''
     if _os.lower() == 'linux':
         _os_bin_folder = "linux_bin"
-
     elif _os.lower() == 'mac' or _os.lower() == 'darwin':
         if _arch == 'arm64':
             _os_bin_folder = "mac_bin_m"  # Apple Silicon (M1/M2/M3)
