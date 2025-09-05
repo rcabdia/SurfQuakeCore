@@ -5,12 +5,17 @@ import platform
 def __get_binary_dir():
     _root_dir = os.path.dirname(__file__)
     _os = platform.system()
+    _arch = platform.machine().lower()
 
     _os_bin_folder = ''
     if _os.lower() == 'linux':
         _os_bin_folder = "linux_bin"
+
     elif _os.lower() == 'mac' or _os.lower() == 'darwin':
-        _os_bin_folder = "mac_bin"
+        if _arch == 'arm64':
+            _os_bin_folder = "mac_bin_m"  # Apple Silicon (M1/M2/M3)
+        else:
+            _os_bin_folder = "mac_bin"  # Intel mac
     elif _os.lower() == 'windows':
         # warnings.warn(f"The OS {_os} do not support some functions.")
         _os_bin_folder = "win_bin"
