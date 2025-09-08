@@ -82,6 +82,8 @@ class PlotProj:
         self.utc_start = None
         self.utc_end = None
         self._last_click_info = None  # stores (ax, xdata) after 'e' press
+        self._hover = None  # (trace_id, line, label, pick_time) when hovering a pick
+        self._hover_tol_px = 8  # pixel tolerance for hover hit testing
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
@@ -383,6 +385,7 @@ class PlotProj:
 
         self.fig.canvas.mpl_connect('button_press_event', filtered_doubleclick)
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
+        self.fig.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
         self.info_box = self.fig.text(0.75, 0.8, "", ha='left', va='top', fontsize=9)
         self._update_info_box()
         self._restore_state()
@@ -468,6 +471,9 @@ class PlotProj:
         x = mdt.date2num(pick_time)
         line = ax.axvline(x=x, color='r', linestyle='--', alpha=0.8)
 
+        # Tag artists for hover/delete
+        line._surfq_meta = {"trace_id": trace_id, "pick_time": pick_time}
+
         # Find matching pick
         pick_info = None
         for pick in self.picks.get(trace_id, []):
@@ -488,6 +494,7 @@ class PlotProj:
         )
 
         self.pick_lines[trace_id].append((line, label))
+
 
     def _draw_pick_all(self):
         """Redraw all pick lines."""
@@ -589,6 +596,18 @@ class PlotProj:
                 return
             trace = self.trace_list[tr_idx]
             pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
+
+        if key in ('j', 'delete', 'backspace'):
+            if self._hover:
+                trace_id, line, label, pick_time = self._hover
+                if trace_id is not None and pick_time is not None:
+                    self._delete_pick(trace_id, pick_time)
+                    print(f"[INFO] Deleted pick on {trace_id} at {pick_time.strftime('%H:%M:%S.%f')[:-3]}")
+                else:
+                    print("[INFO] No pick under cursor to delete.")
+            else:
+                print("[INFO] Hover a pick (red dashed line) and press X/Delete to remove it.")
+            return
 
             # Ask for pick type (optional input)
             plt.pause(0.01)
@@ -1508,4 +1527,121 @@ class PlotProj:
         if self.fig:
             plt.close(self.fig)
             self.fig = None
+
+    def _clear_hover_style(self):
+        """Remove hover style from previously hovered pick, if any."""
+        if self._hover:
+            _, line, label, _ = self._hover
+            # restore default style
+            try:
+                line.set_color('r')
+                line.set_linewidth(1.0)
+            except Exception:
+                pass
+            try:
+                # restore original label box
+                label.set_bbox(dict(boxstyle='round,pad=0.2', fc='white', ec='black', alpha=0.6))
+            except Exception:
+                pass
+            self._hover = None
+
+    def _on_mouse_move(self, event):
+        """Highlight the pick under the cursor (within pixel tolerance)."""
+        if event.inaxes not in getattr(self, "axs", []) or event.x is None:
+            # moved outside axes—clear any hover
+            if self._hover:
+                self._clear_hover_style()
+                self.fig.canvas.draw_idle()
+            return
+
+        ax = event.inaxes
+        hovered = None
+        min_dist = self._hover_tol_px + 1  # strict less-than
+
+        # Check only picks in this axes
+        for trace_id, items in self.pick_lines.items():
+            for line, label in items:
+                if not line.get_visible() or line.axes is not ax:
+                    continue
+                try:
+                    # vertical line: its xdata is constant
+                    xdata = line.get_xdata()
+                    if not xdata:
+                        continue
+                    x_val = xdata[0]
+                    # transform to display (pixel) coords
+                    xpix = ax.transData.transform((x_val, 0))[0]
+                    dist = abs(event.x - xpix)
+                    if dist < min_dist:
+                        meta = getattr(line, "_surfq_meta", {})
+                        pick_time = meta.get("pick_time", None)
+                        hovered = (trace_id, line, label, pick_time)
+                        min_dist = dist
+                except Exception:
+                    continue
+
+        # Update hover styling if changed
+        if hovered != self._hover:
+            self._clear_hover_style()
+            self._hover = hovered
+            if hovered:
+                _, line, label, _ = hovered
+                try:
+                    line.set_color('orange')
+                    line.set_linewidth(1.8)
+                except Exception:
+                    pass
+                try:
+                    label.set_bbox(dict(boxstyle='round,pad=0.2', fc='yellow', ec='black', alpha=0.8))
+                except Exception:
+                    pass
+            self.fig.canvas.draw_idle()
+
+    def _delete_pick(self, trace_id, pick_time):
+        """Delete a pick (by trace_id and exact pick_time) from UI and state."""
+        # 1) Remove from self.picks (in-memory)
+        plist = self.picks.get(trace_id, [])
+        new_plist = [p for p in plist if p[0] != pick_time]
+        if new_plist:
+            self.picks[trace_id] = new_plist
+        else:
+            self.picks.pop(trace_id, None)
+
+        # 2) Remove from trace.stats.picks (persistent in headers)
+        for tr in self.trace_list:
+            if tr.id == trace_id and hasattr(tr.stats, "picks"):
+                # stored as timestamp in your code
+                ts = UTCDateTime(pick_time).timestamp
+                tr.stats.picks = [p for p in tr.stats.picks if p.get("time") != ts]
+                if not tr.stats.picks:
+                    del tr.stats.picks
+
+        # 3) Remove artists and clean pick_lines
+        items = self.pick_lines.get(trace_id, [])
+        keep = []
+        for line, label in items:
+            meta = getattr(line, "_surfq_meta", {})
+            if meta.get("pick_time") == pick_time:
+                try:
+                    line.remove()
+                except Exception:
+                    pass
+                try:
+                    label.remove()
+                except Exception:
+                    pass
+            else:
+                keep.append((line, label))
+        if keep:
+            self.pick_lines[trace_id] = keep
+        else:
+            self.pick_lines.pop(trace_id, None)
+
+        # 4) Housekeeping
+        if self.current_pick and self.current_pick == (trace_id, pick_time):
+            self.current_pick = None
+
+        self._clear_hover_style()
+        self._update_info_box()
+        self.fig.canvas.draw_idle()
 
