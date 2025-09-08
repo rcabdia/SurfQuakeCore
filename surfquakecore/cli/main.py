@@ -301,7 +301,9 @@ def _polarity():
         epilog="""
         
         Overview:
-        Automatic P-wave first motion polarity determination
+        Automatic P-wave first motion polarity determination. The inputs are the project and the picking file in 
+        nonlinloc pick format (i.e., might be generated using command pick). 
+        Output is an edited pick file with polarities.
         
         Reference:
         Chakraborty, M., Cartaya, C. Q., Li, W., Faber, J., Rümpker, G., Stoecker, H., & Srivastava, N. (2022). 
@@ -315,9 +317,9 @@ def _polarity():
         """
     )
 
-    parser.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
-    parser.add_argument("-f", "--picking_file", required=True, help="path to picking file", type=str)
-    parser.add_argument("-o", "--output_file", required=True, help="output file", type=str)
+    parser.add_argument("-p", "--project_file_path", required=True, help="Path to SurfProject .pkl")
+    parser.add_argument("-f", "--picking_file_path", required=True, help="path to picking file", type=str)
+    parser.add_argument("-o", "--output_file_path", required=True, help="output file", type=str)
     parser.add_argument("-t", "--thresh", required=False, help="P-wave threshold", type=float, default=0.9)
 
     args = parser.parse_args()
