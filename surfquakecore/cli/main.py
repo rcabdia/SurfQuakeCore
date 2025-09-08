@@ -205,8 +205,13 @@ def _pick():
     Key Arguments:
         -f, --project_file        Path to your seismic project file
         -d, --output_dir          Directory to save pick results
-        -p, --p_thresh            Threshold for P-wave probability (0–1) (default: 0.3)
-        -s, --s_thresh            Threshold for S-wave probability (0–1) (default: 0.3)
+        -p, --p_thresh            [OPTIONAL] Threshold for P-wave probability (0–1) (default: 0.3)
+        -s, --s_thresh            [OPTIONAL] Threshold for S-wave probability (0–1) (default: 0.3)
+        -n, --net                 [OPTIONAL] Network code filter
+        -s, --station             [OPTIONAL] Station code filter
+        -ch, --channel            [OPTIONAL] Channel filter
+        --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
+        --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
         --verbose                 Enable detailed logging
 
     Reference:
@@ -224,16 +229,49 @@ def _pick():
 
     arg_parse.add_argument("-f", help="Path to your project file", type=str, required=True)
     arg_parse.add_argument("-d", help="Path to directory where picks will be saved", type=str, required=True)
-
+    arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
+    arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
+    arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
     arg_parse.add_argument("-p", "--p_thresh", help="P-wave threshold", type=float, default=0.3)
     arg_parse.add_argument("-s", "--s_thresh", help="S-wave threshold", type=float, default=0.3)
-
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
     arg_parse.add_argument("-v", "--verbose", help="Show detailed log output", action="store_true")
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
     sp_loaded = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.f))
+
+    # --- Apply key filters ---
+    filters = {}
+    if parsed_args.net:
+        filters["net"] = parsed_args.net
+    if parsed_args.station:
+        filters["station"] = parsed_args.station
+    if parsed_args.channel:
+        filters["channel"] = parsed_args.channel
+    if filters:
+        print(f"[INFO] Filtering project by: {filters}")
+        sp_loaded.filter_project_keys(**filters)
+
+        # --- Apply time filters ---
+        min_date, max_date = None, None
+        try:
+            if parsed_args.min_date:
+                # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
+                min_date = parser.parse(parsed_args.min_date)
+            if parsed_args.max_date:
+                # max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
+                max_date = parser.parse(parsed_args.max_date)
+            if min_date or max_date:
+                print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
+                sp_loaded.filter_project_time(starttime=min_date, endtime=max_date, tol=parsed_args.time_tolerance,
+                                       verbose=True)
+        except ValueError as ve:
+            print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+            raise ve
+
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
         picker = PhasenetISP(
             sp_loaded.project,
@@ -262,9 +300,17 @@ def _polarity():
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
         
+        Overview:
+        Automatic P-wave first motion polarity determination
+        
+        Reference:
+        Chakraborty, M., Cartaya, C. Q., Li, W., Faber, J., Rümpker, G., Stoecker, H., & Srivastava, N. (2022). 
+        PolarCAP–A deep learning approach for first motion polarity classification of earthquake waveforms. 
+        Artificial Intelligence in Geosciences, 3, 46-52.
+        
         Example usage:
-
         surfquake polarity -f './nll_picks.txt' -p './project_file.pkl' -o './nll_picks_polarities.txt' -t 0.95 
+        
 
         """
     )

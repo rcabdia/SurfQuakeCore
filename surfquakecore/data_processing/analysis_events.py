@@ -532,7 +532,7 @@ class AnalysisEvents:
 
                 if full_stream and plot:
                     plotter = PlotProj(full_stream, plot_config=self.plot_config, inventory=self.inventory,
-                                       interactive=interactive)
+                                       interactive=interactive, data_files=data_files)
                     full_stream = plotter.plot()
 
                     for tr in full_stream:
