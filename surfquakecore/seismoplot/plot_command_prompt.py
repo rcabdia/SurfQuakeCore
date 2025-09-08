@@ -40,6 +40,7 @@ class PlotCommandPrompt:
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
             "concat": self._cmd_concat,
+            "load_picks": self._cmd_load_picks,
             "shift": self._cmd_shift,
             "write": self._cmd_write,
             "help": self._cmd_help,
@@ -138,6 +139,52 @@ class PlotCommandPrompt:
         self.plot_proj.clear_plot()  # clear figure
         self.plot_proj.plot(page=self.plot_proj.current_page)  # replot
         # Do not set prompt_active = False; stay in prompt!
+
+    def _cmd_load_picks(self, args):
+
+        """
+        Load picks from an ISP/CSV-like table (with headers) and draw them.
+        Usage:
+            loadisp --file <path> [--delim <regex_or_char>]
+        """
+        path = None
+        delim = r"\s+"
+
+        it = iter(args[1:])
+        for arg in it:
+            if arg == "--file":
+                try:
+                    path = os.path.abspath(next(it))
+                except StopIteration:
+                    print("[ERROR] Missing value after --file")
+                    return
+            elif arg == "--delim":
+                try:
+                    delim = next(it)
+                except StopIteration:
+                    print("[ERROR] Missing value after --delim")
+                    return
+
+        if not path:
+            print("[ERROR] Use: loadisp --file <path> [--delim <regex_or_char>]")
+            return
+        if not os.path.exists(path):
+            print(f"[ERROR] File not found: {path}")
+            return
+
+        try:
+            self.plot_proj.import_nlloc_obs(path, delimiter=delim)
+            if getattr(self.plot_proj, "fig", None):
+                self.plot_proj._redraw_picks()
+                self.plot_proj._update_info_box()
+                self.plot_proj.fig.canvas.draw_idle()
+
+                print("[INFO] Returning to picking mode...")
+                self.prompt_active = False
+                self._exit_code = "p"
+        except Exception as e:
+            print(f"[ERROR] Failed to load ISP picks: {e}")
+
 
     def _cmd_filter(self, args):
         """
@@ -1057,6 +1104,7 @@ class PlotCommandPrompt:
                     >> smap --method MUSIC --fmin 1.0 --fmax 3.0 --grid 0.01  --nsignals 1
         
         """
+
         }
 
         # Check if specific command is requested
@@ -1073,6 +1121,7 @@ class PlotCommandPrompt:
         print(" p                             Return to interactive picking mode")
         print(" n                             Next set of traces / exit prompt")
         print(" b                             Previous set of traces")
+        print(" load_picks --file <file_path> Load picks from nlloc pick file")
         print(" filter <type> <fmin> <fmax>   Filter traces (type: help filter for details)")
         print(" spectrum <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
         print(" spec <idx> [win overlap]      Plot multitaper-spectrogram of trace, (help spectrogram)")

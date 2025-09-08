@@ -66,6 +66,10 @@ class PlotProj:
             "show_crosshair": False,
             "show_arrivals": False}
 
+        self.plot_config.update({
+            "pick_output_format": "NLLOC_OBS",
+            "pick_output_file": "./picks.csv",
+        })
         self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
         # Override defaults with user config if provided
@@ -84,6 +88,11 @@ class PlotProj:
         self._last_click_info = None  # stores (ax, xdata) after 'e' press
         self._hover = None  # (trace_id, line, label, pick_time) when hovering a pick
         self._hover_tol_px = 8  # pixel tolerance for hover hit testing
+
+    def _set_output_target(self, path: str, fmt: str):
+        self.plot_config["pick_output_file"] = path
+        self.plot_config["pick_output_format"] = fmt  # "NLLOC_OBS" or "ISP_TABLE"
+        print(f"[INFO] Output target set → {fmt}: {path}")
 
     def _get_geodetic_info(self, trace: Trace) -> Tuple[float, float]:
         """
@@ -446,11 +455,12 @@ class PlotProj:
         # Save to CSV file if configured
         csv_path = self.plot_config.get("pick_output_file")
         if csv_path:
-            header_needed = not os.path.exists(csv_path)
-            with open(csv_path, "a") as f:
-                if header_needed:
-                    f.write("id,time,phase,amplitude,polarity\n")
-                f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
+            self.write_isp_table_manual(csv_path)
+            # header_needed = not os.path.exists(csv_path)
+            # with open(csv_path, "a") as f:
+            #     if header_needed:
+            #         f.write("id,time,phase,amplitude,polarity\n")
+            #     f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
 
         # Add to in-memory pick tracking
         if trace.id not in self.picks:
@@ -705,11 +715,12 @@ class PlotProj:
 
             csv_path = self.plot_config.get("pick_output_file")
             if csv_path:
-                header_needed = not os.path.exists(csv_path)
-                with open(csv_path, "a") as f:
-                    if header_needed:
-                        f.write("id,time,phase,amplitude,polarity\n")
-                    f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
+                self.write_isp_table_manual(csv_path)
+                # header_needed = not os.path.exists(csv_path)
+                # with open(csv_path, "a") as f:
+                #     if header_needed:
+                #         f.write("id,time,phase,amplitude,polarity\n")
+                #     f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
 
             self.current_pick = (trace.id, pick_time)
             self._draw_pick_lines(trace.id, ax, pick_time)
@@ -1640,8 +1651,313 @@ class PlotProj:
         # 4) Housekeeping
         if self.current_pick and self.current_pick == (trace_id, pick_time):
             self.current_pick = None
+        csv_path = self.plot_config.get("pick_output_file")
+
+        if csv_path:
+            self.write_isp_table_manual(csv_path)
 
         self._clear_hover_style()
         self._update_info_box()
         self.fig.canvas.draw_idle()
+
+    def import_nlloc_obs(self, input_file: str, delimiter=r"\s+"):
+
+        """
+        Load picks from an ISP/CSV-like phase table with headers:
+          Station_name Instrument Component P_phase_onset P_phase_descriptor First_Motion
+          Date Hour_min Seconds Err ErrMag Coda_duration Amplitude Period
+
+        Imports into trace.stats.picks, self.picks, and draws labels/lines.
+        S-wave polarity on import: '+'->'U', '-'->'D'  (P keeps U/D/?)
+        """
+
+        import pandas as pd
+        self._set_output_target(input_file, "NLLOC_OBS")
+        if not os.path.isfile(input_file):
+            print(f"[ERROR] File not found: {input_file}")
+            return
+
+        try:
+            df = pd.read_csv(input_file, delimiter=delimiter, engine="python")
+        except Exception as e:
+            print(f"[ERROR] Could not read ISP table: {e}")
+            return
+
+        # Flexible column mapping
+        colmap = {
+            "station": None,
+            "component": None,
+            "phase": None,
+            "first_motion": None,
+            "date": None,
+            "hour_min": None,
+            "seconds": None,
+            "amplitude": None,
+        }
+
+        # Accept common variants
+        candidates = {
+            "station": ["Station_name", "Station", "STA"],
+            "component": ["Component", "CHA", "Channel"],
+            "phase": ["P_phase_descriptor", "Phase", "PHASE"],
+            "first_motion": ["First_Motion", "FM", "Polarity"],
+            "date": ["Date", "YYYYMMDD"],
+            "hour_min": ["Hour_min", "HHMM"],
+            "seconds": ["Seconds", "SS", "Sec", "SEC"],
+            "amplitude": ["Amplitude", "AMP"],
+        }
+
+        for key, names in candidates.items():
+            for name in names:
+                if name in df.columns:
+                    colmap[key] = name
+                    break
+
+        missing = [k for k, v in colmap.items() if v is None and k not in ("amplitude",)]
+        if missing:
+            print(f"[ERROR] Missing required columns: {missing}")
+            return
+
+        added = 0
+
+        for _, row in df.iterrows():
+            try:
+                sta = str(row[colmap["station"]]).strip()
+                comp = str(row[colmap["component"]]).strip()
+                phase = str(row[colmap["phase"]]).strip().upper()
+                fm = str(row[colmap["first_motion"]]).strip()
+
+                # Date/time (Date as YYYYMMDD, Hour_min as HHMM, Seconds as float)
+                datestr = str(row[colmap["date"]]).strip()
+                hhmm = str(row[colmap["hour_min"]]).zfill(4)
+                sec = float(row[colmap["seconds"]])
+
+                yyyy = int(datestr[:4]);
+                mm = int(datestr[4:6]);
+                dd = int(datestr[6:8])
+                HH = int(hhmm[:2]);
+                MM = int(hhmm[2:])
+                s_int = int(sec);
+                us = int(round((sec - s_int) * 1_000_000))
+                t = UTCDateTime(yyyy, mm, dd, HH, MM, s_int, us)
+
+                # Amplitude (optional)
+                amp = float(row[colmap["amplitude"]]) if colmap["amplitude"] in df.columns else float("nan")
+
+                # Import mapping for S: +->U, - -> D ; keep P as is
+                fm_up = fm.upper()
+                if phase.startswith("S"):
+                    if fm_up == "+":
+                        pol_ui = "U"
+                    elif fm_up == "-":
+                        pol_ui = "D"
+                    elif fm_up in ("U", "D", "?"):
+                        pol_ui = fm_up
+                    else:
+                        pol_ui = "?"
+                else:
+                    pol_ui = fm_up if fm_up in ("U", "D", "?") else "?"
+
+                # Find matching trace: (station, channel)
+                match = None
+                for tr in self.trace_list:
+                    if getattr(tr.stats, "station", "") == sta and getattr(tr.stats, "channel", "") == comp:
+                        match = tr
+                        break
+                if match is None:
+                    # relaxed fallback: station only
+                    for tr in self.trace_list:
+                        if getattr(tr.stats, "station", "") == sta:
+                            match = tr
+                            break
+                if match is None:
+                    # no match—skip quietly (or print info)
+                    # print(f"[INFO] Skipping pick (no trace): {sta}.{comp} {phase}")
+                    continue
+
+                # Add to trace header
+                entry = {"time": t.timestamp, "phase": phase, "amplitude": amp, "polarity": pol_ui}
+                if not hasattr(match.stats, "picks"):
+                    match.stats.picks = []
+                match.stats.picks.append(entry)
+
+                # UI memory + draw if visible
+                if match.id not in self.picks:
+                    self.picks[match.id] = []
+                self.picks[match.id].append((t.datetime, phase, amp, pol_ui))
+
+                if self.fig and getattr(self, "displayed_traces", None):
+                    try:
+                        j = next(k for k, tr_ in enumerate(self.displayed_traces) if tr_.id == match.id)
+                        self._draw_pick_lines(match.id, self.axs[j], t.datetime)
+                    except StopIteration:
+                        pass
+
+                added += 1
+            except Exception as e:
+                print(f"[WARN] Row skipped: {e}")
+
+        if added:
+            self._update_info_box()
+            if self.fig:
+                self.fig.canvas.draw_idle()
+        print(f"[INFO] Imported {added} ISP picks from '{input_file}'.")
+
+
+    def write_nlloc_obs_manual(self, filepath: Optional[str] = None):
+
+        """
+       Write current picks to a NonLinLoc observation (NLLOC_OBS) file WITHOUT ObsPy.
+        Rules:
+      - Station: tr.stats.station (6 chars field, left-justified)
+      - Instrument: "?" (4 chars)
+      - Component: tr.stats.channel or last char; we use full channel if present (4 chars)
+      - Onset: '?' (1 char) unless you later store it per pick
+      - Phase: from pick_entry["phase"]
+      - Polarity:
+          * P picks: keep 'U', 'D', or '?'
+          * S picks: map U->'+', D->'-', ?->'?'
+      - Date/Time: from pick_entry["time"] (UTC timestamp)
+      - Error model: 'GAU'
+      - Numeric tail (5 floats):
+          time_error, err_mag, coda_dur, amplitude, period
+        If not available, we use common defaults: 0.00E+00, -1, -1, -1, 1
+
+        File lines look like:
+          STA      INST COMP ONSET PHASE  POL YYYYMMDD HHMM  SS.ssss GAU  err  errMag coda amp period
+            Adds a header line if the file does not exist yet.
+        """
+
+        import tempfile
+
+        if filepath is None:
+            filepath = self.plot_config.get("pick_output_file", "./picks.obs")
+
+        lines = []
+        for tr in self.trace_list:
+            if not hasattr(tr.stats, "picks") or not tr.stats.picks:
+                continue
+
+            sta = (getattr(tr.stats, "station", "") or "?")[:6]
+            inst = "?"
+            cha_full = (getattr(tr.stats, "channel", "") or "?")
+            comp = (cha_full if cha_full else "?")[:4]
+
+            for p in tr.stats.picks:
+                ts = p.get("time")
+                if ts is None:
+                    continue
+                phase = (p.get("phase") or "?").upper()
+                pol = (p.get("polarity") or "?").upper()
+                onset = (p.get("onset") or "?").lower()[:1]
+
+                # S-only polarity mapping
+                if phase.startswith("S"):
+                    pol_out = "+" if pol == "U" else "-" if pol == "D" else "?"
+                else:
+                    pol_out = pol if pol in ("U", "D", "?") else "?"
+
+                t = UTCDateTime(ts)
+                date = t.strftime("%Y%m%d")
+                hhmm = t.strftime("%H%M")
+                sec = t.second + t.microsecond * 1e-6
+
+                time_error = float(p.get("time_error", 0.0))
+                err_mag = float(p.get("err_mag", -1.0))
+                coda_dur = float(p.get("coda", -1.0))
+                amplitude = float(p.get("amplitude", -1.0))
+                period = float(p.get("period", 1.0))
+
+                lines.append(
+                    f"{sta.ljust(6)} {inst.ljust(4)} {comp.ljust(4)} {onset.ljust(1)} "
+                    f"{phase.ljust(6)} {pol_out.ljust(1)} {date} {hhmm} {sec:7.4f} GAU "
+                    f"{time_error:9.2e} {err_mag:9.2e} {coda_dur:9.2e} {amplitude:9.2e} {period:9.2e}"
+                )
+
+        if not lines:
+            print("[INFO] No picks to write.")
+            return
+
+        header = (
+            "# Station Inst Comp Onset Phase Pol YYYYMMDD HHMM SS.SSSS ErrMod "
+            "TimeErr ErrMag CodaDur Amplitude Period"
+        )
+
+        # Atomic overwrite
+        dirpath = os.path.dirname(os.path.abspath(filepath)) or "."
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=dirpath) as tf:
+            tmp = tf.name
+            tf.write(header + "\n")
+            tf.write("\n".join(lines) + "\n")
+        os.replace(tmp, filepath)
+
+        print(f"[INFO] Wrote {len(lines)} picks to NLLOC_OBS (overwritten): {filepath}")
+
+    def write_isp_table_manual(self, filepath: str, delimiter: str = " "):
+        """
+        Overwrite an ISP/CSV-like table (headered) with *current* picks.
+        Header columns:
+          Station_name Instrument Component P_phase_onset P_phase_descriptor First_Motion
+          Date Hour_min Seconds Err ErrMag Coda_duration Amplitude Period
+        S polarity on write: U->'+', D->'-', ?->'?' ; P keeps U/D/?.
+        """
+        import os, tempfile
+        from obspy import UTCDateTime
+
+        header = ("Station_name Instrument Component P_phase_onset P_phase_descriptor First_Motion "
+                  "Date Hour_min Seconds Err ErrMag Coda_duration Amplitude Period")
+
+        rows = []
+        for tr in self.trace_list:
+            if not hasattr(tr.stats, "picks"):
+                continue
+            sta = getattr(tr.stats, "station", "") or "UNK"
+            inst = "?"
+            comp = getattr(tr.stats, "channel", "") or "???"
+            onset = "?"
+
+            for p in tr.stats.picks:
+                ts = p.get("time")
+                if ts is None:
+                    continue
+                phase = (p.get("phase") or "?").upper()
+                pol = (p.get("polarity") or "?").upper()
+
+                fm = "+" if (phase.startswith("S") and pol == "U") else \
+                    "-" if (phase.startswith("S") and pol == "D") else \
+                        (pol if pol in ("U", "D", "?") else "?")
+
+                amp = p.get("amplitude", 0.0)
+                period = p.get("period", 0.0)
+                coda = p.get("coda", 0.0)
+                err_model = "GAU"
+                err_mag = 0.0
+
+                t = UTCDateTime(ts)
+                date = t.strftime("%Y%m%d")
+                hhmm = t.strftime("%H%M")
+                sec = t.second + t.microsecond * 1e-6
+
+                rows.append([
+                    sta, inst, comp, onset, phase, fm,
+                    date, hhmm, f"{sec:.3f}", err_model, f"{err_mag:.2E}",
+                    f"{float(coda):.1f}", f"{float(amp):.2f}", f"{float(period):.2f}"
+                ])
+
+        if not rows:
+            print("[INFO] No picks to write.")
+            return
+
+        # Atomic overwrite
+        dirpath = os.path.dirname(os.path.abspath(filepath)) or "."
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=dirpath) as tf:
+            tmp = tf.name
+            tf.write(header + "\n")
+            for r in rows:
+                tf.write(delimiter.join(map(str, r)) + "\n")
+        os.replace(tmp, filepath)
+
+        print(f"[INFO] Wrote {len(rows)} picks to ISP table (overwritten): {filepath}")
+
 
