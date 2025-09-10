@@ -191,6 +191,7 @@ def _pick():
         description="Use PhaseNet deep learning model to pick P- and S-wave arrivals.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
+    
     Overview:
         This command applies the PhaseNet deep neural network to estimate the arrival times
         of P- and S-waves in local and regional seismic events.
@@ -208,8 +209,8 @@ def _pick():
     Key Arguments:
         -f, --project_file        Path to your seismic project file
         -d, --output_dir          Directory to save pick results
-        -p, --p_thresh            [OPTIONAL] Threshold for P-wave probability (0–1) (default: 0.3)
-        -s, --s_thresh            [OPTIONAL] Threshold for S-wave probability (0–1) (default: 0.3)
+        -pt, --p_thresh            [OPTIONAL] Threshold for P-wave probability (0–1) (default: 0.3)
+        -st, --s_thresh            [OPTIONAL] Threshold for S-wave probability (0–1) (default: 0.3)
         -n, --net                 [OPTIONAL] Network code filter
         -s, --station             [OPTIONAL] Station code filter
         -ch, --channel            [OPTIONAL] Channel filter
@@ -235,8 +236,8 @@ def _pick():
     arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
     arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
     arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
-    arg_parse.add_argument("-p", "--p_thresh", help="P-wave threshold", type=float, default=0.3)
-    arg_parse.add_argument("-s", "--s_thresh", help="S-wave threshold", type=float, default=0.3)
+    arg_parse.add_argument("-pt", "--p_thresh", help="P-wave threshold", type=float, default=0.3)
+    arg_parse.add_argument("-st", "--s_thresh", help="S-wave threshold", type=float, default=0.3)
     arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
     arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
     arg_parse.add_argument("-v", "--verbose", help="Show detailed log output", action="store_true")
@@ -269,8 +270,7 @@ def _pick():
                 max_date = parser.parse(parsed_args.max_date)
             if min_date or max_date:
                 print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
-                sp_loaded.filter_project_time(starttime=min_date, endtime=max_date, tol=parsed_args.time_tolerance,
-                                       verbose=True)
+                sp_loaded.filter_project_time(starttime=min_date, endtime=max_date, verbose=True)
         except ValueError as ve:
             print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
             raise ve
@@ -1637,19 +1637,24 @@ def _info():
         
         Extracts and prints on screen the traces header information
         
+        Key Arguments:
+            -w, --wave_files   [REQUIRED] Glob pattern or path to waveform files
+            -c, --columns      [OPTIONAL] Number of columns showing traces info (default = 5)
+
         Example usage:
 
     surfquake info -w './data/*.mseed' -c 3
-    surfquake info -w 'trace1.mseed, trace2.mseed' --columns 5
+    surfquake info -w 'trace1.mseed,trace2.mseed' --columns 5
 
     Supports standard and SurfQuake-extended headers such as picks, references, and geodetic attributes.
 
     """
     )
 
-    parser.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
-    parser.add_argument("-c", "--columns",help="Number of traces (columns) to show per file (default = 5).",
+    parser.add_argument("-w", "--wave_files", required=True, help="path to waveform files (e.g. './data/*Z')", type=str)
+    parser.add_argument("-c", "--columns", help="Number of traces (columns) to show per file (default = 5).",
                         type=int, default=1)
+    
     args = parser.parse_args()
 
     if "," in args.wave_files or " " in args.wave_files:
@@ -1666,7 +1671,8 @@ def _info():
 
 
 def _explore():
-    parser = ArgumentParser(
+
+    arg_parse = ArgumentParser(
         prog="surfquake explore",
         description="Explore data availability ",
         formatter_class=RawDescriptionHelpFormatter,
@@ -1676,6 +1682,15 @@ def _explore():
     
     Plot the data availability of your seismogram files
     
+    Key Arguments:
+            -w, --wave_files          [OPTIONAL] Glob pattern or path to waveform files
+            -p, --project_path_file   [OPTIONAL] Project path file
+            -n, --net                 [OPTIONAL] Network code filter (if -p selected)
+            -s, --station             [OPTIONAL] Station code filter (if -p selected)
+            -ch, --channel            [OPTIONAL] Channel filter (if -p selected)
+            --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project (if -p selected)
+            --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project (if -p selected)
+            
     Example usage:
 
     surfquake explore -w './data/*.mseed'
@@ -1683,14 +1698,53 @@ def _explore():
     """
     )
 
-    parser.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
-    parser.add_argument("-p", "--project_file_path", help="scan files from the project", type=str)
-    args = parser.parse_args()
+    arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
+    arg_parse.add_argument("-p", "--project_file_path", help="scan files from the project", type=str)
+    arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
+    arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
+    arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+
+    args = arg_parse.parse_args()
 
     if args.project_file_path:
         project_file_path = make_abs(args.project_file_path)
         sp = SurfProject.load_project(project_file_path)
-        data_files = sp.data_files
+
+        # --- Apply key filters ---
+        filters = {}
+        if args.net:
+            filters["net"] = args.net
+        if args.station:
+            filters["station"] = args.station
+        if args.channel:
+            filters["channel"] = args.channel
+        if filters:
+            print(f"[INFO] Filtering project by: {filters}")
+            sp.filter_project_keys(**filters)
+
+            # --- Apply time filters ---
+            min_date, max_date = None, None
+            try:
+                if args.min_date:
+                    # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
+                    min_date = parser.parse(args.min_date)
+                if args.max_date:
+                    # max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
+                    max_date = parser.parse(args.max_date)
+                if min_date or max_date:
+                    print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
+                    sp.filter_project_time(starttime=min_date, endtime=max_date, verbose=True)
+            except ValueError as ve:
+                print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+                raise ve
+
+        data_files = []
+        for item in sp.project.items():
+            list_channel = item[1]
+            for file_path in list_channel:
+                data_files.append(file_path[0])
 
     else:
         if "," in args.wave_files or " " in args.wave_files:
