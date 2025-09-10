@@ -8,7 +8,10 @@
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
 
+import warnings
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+warnings.filterwarnings("ignore")
 import sys
 import traceback
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
@@ -1676,23 +1679,30 @@ def _explore():
     Example usage:
 
     surfquake explore -w './data/*.mseed'
-  
+    surfquake explore -p './project.pkl'
     """
     )
 
     parser.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
+    parser.add_argument("-p", "--project_file_path", help="scan files from the project", type=str)
     args = parser.parse_args()
 
-    if "," in args.wave_files or " " in args.wave_files:
-        # Explicit list of files
-        wave_paths = [make_abs(f.strip()) for f in args.wave_files.split(",") if f.strip()]
+    if args.project_file_path:
+        project_file_path = make_abs(args.project_file_path)
+        sp = SurfProject.load_project(project_file_path)
+        data_files = sp.data_files
 
     else:
-        # Wildcard path
-        wave_paths = make_abs(args.wave_files)
-     # Build project on-the-fly using wildcard path
+        if "," in args.wave_files or " " in args.wave_files:
+            # Explicit list of files
+            wave_paths = [make_abs(f.strip()) for f in args.wave_files.split(",") if f.strip()]
 
-    data_files = SurfProject.collect_files(root_path=wave_paths)
+        else:
+            # Wildcard path
+            wave_paths = make_abs(args.wave_files)
+         # Build project on-the-fly using wildcard path
+
+        data_files = SurfProject.collect_files(root_path=wave_paths)
     PlotExplore.data_availability_new(data_files)
 
 
