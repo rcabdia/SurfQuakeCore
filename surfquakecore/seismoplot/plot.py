@@ -539,18 +539,6 @@ class PlotProj:
             self.fig.canvas.draw()
             print(f"[INFO] Reference time added at {utc_ref_time.isoformat()}")
 
-        elif key == 'd' and self.current_pick:
-            trace_id, pick_time = self.current_pick
-            if trace_id in self.picks:
-                self.picks[trace_id] = [p for p in self.picks[trace_id] if p[0] != pick_time]
-                if not self.picks[trace_id]:
-                    del self.picks[trace_id]
-            for tr in self.trace_list:
-                if tr.id == trace_id and hasattr(tr.stats, "picks"):
-                    tr.stats.picks = [p for p in tr.stats.picks if p["time"] != UTCDateTime(pick_time)]
-                    if not tr.stats.picks:
-                        del tr.stats.picks
-
         elif key == 'n':
             if (self.current_page + 1) * self.plot_config["traces_per_fig"] < len(self.trace_list):
                 self.current_page += 1
@@ -607,7 +595,7 @@ class PlotProj:
             trace = self.trace_list[tr_idx]
             pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
 
-        if key in ('j', 'delete', 'backspace'):
+        if key in ('d', 'delete', 'backspace'):
             if self._hover:
                 trace_id, line, label, pick_time = self._hover
                 if trace_id is not None and pick_time is not None:

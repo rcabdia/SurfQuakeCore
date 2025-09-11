@@ -1654,7 +1654,7 @@ def _info():
     parser.add_argument("-w", "--wave_files", required=True, help="path to waveform files (e.g. './data/*Z')", type=str)
     parser.add_argument("-c", "--columns", help="Number of traces (columns) to show per file (default = 5).",
                         type=int, default=1)
-    
+
     args = parser.parse_args()
 
     if "," in args.wave_files or " " in args.wave_files:
