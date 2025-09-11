@@ -520,13 +520,16 @@ class PlotProj:
                     self.pick_lines.append(line)
 
     def _on_key_press(self, event):
-        """Handle key presses for pick management."""
+        """Handle key presses for pick management and navigation."""
         key = event.key.lower() if event.key else ''
 
+        # Generic exit flags
         if key in ("escape", "enter"):
             self._exit = True
+            return
 
-        if key == 'w' and event.inaxes in self.axs:
+        # Add a global reference time (green dashed) at cursor across all traces
+        if key == 'w' and event.inaxes in getattr(self, "axs", []):
             ref_time = mdt.num2date(event.xdata).replace(tzinfo=None)
             utc_ref_time = UTCDateTime(ref_time)
             self.last_reference = utc_ref_time
@@ -538,15 +541,19 @@ class PlotProj:
                 ax.axvline(x=mdt.date2num(ref_time), color='g', linestyle='--', alpha=0.5)
             self.fig.canvas.draw()
             print(f"[INFO] Reference time added at {utc_ref_time.isoformat()}")
+            return
 
-        elif key == 'n':
+        # Pagination: next page
+        if key == 'n':
             if (self.current_page + 1) * self.plot_config["traces_per_fig"] < len(self.trace_list):
                 self.current_page += 1
                 self._plot_standard_traces(self.current_page)
             else:
                 print("[INFO] Already at last page.")
+            return
 
-        elif key == 'b':
+        # Pagination: previous page
+        if key == 'b':
             if self.current_page > 0:
                 self.current_page -= 1
                 self._plot_standard_traces(self.current_page)
@@ -555,11 +562,15 @@ class PlotProj:
             self._redraw_picks()
             self._update_info_box()
             self.current_pick = None
+            return
 
-        elif key == 'c':
+        # Clear all picks
+        if key == 'c':
             self._clear_picks()
+            return
 
-        elif key == 'p':
+        # Remove the last reference time (from all traces)
+        if key == 'p':
             removed_any = False
             for tr in self.trace_list:
                 if hasattr(tr.stats, "references") and tr.stats.references:
@@ -567,23 +578,29 @@ class PlotProj:
                     removed_any = True
                     if not tr.stats.references:
                         del tr.stats.references
-
             if removed_any:
                 print("[INFO] Last reference time removed from all traces.")
             else:
                 print("[INFO] No reference times to remove.")
             self._redraw_all_reference_lines()
             self.fig.canvas.draw()
+            return
 
-        elif key == 'm':
+        # Alias to remove last reference (kept for backward compatibility)
+        if key == 'm':
             self._remove_last_reference()
+            return
 
-        elif key == 'v':
+        # Toggle command prompt mode
+        if key == 'v':
             self.enable_command_prompt = True
             self.plot(page=self.current_page)
+            return
 
-        elif key == 'e':
-            if event.inaxes not in self.axs:
+        # Interactive pick with prompt at cursor time
+        if key == 'e':
+            if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
+                print("[WARNING] Move the mouse over a trace before pressing 'e'.")
                 return
 
             ax = event.inaxes
@@ -592,9 +609,69 @@ class PlotProj:
             except StopIteration:
                 print("[WARNING] Clicked axis not found.")
                 return
-            trace = self.trace_list[tr_idx]
+
+            # Use the trace actually shown in this subplot page/sort order
+            try:
+                trace = self.displayed_traces[tr_idx]
+            except Exception:
+                print("[WARNING] No displayed trace found for this subplot.")
+                return
+
             pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
 
+            # Ask for pick type and polarity
+            plt.pause(0.01)
+            try:
+                raw_input_str = input(
+                    f"Enter pick type and polarity for {trace.id} at "
+                    f"{pick_time.strftime('%H:%M:%S')} (e.g., 'P,U' or 'Sg'): "
+                ).strip()
+                if ',' in raw_input_str:
+                    phase, polarity = [s.strip() or '?' for s in raw_input_str.split(",", maxsplit=1)]
+                else:
+                    phase = raw_input_str if raw_input_str else "?"
+                    polarity = "?"
+            except Exception:
+                phase, polarity = "?", "?"
+
+            if polarity not in ['U', 'D', '?']:
+                print("[WARNING] Polarity not recognized. Defaulting to '?'.")
+                polarity = '?'
+
+            # Calculate relative time and amplitude at the cursor
+            rel_time = (pick_time - trace.stats.starttime.datetime).total_seconds()
+            amplitude = np.interp(rel_time, trace.times(), trace.data)
+
+            # Persist into trace header
+            pick_entry = {
+                "time": UTCDateTime(pick_time).timestamp,
+                "phase": phase,
+                "amplitude": amplitude,
+                "polarity": polarity
+            }
+            if not hasattr(trace.stats, "picks"):
+                trace.stats.picks = []
+            trace.stats.picks.append(pick_entry)
+
+            # Mirror into in-memory structure
+            if trace.id not in self.picks:
+                self.picks[trace.id] = []
+            self.picks[trace.id].append((pick_time, phase, amplitude, polarity))
+
+            # Save to ISP/CSV (overwrite with current picks)
+            csv_path = self.plot_config.get("pick_output_file")
+            if csv_path:
+                self.write_isp_table_manual(csv_path)
+
+            # Draw pick line + update side box
+            self.current_pick = (trace.id, pick_time)
+            self._draw_pick_lines(trace.id, ax, pick_time)
+            self._update_info_box()
+            self.fig.canvas.draw()
+            print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')} ({phase},{polarity})")
+            return
+
+        # Delete a pick under the cursor (hover highlight)
         if key in ('d', 'delete', 'backspace'):
             if self._hover:
                 trace_id, line, label, pick_time = self._hover
@@ -604,64 +681,12 @@ class PlotProj:
                 else:
                     print("[INFO] No pick under cursor to delete.")
             else:
-                print("[INFO] Hover a pick (red dashed line) and press X/Delete to remove it.")
+                print("[INFO] Hover a pick (red dashed line) and press D/Delete/Backspace to remove it.")
             return
 
-            # Ask for pick type (optional input)
-            plt.pause(0.01)
-            try:
-                raw_input = input(
-                    f"Enter pick type and polarity for {trace.id} at {pick_time.strftime('%H:%M:%S')} (e.g., 'P,U' or 'Sg'): ").strip()
-                if ',' in raw_input:
-                    phase, polarity = [s.strip() or '?' for s in raw_input.split(",", maxsplit=1)]
-                else:
-                    phase = raw_input if raw_input else "?"
-                    polarity = "?"
-            except Exception:
-                phase, polarity = "?", "?"
-
-            if polarity not in ['U', 'D', '?']:
-                print("[WARNING] Polarity not recognized. Defaulting to '?'.")
-                polarity = '?'
-
-            # Calculate relative time and amplitude
-            rel_time = (pick_time - trace.stats.starttime.datetime).total_seconds()
-            amplitude = np.interp(rel_time, trace.times(), trace.data)
-
-            # Build and store pick dictionary in trace
-            pick_entry = {
-                "time": UTCDateTime(pick_time).timestamp,
-                "phase": phase,
-                "amplitude": amplitude,
-                "polarity": polarity
-            }
-
-            if not hasattr(trace.stats, "picks"):
-                trace.stats.picks = []
-            trace.stats.picks.append(pick_entry)
-
-            # Save to CSV file if configured
-            csv_path = self.plot_config.get("pick_output_file")
-            if csv_path:
-                header_needed = not os.path.exists(csv_path)
-                with open(csv_path, "a") as f:
-                    if header_needed:
-                        f.write("id,time,phase,amplitude,polarity\n")
-                    f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
-
-            # Add to in-memory pick tracking
-            if trace.id not in self.picks:
-                self.picks[trace.id] = []
-            self.picks[trace.id].append((pick_time, phase, amplitude, polarity))
-
-            # Draw pick line and update display
-            self.current_pick = (trace.id, pick_time)
-            self._draw_pick_lines(trace.id, ax, pick_time)
-            self._update_info_box()
-            self.fig.canvas.draw()
-
-        elif key in ['1', '2', '3', '4', '5', '6']:
-            if event.inaxes not in self.axs or event.xdata is None:
+        # Quick-pick hotkeys at cursor (1–6)
+        if key in ['1', '2', '3', '4', '5', '6']:
+            if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
                 print("[WARNING] Move your mouse over a trace before pressing 1–6 to pick.")
                 return
 
@@ -674,6 +699,7 @@ class PlotProj:
                 '6': ("S", "D"),
             }
             phase, polarity = key_map[key]
+
             ax = event.inaxes
             try:
                 tr_idx = next(i for i, a in enumerate(self.axs) if a == ax)
@@ -681,7 +707,12 @@ class PlotProj:
                 print("[WARNING] Could not find axis index.")
                 return
 
-            trace = self.trace_list[tr_idx]
+            try:
+                trace = self.displayed_traces[tr_idx]
+            except Exception:
+                print("[WARNING] No displayed trace found for this subplot.")
+                return
+
             pick_time = mdt.num2date(event.xdata).replace(tzinfo=None)
             rel_time = (pick_time - trace.stats.starttime.datetime).total_seconds()
             amplitude = np.interp(rel_time, trace.times(), trace.data)
@@ -704,17 +735,13 @@ class PlotProj:
             csv_path = self.plot_config.get("pick_output_file")
             if csv_path:
                 self.write_isp_table_manual(csv_path)
-                # header_needed = not os.path.exists(csv_path)
-                # with open(csv_path, "a") as f:
-                #     if header_needed:
-                #         f.write("id,time,phase,amplitude,polarity\n")
-                #     f.write(f"{trace.id},{pick_time.isoformat()},{phase},{amplitude:.4f},{polarity}\n")
 
             self.current_pick = (trace.id, pick_time)
             self._draw_pick_lines(trace.id, ax, pick_time)
             self._update_info_box()
             self.fig.canvas.draw()
             print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')} ({phase},{polarity})")
+            return
 
     def _redraw_picks(self):
         """Redraw all pick lines only on their corresponding axes."""
@@ -1791,103 +1818,12 @@ class PlotProj:
                 self.fig.canvas.draw_idle()
         print(f"[INFO] Imported {added} ISP picks from '{input_file}'.")
 
-
-    def write_nlloc_obs_manual(self, filepath: Optional[str] = None):
-
+    def write_isp_table_manual(self, filepath: str, delimiter: str = " ", write_header_when_empty: bool = True):
         """
-       Write current picks to a NonLinLoc observation (NLLOC_OBS) file WITHOUT ObsPy.
-        Rules:
-      - Station: tr.stats.station (6 chars field, left-justified)
-      - Instrument: "?" (4 chars)
-      - Component: tr.stats.channel or last char; we use full channel if present (4 chars)
-      - Onset: '?' (1 char) unless you later store it per pick
-      - Phase: from pick_entry["phase"]
-      - Polarity:
-          * P picks: keep 'U', 'D', or '?'
-          * S picks: map U->'+', D->'-', ?->'?'
-      - Date/Time: from pick_entry["time"] (UTC timestamp)
-      - Error model: 'GAU'
-      - Numeric tail (5 floats):
-          time_error, err_mag, coda_dur, amplitude, period
-        If not available, we use common defaults: 0.00E+00, -1, -1, -1, 1
-
-        File lines look like:
-          STA      INST COMP ONSET PHASE  POL YYYYMMDD HHMM  SS.ssss GAU  err  errMag coda amp period
-            Adds a header line if the file does not exist yet.
-        """
-
-        import tempfile
-
-        if filepath is None:
-            filepath = self.plot_config.get("pick_output_file", "./picks.obs")
-
-        lines = []
-        for tr in self.trace_list:
-            if not hasattr(tr.stats, "picks") or not tr.stats.picks:
-                continue
-
-            sta = (getattr(tr.stats, "station", "") or "?")[:6]
-            inst = "?"
-            cha_full = (getattr(tr.stats, "channel", "") or "?")
-            comp = (cha_full if cha_full else "?")[:4]
-
-            for p in tr.stats.picks:
-                ts = p.get("time")
-                if ts is None:
-                    continue
-                phase = (p.get("phase") or "?").upper()
-                pol = (p.get("polarity") or "?").upper()
-                onset = (p.get("onset") or "?").lower()[:1]
-
-                # S-only polarity mapping
-                if phase.startswith("S"):
-                    pol_out = "+" if pol == "U" else "-" if pol == "D" else "?"
-                else:
-                    pol_out = pol if pol in ("U", "D", "?") else "?"
-
-                t = UTCDateTime(ts)
-                date = t.strftime("%Y%m%d")
-                hhmm = t.strftime("%H%M")
-                sec = t.second + t.microsecond * 1e-6
-
-                time_error = float(p.get("time_error", 0.0))
-                err_mag = float(p.get("err_mag", -1.0))
-                coda_dur = float(p.get("coda", -1.0))
-                amplitude = float(p.get("amplitude", -1.0))
-                period = float(p.get("period", 1.0))
-
-                lines.append(
-                    f"{sta.ljust(6)} {inst.ljust(4)} {comp.ljust(4)} {onset.ljust(1)} "
-                    f"{phase.ljust(6)} {pol_out.ljust(1)} {date} {hhmm} {sec:7.4f} GAU "
-                    f"{time_error:9.2e} {err_mag:9.2e} {coda_dur:9.2e} {amplitude:9.2e} {period:9.2e}"
-                )
-
-        if not lines:
-            print("[INFO] No picks to write.")
-            return
-
-        header = (
-            "# Station Inst Comp Onset Phase Pol YYYYMMDD HHMM SS.SSSS ErrMod "
-            "TimeErr ErrMag CodaDur Amplitude Period"
-        )
-
-        # Atomic overwrite
-        dirpath = os.path.dirname(os.path.abspath(filepath)) or "."
-        with tempfile.NamedTemporaryFile("w", delete=False, dir=dirpath) as tf:
-            tmp = tf.name
-            tf.write(header + "\n")
-            tf.write("\n".join(lines) + "\n")
-        os.replace(tmp, filepath)
-
-        print(f"[INFO] Wrote {len(lines)} picks to NLLOC_OBS (overwritten): {filepath}")
-
-    def write_isp_table_manual(self, filepath: str, delimiter: str = " "):
-        """
-        Overwrite an ISP/CSV-like table (headered) with *current* picks.
-        Header columns:
-          Station_name Instrument Component P_phase_onset P_phase_descriptor First_Motion
-          Date Hour_min Seconds Err ErrMag Coda_duration Amplitude Period
-        S polarity on write: U->'+', D->'-', ?->'?' ; P keeps U/D/?.
+        Overwrite an ISP/CSV-like table with current picks.
+        If there are no picks, still overwrite the file:
+          - If write_header_when_empty=True (default): write only the header row.
+          - If False: create an empty file.
         """
         import os, tempfile
         from obspy import UTCDateTime
@@ -1911,6 +1847,7 @@ class PlotProj:
                 phase = (p.get("phase") or "?").upper()
                 pol = (p.get("polarity") or "?").upper()
 
+                # ISP/NLLoc polarity mapping:
                 fm = "+" if (phase.startswith("S") and pol == "U") else \
                     "-" if (phase.startswith("S") and pol == "D") else \
                         (pol if pol in ("U", "D", "?") else "?")
@@ -1924,28 +1861,34 @@ class PlotProj:
                 t = UTCDateTime(ts)
                 date = t.strftime("%Y%m%d")
                 hhmm = t.strftime("%H%M")
-                sec = t.second + t.microsecond * 1e-6
+
+                # Seconds must be SS.sss with leading zero, e.g., 02.560
+                sec_val = t.second + t.microsecond * 1e-6
+                if sec_val >= 60:
+                    sec_val = 59.999  # guard rare round-up
+                seconds_str = f"{sec_val:06.3f}"
 
                 rows.append([
                     sta, inst, comp, onset, phase, fm,
-                    date, hhmm, f"{sec:.3f}", err_model, f"{err_mag:.2E}",
+                    date, hhmm, seconds_str, err_model, f"{err_mag:.2E}",
                     f"{float(coda):.1f}", f"{float(amp):.2f}", f"{float(period):.2f}"
                 ])
 
-        if not rows:
-            print("[INFO] No picks to write.")
-            return
-
-        # Atomic overwrite
+        # Always overwrite (even if rows is empty)
         dirpath = os.path.dirname(os.path.abspath(filepath)) or "."
-        import tempfile
         with tempfile.NamedTemporaryFile("w", delete=False, dir=dirpath) as tf:
             tmp = tf.name
-            tf.write(header + "\n")
+            if write_header_when_empty or rows:
+                tf.write(header + "\n")
             for r in rows:
                 tf.write(delimiter.join(map(str, r)) + "\n")
         os.replace(tmp, filepath)
 
-        print(f"[INFO] Wrote {len(rows)} picks to ISP table (overwritten): {filepath}")
+        if rows:
+            print(f"[INFO] Wrote {len(rows)} picks to ISP table (overwritten): {filepath}")
+        else:
+            msg = "[INFO] No picks remain — CSV overwritten "
+            msg += "(header only)." if write_header_when_empty else "(empty file)."
+            print(msg, filepath)
 
 

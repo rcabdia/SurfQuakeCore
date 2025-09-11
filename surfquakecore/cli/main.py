@@ -1061,6 +1061,7 @@ def _processing():
             - Apply processing steps (filtering, normalization, etc.)
             - Optionally visualize the waveforms (interactive mode)
             - Apply a user-defined post-processing script before or after plotting
+            - Warning: The process will automatically merge traces
 
     Modes:
         Default  : Interactive mode (plotting + user prompts)
@@ -1104,6 +1105,7 @@ def _processing():
         --plot_config              [OPTIONAL] Optional plot configuration file (YAML)
         --post_script              [OPTIONAL] Python script to apply per event stream
         --post_script_stage        [OPTIONAL] When to apply the post-script: before | after (default: before)
+    
     """
     )
 
