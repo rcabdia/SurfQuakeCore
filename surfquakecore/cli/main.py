@@ -1424,7 +1424,8 @@ def _quickproc():
         description="Quick waveform processing. Designed for rapid, raw file-based workflows.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-Overview:
+    
+    Overview:
         Process seismic traces.
         You can:
             - Apply processing steps (filtering, normalization, etc.)

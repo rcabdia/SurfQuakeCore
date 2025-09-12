@@ -9,7 +9,7 @@ import os
 import readline
 import atexit
 from typing import Optional
-from surfquakecore.data_processing.processing_methods import filter_trace
+from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers
 
 
 class PlotCommandPrompt:
@@ -43,6 +43,7 @@ class PlotCommandPrompt:
             "load_picks": self._cmd_load_picks,
             "shift": self._cmd_shift,
             "write": self._cmd_write,
+            "info": self.plot_command_prompt,
             "help": self._cmd_help,
             "exit": self._cmd_exit
         }
@@ -184,6 +185,15 @@ class PlotCommandPrompt:
                 self._exit_code = "p"
         except Exception as e:
             print(f"[ERROR] Failed to load ISP picks: {e}")
+
+    def plot_command_prompt(self, args):
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+
+        try:
+            print_surfquake_trace_headers(traces, max_columns=3)
+        except Exception as e:
+            print(f"Error displaying info: {e}")
 
 
     def _cmd_filter(self, args):
@@ -1133,6 +1143,7 @@ class PlotCommandPrompt:
         print(" shift --phase <name>          Shift by pick (type: help shift for info)")
         print(" cut --phase <name> ...        Trim traces (type: help cut for usage)")
         print(" write --folder_path <path>    Export displayed traces to HDF5")
+        print(" info                          Print header information from displayed traces")
         print(" exit                          Close command line and exit to interactive picking mode")
         print(" help [command]                Show general or detailed help")
 

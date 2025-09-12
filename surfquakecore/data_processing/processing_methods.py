@@ -21,6 +21,7 @@ from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheb
 from surfquakecore.utils.obspy_utils import Filters
 from obspy.signal.filter import envelope
 from surfquakecore.cython_module.whiten import whiten_aux
+from typing import Union, Sequence
 
 def filter_trace(trace, type, fmin, fmax, **kwargs):
     """
@@ -1017,9 +1018,16 @@ def particle_motion(z, n, e, save_path: str = None):
         plt.close(fig_part)
 
 
-def print_surfquake_trace_headers(file_list, max_columns=3):
+def print_surfquake_trace_headers(
+    sources: Union[str, Trace, Sequence[Union[str, Trace]]],
+    max_columns: int = 3
+) -> None:
     """
-    Display one trace per file, side-by-side in columns, for up to `max_columns` at a time.
+    Display one trace per source, side-by-side in columns, for up to `max_columns` at a time.
+    Sources can be:
+      - file path (str),
+      - ObsPy Trace,
+      - or a sequence mixing str and Trace.
     Includes SurfQuake geodetic/event headers. Skips event info if missing.
     """
 
@@ -1048,24 +1056,45 @@ def print_surfquake_trace_headers(file_list, max_columns=3):
         except Exception:
             return "N/A"
 
-    total = len(file_list)
+    # --- Normalize inputs into a flat list of sources (path strings or (label, Trace) tuples)
+    normalized = []
+
+    if isinstance(sources, Trace):
+        normalized.append((sources.id or "Trace", sources))
+    elif isinstance(sources, str):
+        normalized.append(sources)
+    else:
+        # assume iterable of str/Trace
+        for item in sources:
+            if isinstance(item, Trace):
+                normalized.append((item.id or "Trace", item))
+            elif isinstance(item, str):
+                normalized.append(item)
+            else:
+                raise TypeError(f"Unsupported input type: {type(item)} (only str or Trace allowed)")
+
+    total = len(normalized)
     for start in range(0, total, max_columns):
-        chunk = file_list[start:start + max_columns]
+        chunk = normalized[start:start + max_columns]
         traces = []
 
-        for file_path in chunk:
+        for src in chunk:
             try:
-                st = read(file_path, headonly=True)
-                tr = st[0]
-                traces.append((os.path.basename(file_path), tr))
+                if isinstance(src, tuple):
+                    label, tr = src
+                    traces.append((label, tr))
+                else:
+                    st = read(src, headonly=True)
+                    tr = st[0]
+                    label = os.path.basename(src)
+                    traces.append((label, tr))
             except Exception as e:
-                print(f"Error reading {file_path}: {e}")
+                print(f"Error reading {src}: {e}")
 
         if not traces:
             print("No valid traces in this chunk.")
             continue
 
-        # Check if all traces in chunk have event info
         all_have_event = all(
             hasattr(tr.stats, "geodetic")
             and "otime" in tr.stats.geodetic
@@ -1073,7 +1102,6 @@ def print_surfquake_trace_headers(file_list, max_columns=3):
             for _, tr in traces
         )
 
-        # Fields to always show
         fields = [
             ("File", lambda f, s: f),
             ("Network", lambda f, s: s.network),
@@ -1087,7 +1115,6 @@ def print_surfquake_trace_headers(file_list, max_columns=3):
             ("Npts", lambda f, s: s.npts),
             ("Picks", lambda f, s: format_picks(getattr(s, "picks", []))),
             ("References", lambda f, s: format_refs(getattr(s, "references", []))),
-
         ]
 
         if all_have_event:
@@ -1096,10 +1123,10 @@ def print_surfquake_trace_headers(file_list, max_columns=3):
                 ("Event Lat", lambda f, s: s.geodetic["event"][0]),
                 ("Event Long", lambda f, s: s.geodetic["event"][1]),
                 ("Distance (km)", lambda f, s: fmt2(s.geodetic["geodetic"][0]) if hasattr(s, "geodetic") else "N/A"),
-            ("Az (°)", lambda f, s: fmt2(s.geodetic["geodetic"][1]) if hasattr(s, "geodetic") else "N/A"),
-            ("Baz (°)", lambda f, s: fmt2(s.geodetic["geodetic"][2]) if hasattr(s, "geodetic") else "N/A"),
-            ("Incidence (°)", lambda f, s: fmt2(s.geodetic["geodetic"][3]) if hasattr(s, "geodetic") else "N/A"),
-            ("Arrivals", lambda f, s: has_arrivals(s.geodetic.get("arrivals", [])) if hasattr(s, "geodetic") else "None"),
+                ("Az (°)", lambda f, s: fmt2(s.geodetic["geodetic"][1]) if hasattr(s, "geodetic") else "N/A"),
+                ("Baz (°)", lambda f, s: fmt2(s.geodetic["geodetic"][2]) if hasattr(s, "geodetic") else "N/A"),
+                ("Incidence (°)", lambda f, s: fmt2(s.geodetic["geodetic"][3]) if hasattr(s, "geodetic") else "N/A"),
+                ("Arrivals", lambda f, s: has_arrivals(s.geodetic.get("arrivals", [])) if hasattr(s, "geodetic") else "None"),
             ])
 
         for label, accessor in fields:

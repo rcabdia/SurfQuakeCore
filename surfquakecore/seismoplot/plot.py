@@ -61,15 +61,14 @@ class PlotProj:
             "title_fontsize": 9,
             "show_legend": True,
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
-            "pick_output_file": "./picks.csv",
             "sharey": False,
             "show_crosshair": False,
-            "show_arrivals": False}
-
-        self.plot_config.update({
+            "show_arrivals": False,
+            "show_info_picks": False,
             "pick_output_format": "NLLOC_OBS",
             "pick_output_file": "./picks.csv",
-        })
+            "auto_load_pick_file": False}
+
         self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
         # Override defaults with user config if provided
@@ -255,12 +254,16 @@ class PlotProj:
         plt.ion()
         plt.tight_layout()
 
+        if self.plot_config.get("auto_load_pick_file", False):
+            pick_file = self.plot_config.get("pick_output_file", "./picks.csv")
+            self.import_nlloc_obs(pick_file)
+
         if self.enable_command_prompt:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
             plt.pause(0.5)
 
-            print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' for picking mode")
+            print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' return to picking mode")
 
             while True:
                 prompt = PlotCommandPrompt(self)
@@ -329,6 +332,7 @@ class PlotProj:
             points.sort()  # ensure time ordering
             times, dists = zip(*points)
             ax.plot(times, dists, linestyle='--', linewidth=1.0, alpha=0.6, label=f"{phase}")
+
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Distance (km)")
         ax.xaxis_date()
@@ -373,6 +377,7 @@ class PlotProj:
                 ax.plot(t, tr.data, color="black", linewidth=0.8, alpha=0.7)
             else:
                 ax.plot(t, tr.data, linewidth=0.8, alpha=0.7, label=tr.id)
+
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Normalized Amplitude")
         ax.xaxis_date()
@@ -396,7 +401,8 @@ class PlotProj:
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
         self.fig.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
         self.info_box = self.fig.text(0.75, 0.8, "", ha='left', va='top', fontsize=9)
-        self._update_info_box()
+        if self.plot_config["show_info_picks"]:
+            self._update_info_box()
         self._restore_state()
 
 
@@ -470,7 +476,8 @@ class PlotProj:
         # Draw pick line and update display
         self.current_pick = (trace.id, pick_time)
         self._draw_pick_lines(trace.id, ax, pick_time)
-        self._update_info_box()
+        if self.plot_config["show_info_picks"]:
+            self._update_info_box()
         self.fig.canvas.draw()
 
     def _draw_pick_lines(self, trace_id, ax, pick_time):
@@ -560,7 +567,8 @@ class PlotProj:
             else:
                 print("[INFO] Already at first page.")
             self._redraw_picks()
-            self._update_info_box()
+            if self.plot_config["show_info_picks"]:
+                self._update_info_box()
             self.current_pick = None
             return
 
@@ -666,9 +674,11 @@ class PlotProj:
             # Draw pick line + update side box
             self.current_pick = (trace.id, pick_time)
             self._draw_pick_lines(trace.id, ax, pick_time)
-            self._update_info_box()
+            if self.plot_config["show_info_picks"]:
+                self._update_info_box()
             self.fig.canvas.draw()
-            print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')} ({phase},{polarity})")
+            print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')}, phase ({phase},{polarity}), "
+                  f" amplitude {amplitude}")
             return
 
         # Delete a pick under the cursor (hover highlight)
@@ -738,9 +748,11 @@ class PlotProj:
 
             self.current_pick = (trace.id, pick_time)
             self._draw_pick_lines(trace.id, ax, pick_time)
-            self._update_info_box()
+            if self.plot_config["show_info_picks"]:
+                self._update_info_box()
             self.fig.canvas.draw()
-            print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')} ({phase},{polarity})")
+            print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')}, phase ({phase},{polarity}), "
+                  f" amplitude {amplitude}")
             return
 
     def _redraw_picks(self):
@@ -790,7 +802,8 @@ class PlotProj:
         self.pick_lines = {}
 
         self.current_pick = None
-        self._update_info_box()
+        if self.plot_config["show_info_picks"]:
+            self._update_info_box()
         self.fig.canvas.draw()
 
     def get_picks(self):
@@ -1672,7 +1685,8 @@ class PlotProj:
             self.write_isp_table_manual(csv_path)
 
         self._clear_hover_style()
-        self._update_info_box()
+        if self.plot_config["show_info_picks"]:
+            self._update_info_box()
         self.fig.canvas.draw_idle()
 
     def import_nlloc_obs(self, input_file: str, delimiter=r"\s+"):
@@ -1813,7 +1827,8 @@ class PlotProj:
                 print(f"[WARN] Row skipped: {e}")
 
         if added:
-            self._update_info_box()
+            if self.plot_config["show_info_picks"]:
+                self._update_info_box() # too messy update the infobox, could be too much picks
             if self.fig:
                 self.fig.canvas.draw_idle()
         print(f"[INFO] Imported {added} ISP picks from '{input_file}'.")
