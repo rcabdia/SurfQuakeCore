@@ -32,6 +32,7 @@ where = ["."]
 [tool.setuptools.package-data]
 "surfquakecore.binaries.linux_bin" = ["mti_green/*", "NLL/*", "REAL/*", "FOCMEC/*"]
 "surfquakecore.binaries.mac_bin" = ["mti_green/*", "NLL/*", "REAL/*", "FOCMEC/*"]
+"surfquakecore.binaries.mac_bin_m" = ["mti_green/*", "NLL/*", "REAL/*", "FOCMEC/*"]
 "surfquakecore.binaries.win_bin" = ["mti_green/*"]
 
 "surfquakecore.earthquake_location.loc_structure" = [
