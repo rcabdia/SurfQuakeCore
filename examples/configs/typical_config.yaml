@@ -1,0 +1,20 @@
+Analysis:
+  process_1:
+    name: 'rmean'
+    method: 'linear'
+  process_2:
+    name: 'taper'
+    method: 'cosine'
+    max_percentage: 0.05
+  process_3:
+    name: 'remove_response'
+    water_level: 90
+    units: 'VEL' # [ACC Wood Anderson]
+    pre_filt: [0.005,0.008,45,48] # Hz, incremental frequencies defining the pre-filt
+  process_4:
+    name: 'filter'
+    type: 'bandpass'
+    fmin: 0.5
+    fmax: 5.5
+    corners: 4
+    zerophase: True

@@ -1,0 +1,19 @@
+Analysis:
+  process_1:
+    name: 'spectrum'
+    method: 'multitaper'
+    output_path: "/Users/admin/Desktop/surf_test/cut/spec"
+  process_2:
+    name: 'spectrogram'
+    win: 3
+    overlap: 50
+    linf: 0
+    lsup: 20
+    output_path: "/Users/admin/Desktop/surf_test/cut/spec"
+  process_3:
+    name: 'cwt'
+    wavelet: 'cm'
+    param: 6.0
+    fmin: 0.5
+    fmax: 8.0
+    output_path: "/Users/admin/Desktop/surf_test/cut/spec"

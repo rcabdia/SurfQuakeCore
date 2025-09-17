@@ -1,0 +1,30 @@
+Analysis:
+  process_1:
+    name: 'fill_gaps'
+    method: 'latest'
+  process_2:
+    name: 'rmean'
+    method: 'linear'
+  process_3:
+    name: 'taper'
+    method: 'cosine'
+    max_percentage: 0.05
+  process_4:
+    name: 'whitening'
+    freq_width: 0.02
+    taper_edge: True
+  process_5:
+    name: 'filter'
+    type: 'bandpass'
+    fmin: 10.0
+    fmax: 80.0
+    corners: 4
+    zerophase: True
+  process_6:
+    name: 'cross_correlate'
+    mode: 'full'
+    normalize: 'full'
+    reference_idx: 0
+    strict: False
+    trim: False
+

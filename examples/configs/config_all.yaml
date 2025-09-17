@@ -1,0 +1,127 @@
+Analysis:
+  process_1:
+    name: 'rmean'
+    method: 'linear'
+  process_2:
+    name: 'taper'
+    method: 'cosine'
+    max_percentage: 0.05
+  process_3:
+    name: 'resample'
+    sampling_rate: 20
+    pre_filter: True
+  process_4:
+    name: 'fill_gaps'
+    method: 'latest'
+  process_5:
+    name: 'normalize'
+    norm: True
+  process_6:
+    name: 'filter'
+    type: 'bandpass'
+    fmin: 0.5
+    fmax: 8.5
+    corners: 4
+    zerophase: True
+  process_7:
+    name: 'add_noise'
+    noise_type: 'white'
+    SNR_dB: 1
+  process_8:
+    name: 'wavelet_denoise'
+    dwt: 'sym8'
+    threshold: 0.1
+  process_9:
+    name: 'differentiate'
+    method: 'spectral'
+  process_10:
+    name: 'integrate'
+    method: 'spectral'
+  process_11:
+    name: 'whitening'
+    freq_width: 0.02
+    taper_edge: True
+  process_12:
+    name: 'smoothing'
+    method: 'gaussian'
+    time_window: 5
+    FWHM: 0.05
+  process_13:
+    name: "time_normalization"
+    method: 'time normalization'
+    norm_win: 10
+  process_14:
+    name: "wiener_filter"
+    time_window: 1.0
+    noise_power: 0
+  process_15:
+    name: 'shift'
+    time_shifts: [-5, 2]
+  process_16:
+    name: 'rotate'
+    type: 'NE->RT'
+    method: 'GAC'
+    angle: 30.0
+    inclination: 0.0
+  process_17:
+    name: 'cross_correlate'
+    mode: 'full'
+    normalize: 'full'
+    reference_idx: 1
+    strict: True
+  process_18:
+    name: 'stack'
+    method: 'pw'
+    order: 1
+  process_19:
+    name: 'envelope'
+    method: 'SMOOTH'
+    corner_freq: 0.15
+  process_20:
+    name: 'cwt'
+    wavelet: 'cm'
+    fmin: 0.5
+    fmax: 8.0
+    output_path: /Volumes/LaCie/all_andorra/cris_test/output
+  process_21:
+    name: 'entropy'
+    win: 5.0
+    overlap: 50
+  process_22:
+    name: 'snr'
+    method: 'classic'
+    sign_win: 5.0
+    noise_win: 30.0
+  process_23:
+    name: 'raw'
+    factor: 20
+    integers: True
+  process_24:
+    name: 'spectrogram'
+    win: 3
+    overlap: 50
+    linf: 0
+    lsup: 20
+    output_path: "/Users/admin/Desktop/surf_test/cut/spec"
+  process_24:
+    name: 'raw'
+    factor: 20
+    integers: True
+  process_25:
+    name: 'concat'
+  process_26:
+    name: 'rename'
+    
+    networks:
+      IM: IH      # Replace network XX → YY
+      IK: IN
+    
+    stations:
+      IL02: XX02
+      ARNO: MELI
+    
+    channels:
+      SHZ: BHZ     # Entire channel replacement
+
+    components:
+      Z: E         # Only the last component letter (Z → E, N → Z, etc.)
