@@ -327,11 +327,12 @@ def _polarity():
 
     args = parser.parse_args()
 
-    picking_file = make_abs(args.picking_file)
-    project_file = make_abs(args.project_file)
+    picking_file = make_abs(args.picking_file_path)
+    project_file = make_abs(args.project_file_path)
+    output_file = make_abs(args.output_file_path)
 
     project = SurfProject.load_project(project_file)
-    RunPolarity(project, picking_file, args.output_file, args.thresh).send_polarities()
+    RunPolarity(project, picking_file, output_file, args.thresh).send_polarities()
 
 
 def _focmec():
