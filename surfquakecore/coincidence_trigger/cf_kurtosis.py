@@ -51,7 +51,7 @@ class CFKurtosis:
         cf = []
         for tr in self.stream:
             YN1, CF1, cf_stack, Tn, Nb, freqs = self._compute_cf(tr)
-            self.cf.append(cf_stack)
+            cf.append(cf_stack)
         st_cfs = Stream(cf)
         return st_cfs
 
@@ -65,7 +65,6 @@ class CFKurtosis:
         filter_norm = None
         rec_memory = None
 
-
         delta = float(tr.stats.delta)
         freqs = np.geomspace(self.fmin, min(self.fmax, 0.98 * (0.5 / delta)), 20)
         y = np.asarray(tr.data, dtype=np.float64)
@@ -76,9 +75,9 @@ class CFKurtosis:
 
         # compute coefficients/norm if not provided (same helpers as your code)
         if CN_HP is None or CN_LP is None:
-            CN_HP, CN_LP = CFMB.rec_filter_coeff(freqs, delta)
+            CN_HP, CN_LP = CFKurtosis.rec_filter_coeff(freqs, delta)
         if filter_norm is None:
-            filter_norm = CFMB.rec_filter_norm(freqs, delta, CN_HP, CN_LP, npoles=4)
+            filter_norm = CFKurtosis.rec_filter_norm(freqs, delta, CN_HP, CN_LP, npoles=4)
 
         if hos_sigma is None:
             hos_sigma = -1.0

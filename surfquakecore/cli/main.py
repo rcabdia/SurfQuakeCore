@@ -10,8 +10,12 @@
 
 import warnings
 import os
+
+from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore")
+
 import sys
 import traceback
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
@@ -106,7 +110,10 @@ def _create_actions():
             name="focmec", run=_focmec, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "plotmec": _CliActions(
-            name="plotmec", run=_plotmec, description=f"Type {__entry_point_name} -h for help.\n")
+            name="plotmec", run=_plotmec, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "trigg": _CliActions(
+            name="trigg", run=_trigg, description=f"Type {__entry_point_name} -h for help.\n")
 
     }
 
@@ -1255,6 +1262,105 @@ def _processing():
                             reference=parsed_args.reference, phase_list=phase_list)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
+
+def _trigg():
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} computes coincidence trigger",
+        description="Process seismograms in daily files to detect events using coincidence trigger",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Overview:
+        Process seismograms in daily files to detect events using coincidence trigger
+
+        Usage Example:
+            surfquake processing_daily \\
+                -c config.yaml \\
+                -o ./output_folder \\
+                --min_date "2024-01-01 00:00:00" \\
+                --max_date "2024-01-02 00:00:00" \\
+                --span_seconds  86400\\
+                
+
+        Key Arguments:
+            -p, --project_file        [REQUIRED] Path to a saved project files
+            -o, --output_folder       [OPTIONAL] Directory for processed output
+            -c, --config_file         [OPTIONAL] Processing configuration (YAML)
+            -n, --net                 [OPTIONAL] Network code filter
+            -s, --station             [OPTIONAL] Station code filter
+            -ch, --channel            [OPTIONAL] Channel filter
+            --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
+            --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
+            --span_seconds            [OPTIONAL] Select and merge files in sets of time spans, DEFAULT 86400
+        """)
+
+    arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
+
+    arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
+
+    arg_parse.add_argument("-c", "--config_file", required=False, help="YAML config for processing")
+
+    arg_parse.add_argument("--span_seconds", type=int, default=86400,
+                           help="Time span to split your dataset (in seconds), default 86400s")
+
+    # Filter arguments
+    arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
+
+    arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
+
+    arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
+
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+
+    parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+
+    # --- Load project --
+
+    sp = SurfProject.load_project(parsed_args.project_file)
+
+    # --- Apply key filters ---
+    filters = {}
+    if parsed_args.net:
+        filters["net"] = parsed_args.net
+    if parsed_args.station:
+        filters["station"] = parsed_args.station
+    if parsed_args.channel:
+        filters["channel"] = parsed_args.channel
+    if filters:
+        print(f"[INFO] Filtering project by: {filters}")
+        sp.filter_project_keys(**filters)
+
+    # --- Apply time filters ---
+    min_date, max_date = None, None
+    try:
+        if parsed_args.min_date:
+            # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
+            min_date = parser.parse(parsed_args.min_date)
+        if parsed_args.max_date:
+            # max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
+            max_date = parser.parse(parsed_args.max_date)
+        if min_date or max_date:
+            print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
+            sp.filter_project_time(starttime=min_date, endtime=max_date, tol=120, verbose=True)
+    except ValueError as ve:
+        print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+        raise ve
+
+    # --- Decide between time segment or split ---
+
+    print(f"[INFO] Splitting into subprojects every {parsed_args.span_seconds} seconds")
+    subprojects = sp.split_by_time_spans(
+        span_seconds=parsed_args.span_seconds,
+        min_date=parsed_args.min_date,
+        max_date=parsed_args.max_date,
+        file_selection_mode="overlap_threshold",
+        verbose=True)
+
+    print(subprojects)
+    ct = CoincidenceTrigger(subprojects, parsed_args.config_file)
+    ct.optimized_project_processing()
 
 def _processing_daily():
 

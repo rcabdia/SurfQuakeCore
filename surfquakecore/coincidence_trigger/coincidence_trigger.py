@@ -3,32 +3,22 @@
 """
 coincidence_trigger
 """
+
 import os
 from typing import Union
-from datetime import datetime
-from obspy import UTCDateTime, read, Stream
+from obspy import read, Stream
 from obspy.signal.trigger import coincidence_trigger
-from multiprocessing import Pool
-import pandas as pd
 from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.coincidence_trigger.coincidence_parse import load_concidence_configuration
 from surfquakecore.coincidence_trigger.structures import CoincidenceConfig
-from surfquakecore.project.surf_project import SurfProject
 from pprint import pprint
 from surfquakecore.utils.obspy_utils import MseedUtil
 
-
 class CoincidenceTrigger:
-    def __init__(self, project: Union[SurfProject, str], parameters: dict,
-                 coincidence_config: Union[str, CoincidenceConfig]):
+    def __init__(self, projects: list, coincidence_config: Union[str, CoincidenceConfig]):
 
-        if isinstance(project, str):
-            self.project = SurfProject.load_project(project)
-        else:
-            self.project = project
-
+        self.projects = projects
         self.__get_coincidence_config(coincidence_config)
-
 
         self.the_on: float = self.coincidence_config.cluster_configuration.threshold_on
         self.the_off: float = self.coincidence_config.cluster_configuration.threshold_off
@@ -39,9 +29,10 @@ class CoincidenceTrigger:
         self.method_preferred = self.coincidence_config.cluster_configuration.method_preferred
 
         if self.method_preferred == "SNR":
+
             self.method_snr: str = self.coincidence_config.sta_lta_configuration.method
-            self.sta = parameters.pop("sta", 1)  # time_window_kurtosis
-            self.lta = parameters.pop("lta", 40)
+            self.sta = self.coincidence_config.sta_lta_configuration.sta_win
+            self.lta = self.coincidence_config.sta_lta_configuration.lta_win
 
         elif self.method_preferred == "Kurtosis":
 
@@ -49,6 +40,7 @@ class CoincidenceTrigger:
             self.hos_order = self.coincidence_config.kurtosis_configuration.hos_order
         else:
             print("Available preferred methods are: SNR or Kurtosis")
+
     def __get_coincidence_config(self, coincidence_config):
         if isinstance(coincidence_config, str) and os.path.isfile(coincidence_config):
             self.coincidence_config: CoincidenceConfig = load_concidence_configuration(coincidence_config)
@@ -144,13 +136,12 @@ class CoincidenceTrigger:
     def thresholding_cwt_kurt(self, files_list):
 
         traces = []
+        events = []
         events_times_cluster = None
-
 
         for file in files_list:
             try:
                 tr = read(file)[0]
-
                 tr = self.fill_gaps(tr)
                 if tr is not None:
                     traces.append(tr)
@@ -158,117 +149,80 @@ class CoincidenceTrigger:
                 print("File not included: ", file)
 
         st = Stream(traces)
-        st.merge()
+        st.merge(method=1, fill_value='interpolate', interpolation_samples=-1)
 
         print("Ready to run coincidence Trigger at: ")
         print(st.__str__(extended=True))
+        if st:
+            cf_kurt = CFKurtosis(st, self.coincidence_config.kurtosis_configuration,
+                       self.coincidence_config.cluster_configuration.fmin,
+                       self.coincidence_config.cluster_configuration.fmin)
 
-        cf_kurt = CFKurtosis(files_list, self.coincidence_config.kurtosis_configuration,
-                   self.coincidence_config.cluster_configuration.fmin,
-                   self.coincidence_config.cluster_configuration.fmin)
+            st_kurt = cf_kurt.run_kurtosis()
+            events = coincidence_trigger(trigger_type=None, thr_on=self.the_on, thr_off=self.the_off,
+                                         trigger_off_extension=self.centroid_radio,
+                                         thr_coincidence_sum=self.coincidence, stream=st_kurt,
+                                         similarity_threshold=0.8, details=True)
 
-        st_kurt = cf_kurt.run_kurtosis()
-        events = coincidence_trigger(trigger_type=None, thr_on=self.the_on, thr_off=self.the_off,
-                                     trigger_off_extension=self.centroid_radio,
-                                     thr_coincidence_sum=self.coincidence, stream=st_kurt,
-                                     similarity_threshold=0.8, details=True)
+            triggers = self._extract_event_info(events)
 
-        triggers = self._extract_event_info(events)
-
-        if len(triggers) > 0:
-            events_times_cluster, _ = MseedUtil.cluster_events(triggers, eps=self.centroid_radio)
-            self._coincidence_info(events, events_times_cluster)
-            print("Number of events detected", len(events_times_cluster))
+            if len(triggers) > 0:
+                events_times_cluster, _ = MseedUtil.cluster_events(triggers, eps=self.centroid_radio)
+                self._coincidence_info(events, events_times_cluster)
+                print("Number of events detected", len(events_times_cluster))
 
         return events, events_times_cluster
 
-    def separate_picks_by_events(self, input_file, output_file, centroids):
-        """
-        Separates picks by events based on centroids and their radius.
 
-        :param input_file: Path to the input file with pick data.
-        :param output_file: Path to the output file for separated picks.
-        :param centroids: List of UTCDateTime objects representing centroids.
-        :param radius: Radius in seconds for each centroid.
-        """
-        # Load the input data
-        df = pd.read_csv(input_file, delimiter='\s+')
-        # Ensure columns are properly typed
-        # df['Date'] = df['Date'].astype(str)  # Date as string for slicing
-        # df['Hourmin'] = df['Hourmin'].astype(int)  # Hourmin as integer
-        # df['Seconds'] = df['Seconds'].astype(float)  # Seconds as float for fractional handling
-        # Parse date and time columns into a single datetime object
-        df['FullTime'] = df.apply(lambda row: UTCDateTime(
-            f"{row['Date']}T{str(row['Hour_min']).zfill(4)}:{row['Seconds']}"
-        ), axis=1)
+    def _process_coincidence_trigger(self, filtered_files):
 
-        # Create a new column for event assignment
-        df['Event'] = None
-
-        # Assign picks to the closest centroid within the radius
-        for i, centroid in enumerate(centroids):
-            within_radius = df['FullTime'].apply(lambda t: abs((t - centroid)) <= self.centroid_radio / 2)
-            df.loc[within_radius, 'Event'] = f"Event_{i + 1}"
-
-        # Write grouped picks into the output file
-        with open(output_file, 'w') as f:
-            for event, group in df.groupby('Event'):
-                if pd.isna(event):
-                    continue  # Skip unassigned picks
-                f.write(f"{event}\n")
-                group.drop(columns=['Event', 'FullTime']).to_csv(f, sep='\t', index=False)
-                f.write("\n")
-
-    def process_coincidence_trigger(self, args):
         """Process a single day's data and return events or 'empty'."""
-        sp, start, end = args
-        # Filter files for the given time range
-        filtered_files = sp.filter_time(starttime=start, endtime=end, tol=3600, use_full=True)
-        if filtered_files:
-            if self.coincidence_config.cluster_configuration.method_preferred == 'SNR':
-                return self.thresholding_sta_lta(filtered_files, start, end)
-            else:
-                return self.thresholding_cwt_kurt(filtered_files)
-        else:
-            return "empty"
 
-    def optimized_project_processing(self, **kwargs):
+        return self.thresholding_cwt_kurt(filtered_files)
+
+    def optimized_project_processing(self):
 
         final_filtered_results = []
-        details = []
 
-        input_file: str = kwargs.pop('input_file', None)
-        output_file: str = kwargs.pop('output_file', None)
+        for project in self.projects:
+            data_files = project.data_files
+            final_filtered_results.append(self._process_coincidence_trigger(data_files))
 
-        info = self.project.get_project_basic_info()
-        print(info['Start'], info['End'])
+        return final_filtered_results
 
-        # Parse start and end times
-        start_time = UTCDateTime(datetime.strptime(info['Start'], '%Y-%m-%d %H:%M:%S'))
-        end_time = UTCDateTime(datetime.strptime(info['End'], '%Y-%m-%d %H:%M:%S'))
-
-        # Generate daily time ranges
-        daily_ranges = [(start_time + i * 86400, start_time + (i + 1) * 86400)
-                        for i in range(int((end_time - start_time) // 86400))]
-
-        if len(daily_ranges) == 0 and (end_time - start_time) < 86400:
-            daily_ranges = [(start_time, end_time)]
-
-        # Prepare arguments for multiprocessing
-        tasks = [(self.project, start, end) for start, end in daily_ranges]
-
-        # Use multiprocessing to parallelize
-        with Pool() as pool:
-            results = pool.map(self.process_coincidence_trigger, tasks)
-
-        # Join the output of all days
-        for item in results:
-            if item[0] is not None and item[1] is not None:
-                details.extend(item[0])
-                final_filtered_results.extend(item[1])
-
-        if len(final_filtered_results) > 0 and input_file is not None and output_file is not None:
-            self.separate_picks_by_events(input_file, output_file, centroids=final_filtered_results)
-
-        return final_filtered_results, details
-
+    # def separate_picks_by_events(self, input_file, output_file, centroids):
+    #     """
+    #     Separates picks by events based on centroids and their radius.
+    #
+    #     :param input_file: Path to the input file with pick data.
+    #     :param output_file: Path to the output file for separated picks.
+    #     :param centroids: List of UTCDateTime objects representing centroids.
+    #     :param radius: Radius in seconds for each centroid.
+    #     """
+    #     # Load the input data
+    #     df = pd.read_csv(input_file, delimiter='\s+')
+    #     # Ensure columns are properly typed
+    #     # df['Date'] = df['Date'].astype(str)  # Date as string for slicing
+    #     # df['Hourmin'] = df['Hourmin'].astype(int)  # Hourmin as integer
+    #     # df['Seconds'] = df['Seconds'].astype(float)  # Seconds as float for fractional handling
+    #     # Parse date and time columns into a single datetime object
+    #     df['FullTime'] = df.apply(lambda row: UTCDateTime(
+    #         f"{row['Date']}T{str(row['Hour_min']).zfill(4)}:{row['Seconds']}"
+    #     ), axis=1)
+    #
+    #     # Create a new column for event assignment
+    #     df['Event'] = None
+    #
+    #     # Assign picks to the closest centroid within the radius
+    #     for i, centroid in enumerate(centroids):
+    #         within_radius = df['FullTime'].apply(lambda t: abs((t - centroid)) <= self.centroid_radio / 2)
+    #         df.loc[within_radius, 'Event'] = f"Event_{i + 1}"
+    #
+    #     # Write grouped picks into the output file
+    #     with open(output_file, 'w') as f:
+    #         for event, group in df.groupby('Event'):
+    #             if pd.isna(event):
+    #                 continue  # Skip unassigned picks
+    #             f.write(f"{event}\n")
+    #             group.drop(columns=['Event', 'FullTime']).to_csv(f, sep='\t', index=False)
+    #             f.write("\n")
