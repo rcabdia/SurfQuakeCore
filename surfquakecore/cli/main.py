@@ -510,7 +510,7 @@ def _associate():
                            type=str,
                            required=True)
 
-    arg_parse.add_argument("-p", "--data-dir", help="path to data picking folder",
+    arg_parse.add_argument("-p", "--data_dir", help="path to data picking folder",
                            type=str,
                            required=True)
 

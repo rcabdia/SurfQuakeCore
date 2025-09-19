@@ -1,6 +1,4 @@
 from dataclasses import dataclass, asdict
-from typing import NamedTuple
-
 from surfquakecore.utils import Cast
 
 

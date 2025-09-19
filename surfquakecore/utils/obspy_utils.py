@@ -27,6 +27,32 @@ class MseedUtil:
         self._project = {}
 
     @classmethod
+    def cluster_events(cls, times, eps=20.0):
+        from obspy import UTCDateTime
+        points = []
+        for j in range(len(times)):
+            points.append(times[j].timestamp)
+
+        clusters = []
+        points_sorted = sorted(points)
+        curr_point = points_sorted[0]
+        curr_cluster = [curr_point]
+        for point in points_sorted[1:]:
+            if point <= curr_point + eps:
+                curr_cluster.append(point)
+            else:
+                clusters.append(curr_cluster)
+                curr_cluster = [point]
+            curr_point = point
+        clusters.append(curr_cluster)
+        new_times = []
+        string_times = []
+        for k  in  range(len(clusters)):
+            new_times.append(UTCDateTime(clusters[k][0]))
+            string_times.append(UTCDateTime(clusters[k][0]).strftime(format="%Y-%m-%dT%H:%M:%S.%f"))
+        return new_times, string_times
+
+    @classmethod
     def load_project(cls, file: str):
         return pickle.load(open(file, "rb"))
 
