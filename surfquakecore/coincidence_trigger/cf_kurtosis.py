@@ -92,7 +92,7 @@ class CFKurtosis:
             rmem = rec_memory[(tr_id, wave_type)][n] if rec_memory is not None else None
 
             # recursive_filter may return tuple in your build; take [0] safely.
-            band = CFMB._rf(y, CN_HP[n], CN_LP[n], 4, rmem)
+            band = CFKurtosis._rf(y, CN_HP[n], CN_LP[n], 4, rmem)
             YN1[n] = band / (filter_norm[n] if filter_norm[n] != 0 else 1.0)
 
             # decay constant
@@ -102,12 +102,12 @@ class CFKurtosis:
 
             # CF per band (preserved)
 
-            CF1[n] = CFMB._hos(YN1[n], C_WIN=CF_decay_constant, order=self.config.hos_order,
+            CF1[n] = CFKurtosis._hos(YN1[n], C_WIN=CF_decay_constant, order=self.config.hos_order,
                 sigma_min=hos_sigma)
 
 
         cf_stack = (CF1).max(axis=0)
-        cf_stack = cf_stack * CFMB._blackman_taper(len(cf_stack), p=0.05)
+        cf_stack = cf_stack * CFKurtosis._blackman_taper(len(cf_stack), p=0.05)
 
         return YN1, CF1, cf_stack, Tn, Nb, freqs
 
