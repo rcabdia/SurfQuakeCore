@@ -1264,6 +1264,9 @@ def _processing():
 
 
 def _trigg():
+
+    #TODO: 1. Still not select challenls, 2. separate picking files
+
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} computes coincidence trigger",
         description="Process seismograms in daily files to detect events using coincidence trigger",
@@ -1291,6 +1294,7 @@ def _trigg():
             --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
             --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
             --span_seconds            [OPTIONAL] Select and merge files in sets of time spans, DEFAULT 86400
+            --plot                    [OPTIONAL] Plot events and Characteristic Functions
         """)
 
     arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
@@ -1311,7 +1315,10 @@ def _trigg():
 
     arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
 
-    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'",
+                           type=str)
+
+    arg_parse.add_argument("--plot", help="plot events & CFs",  action="store_true")
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
@@ -1358,8 +1365,8 @@ def _trigg():
         file_selection_mode="overlap_threshold",
         verbose=True)
 
-    print(subprojects)
-    ct = CoincidenceTrigger(subprojects, parsed_args.config_file)
+    #print(subprojects)
+    ct = CoincidenceTrigger(subprojects, parsed_args.config_file, parsed_args.output_folder, parsed_args.plot)
     ct.optimized_project_processing()
 
 def _processing_daily():

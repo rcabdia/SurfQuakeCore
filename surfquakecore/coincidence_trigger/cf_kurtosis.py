@@ -51,7 +51,8 @@ class CFKurtosis:
         cf = []
         for tr in self.stream:
             YN1, CF1, cf_stack, Tn, Nb, freqs = self._compute_cf(tr)
-            cf.append(cf_stack)
+            tr.data = cf_stack
+            cf.append(tr)
         st_cfs = Stream(cf)
         return st_cfs
 
