@@ -20,11 +20,14 @@ import pandas as pd
 from obspy import Stream, UTCDateTime
 import matplotlib.dates as mdt
 import matplotlib.pyplot as plt
+import re
 
 class CoincidenceTrigger:
-    def __init__(self, projects: list, coincidence_config: Union[str, CoincidenceConfig], output_folder=None, plot=None):
+    def __init__(self, projects: list, coincidence_config: Union[str, CoincidenceConfig], picking_file=None,
+                 output_folder=None, plot=None):
 
         self.projects = projects
+        self.picking_file = picking_file
         self.plot = plot
         self.output_folder = output_folder
         self.__get_coincidence_config(coincidence_config)
@@ -100,31 +103,56 @@ class CoincidenceTrigger:
         return events_times
 
     def _coincidence_info(self, events, events_times_cluster):
-        header = "time\tnum_traces\tcoincidence_sum\tduration\n"
+        # New header with semicolons and split time columns
+        header = "date;hour;num_traces;coincidence_sum;duration\n"
 
         output_file = os.path.join(self.output_folder, "coincidence_sum.txt")
-        # Create file if not exists, and add header
+
+        # Ensure header exists exactly once
         if not os.path.exists(output_file):
-            with open(output_file, "w") as f:
+            with open(output_file, "w", encoding="utf-8") as f:
                 f.write(header)
+        else:
+            # If file exists but is empty, write header; otherwise don't duplicate it
+            if os.path.getsize(output_file) == 0:
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write(header)
+            else:
+                # Optional: only write the new header if it's already the expected one
+                # (avoid adding another header when appending to an old file format)
+                with open(output_file, "r", encoding="utf-8") as f:
+                    first_line = f.readline().strip()
+                # If it's already our header, fine; if it's something else, we just append rows.
+                # (No extra header inserted.)
+                _ = first_line  # just to clarify intent
 
         for item in events:
             if item["time"] in events_times_cluster:
-                # Format datetime as "YYYY-MM-DD HH:MM:SS.s"
+                # item["time"] is UTCDateTime (or similar); get python datetime
                 t = item["time"].datetime
-                time_str = t.strftime("%Y-%m-%d %H:%M:%S.") + str(int(t.microsecond / 100000))
 
-                # Format the row
-                row = f"{time_str}\t{len(item['trace_ids'])}\t{item['coincidence_sum']}\t{item['duration']}\n"
+                date_str = t.strftime("%Y-%m-%d")
+                # one decimal of second, no rounding (floor to 0.1 s)
+                hour_str = t.strftime("%H:%M:%S.") + str(t.microsecond // 100000)
 
-                # Append row to file
-                with open(output_file, "a") as f:
+                # prefer explicit num_traces if present, else fallback to len(trace_ids)
+                num_traces = item.get("num_traces", len(item.get("trace_ids", [])))
+                duration_str = f"{item['duration']:.1f}"  # <<< one decimal
+
+                row = (
+                    f"{date_str};"
+                    f"{hour_str};"
+                    f"{num_traces};"
+                    f"{item['coincidence_sum']};"
+                    f"{duration_str}\n"
+                )
+
+                with open(output_file, "a", encoding="utf-8") as f:
                     f.write(row)
 
     def thresholding_sta_lta(self, files_list):
 
         traces = []
-        events_times_cluster = None
 
         for file in files_list:
             try:
@@ -134,8 +162,9 @@ class CoincidenceTrigger:
                     traces.append(tr)
             except:
                 pass
+
         st = Stream(traces)
-        st.merge()
+        st.merge(method=1, fill_value='interpolate', interpolation_samples=-1)
         print("Ready to run coincidence Trigger at: ")
         print(st.__str__(extended=True))
         st.detrend(type='simple')
@@ -143,30 +172,21 @@ class CoincidenceTrigger:
         st.filter(type="bandpass", freqmin=self.fmin, freqmax=self.fmax)
         st.detrend(type='simple')
         st.taper(max_percentage=0.05)
+
+        print("Computing SNR")
         st_SNR, _ = CF_SNR.compute_sta_lta_cfs(st)
 
-        events = coincidence_trigger(trigger_type=None, thr_on=self.the_on, thr_off=self.the_off,
-                                     trigger_off_extension=self.centroid_radio,
-                                     thr_coincidence_sum=self.coincidence, stream=st_SNR,
-                                     similarity_threshold=0.8, details=True)
-
-        triggers = self._extract_event_info(events)
-
-        if len(triggers) > 0:
-            events_times_cluster, _ = MseedUtil.cluster_events(triggers, eps=self.centroid_radio)
-            print("Number of events detected", len(events_times_cluster))
-            self._coincidence_info(events, events_times_cluster)
+        events, events_times_cluster = self.run_coincidence(st_SNR)
 
         if self.plot:
-            PlotCoincidence.plot_stream_and_cf_simple(st, st_SNR, savepath=self.output_folder)
+            PlotCoincidence.plot_stream_and_cf_simple(st, st_SNR, events=events_times_cluster,
+                                                      savepath=self.output_folder)
 
         return events, events_times_cluster
 
     def thresholding_cwt_kurt(self, files_list):
 
         traces = []
-        events = []
-        events_times_cluster = None
 
         for file in files_list:
             try:
@@ -182,27 +202,37 @@ class CoincidenceTrigger:
 
         print("Ready to run coincidence Trigger at: ")
         print(st.__str__(extended=True))
-        if st:
-            cf_kurt = CFKurtosis(st, self.coincidence_config.kurtosis_configuration,
-                                 self.coincidence_config.cluster_configuration.fmin,
-                                 self.coincidence_config.cluster_configuration.fmax)
 
-            st_kurt = cf_kurt.run_kurtosis()
+        print("Computing Kurtosis")
+        cf_kurt = CFKurtosis(st, self.CF_decay_win, self.hos_order,
+                             self.coincidence_config.cluster_configuration.fmin,
+                             self.coincidence_config.cluster_configuration.fmax)
 
-            events = coincidence_trigger(trigger_type=None, thr_on=self.the_on, thr_off=self.the_off,
-                                         trigger_off_extension=self.centroid_radio,
-                                         thr_coincidence_sum=self.coincidence, stream=st_kurt,
-                                         similarity_threshold=0.8, details=True)
+        st_cf = cf_kurt.run_kurtosis()
 
-            triggers = self._extract_event_info(events)
+        events, events_times_cluster = self.run_coincidence(st_cf)
 
-            if len(triggers) > 0:
-                events_times_cluster, _ = MseedUtil.cluster_events(triggers, eps=self.centroid_radio)
-                print("Number of events detected", len(events_times_cluster))
-                self._coincidence_info(events, events_times_cluster)
+        if self.plot:
+            print("Plotting CFs")
+            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, events=events_times_cluster,
+                                                      savepath=self.output_folder)
 
-            if self.plot:
-                PlotCoincidence.plot_stream_and_cf_simple(st, st_kurt, savepath=self.output_folder)
+        return events, events_times_cluster
+
+
+    def run_coincidence(self, st_cf):
+
+        events = coincidence_trigger(trigger_type=None, thr_on=self.the_on, thr_off=self.the_off,
+                                     trigger_off_extension=self.centroid_radio,
+                                     thr_coincidence_sum=self.coincidence, stream=st_cf,
+                                     similarity_threshold=0.8, details=True)
+
+        triggers = self._extract_event_info(events)
+
+        if len(triggers) > 0:
+            events_times_cluster, _ = MseedUtil.cluster_events(triggers, eps=self.centroid_radio)
+            print("Number of events detected", len(events_times_cluster))
+            self._coincidence_info(events, events_times_cluster)
 
         return events, events_times_cluster
 
@@ -216,113 +246,190 @@ class CoincidenceTrigger:
         else:
             print("Method preferred available are: Kurtosis or SNR, please select one of this")
 
-    def optimized_project_processing(self, input_file=None, output_file=None):
+    def optimized_project_processing(self):
 
         final_filtered_results = []
         results = []
         details = []
 
-        for project in self.projects:
-            data_files = project.data_files
-            results.append(self._process_coincidence_trigger(data_files))
+        for i, project in enumerate(self.projects):
+            print("Working in project", i)
+            try:
+                data_files = project.data_files
+                results.append(self._process_coincidence_trigger(data_files))
+            except:
+                print("An exception raise at project ", i)
 
         # Join the output of all days
-        for item in results:
-            if item[0] is not None and item[1] is not None:
-                details.extend(item[0])
-                final_filtered_results.extend(item[1])
-
-        if len(final_filtered_results) > 0 and input_file is not None and output_file is not None:
-            self.separate_picks_by_events(input_file, output_file, centroids=final_filtered_results)
+        if len(results) > 0:
+            for item in results:
+                if item[0] is not None and item[1] is not None:
+                    details.extend(item[0])
+                    final_filtered_results.extend(item[1])
+            coincidence_file = os.path.join(self.output_folder, "coincidence_pick.txt")
+            if len(final_filtered_results) > 0 and self.picking_file is not None and self.output_folder is not None:
+                self.separate_picks_by_events(self.picking_file, coincidence_file, centroids=final_filtered_results,
+                                              min_picks=self.coincidence)
+        else:
+            print("No detected events")
 
         return final_filtered_results
 
-    def separate_picks_by_events(self, input_file, output_file, centroids):
+    def separate_picks_by_events(self, input_file, output_file, centroids, min_picks: int = 5):
         """
-        Separates picks by events based on centroids and their radius.
-
-        :param input_file: Path to the input file with pick data.
-        :param output_file: Path to the output file for separated picks.
-        :param centroids: List of UTCDateTime objects representing centroids.
-        :param radius: Radius in seconds for each centroid.
+        Separates picks by events based on centroids and their radius (self.centroid_radio, seconds).
+        Appends results and only writes events with at least `min_picks` picks.
         """
-        # Load the input data
-        df = pd.read_csv(input_file, delimiter='\s+')
-        # Ensure columns are properly typed
-        # df['Date'] = df['Date'].astype(str)  # Date as string for slicing
-        # df['Hourmin'] = df['Hourmin'].astype(int)  # Hourmin as integer
-        # df['Seconds'] = df['Seconds'].astype(float)  # Seconds as float for fractional handling
-        # Parse date and time columns into a single datetime object
-        df['FullTime'] = df.apply(lambda row: UTCDateTime(
-            f"{row['Date']}T{str(row['Hour_min']).zfill(4)}:{row['Seconds']}"
-        ), axis=1)
+        # --- load input ---
+        df = pd.read_csv(input_file, delimiter=r"\s+")
 
-        # Create a new column for event assignment
-        df['Event'] = None
+        # Build FullTime from Date, Hour_min (HHMM), Seconds (can be fractional)
+        def to_utcdt(row):
+            hhmm = int(row["Hour_min"])
+            hh, mm = divmod(hhmm, 100)
+            sec = float(row["Seconds"])
+            return UTCDateTime(f"{row['Date']}T{hh:02d}:{mm:02d}:{sec:06.3f}")
 
-        # Assign picks to the closest centroid within the radius
-        for i, centroid in enumerate(centroids):
-            within_radius = df['FullTime'].apply(lambda t: abs((t - centroid)) <= self.centroid_radio / 2)
-            df.loc[within_radius, 'Event'] = f"Event_{i + 1}"
+        df["FullTime"] = df.apply(to_utcdt, axis=1)
+        df["Event"] = None
 
-        # Write grouped picks into the output file
-        with open(output_file, 'w') as f:
-            for event, group in df.groupby('Event'):
-                if pd.isna(event):
-                    continue  # Skip unassigned picks
-                f.write(f"{event}\n")
-                group.drop(columns=['Event', 'FullTime']).to_csv(f, sep='\t', index=False)
+        radius = float(self.centroid_radio)  # seconds
+
+        # Assign picks to the nearest centroid within radius/2 (robust to overlaps)
+        # (If you prefer the original overwrite-by-loop behavior, replace this block with your loop)
+        import numpy as np
+        if centroids:
+            # compute time diffs matrix [n_picks x n_centroids]
+            diffs = np.column_stack([np.abs(df["FullTime"].values - c) for c in centroids])
+            nearest_idx = diffs.argmin(axis=1)
+            nearest_dt = diffs[np.arange(len(df)), nearest_idx]
+            # assign only if within radius/2
+            mask = nearest_dt <= (radius / 2.0)
+            df.loc[mask, "Event"] = ["Event_tmp_" + str(i + 1) for i in nearest_idx[mask]]
+
+        # Collect only groups meeting the threshold
+        qualifying = []
+        for event, group in df.groupby("Event", dropna=True):
+            if len(group) >= min_picks:
+                # drop helper cols and (optionally) sort for readability
+                g = group.drop(columns=["Event", "FullTime"]).copy()
+                if {"Date", "Hour_min", "Seconds"}.issubset(g.columns):
+                    g = g.sort_values(["Date", "Hour_min", "Seconds"])
+                qualifying.append(g)
+
+        if not qualifying:
+            return 0  # nothing to write
+
+        # Determine append mode and continuous numbering
+        append = os.path.exists(output_file) and os.path.getsize(output_file) > 0
+        start_idx = 1
+        if append:
+            with open(output_file, "r", encoding="utf-8") as f:
+                text = f.read()
+            found = re.findall(r"^Event_(\d+)\s*$", text, flags=re.MULTILINE)
+            if found:
+                start_idx = int(found[-1]) + 1
+
+        # Write
+        mode = "a" if append else "w"
+        written = 0
+        with open(output_file, mode, encoding="utf-8") as f:
+            if append:
+                f.write("\n")  # spacer only when we will actually write something
+
+            for i, group in enumerate(qualifying, start=0):
+                event_name = f"Event_{start_idx + i}"
+                f.write(f"{event_name}\n")
+                group.to_csv(f, sep="\t", index=False)
                 f.write("\n")
+                written += 1
+
+        return written  # number of events written
 
 
 class PlotCoincidence:
     import matplotlib as mplt
-    mplt.rcParams["axes.xmargin"] = 0
     mplt.use("TkAgg")
 
     @staticmethod
-    def plot_stream_and_cf_simple(stream: Stream, cf_stream: Stream, savepath: str | None = None):
+    def plot_stream_and_cf_simple(
+        stream: Stream,
+        cf_stream: Stream,
+        events: list | None = None,          # list of UTCDateTime
+        savepath: str | None = None,
+        show: bool = True
+    ):
         # --- one-decimal seconds formatter ---
         def _hms_tenths(x, pos=None):
             d = mdt.num2date(x) + timedelta(milliseconds=50)  # round to nearest 0.1 s
             return f"{d:%H:%M:%S}.{d.microsecond // 100000}"
 
         formatter_pow = ScalarFormatter(useMathText=True)
-        formatter_pow.set_powerlimits((0, 0))  # Force scientific notation
+        formatter_pow.set_powerlimits((0, 0))
+
         n = len(stream)
         max_traces = min(8, 2 * len(stream))
-        fig, axes = plt.subplots(len(stream), 1, figsize=(12, max_traces), sharex=True,
-                                 gridspec_kw={'hspace': 0.05})
-
+        fig, axes = plt.subplots(
+            len(stream), 1, figsize=(12, max_traces), sharex=True,
+            gridspec_kw={'hspace': 0.05}
+        )
         if n == 1:
             axes = [axes]
+
+        # Pre-convert event times to matplotlib numbers (and sort)
+        event_x = []
+        if events:
+            try:
+                event_x = sorted(mdt.date2num(ev.datetime) for ev in events)
+            except Exception:
+                # If items are already datetimes or floats, try converting generically
+                event_x = sorted(mdt.date2num(getattr(ev, "datetime", ev)) for ev in events)
+
         ax_idx = 0
         for ax, tr_raw, tr_cf in zip(axes, stream[:n], cf_stream[:n]):
             starttime = tr_raw.stats.starttime
             t = tr_raw.times("matplotlib")
 
+            # raw
             ln1, = ax.plot(t, tr_raw.data, linewidth=1.0, label=f"{tr_raw.id}")
             ax.set_ylabel("Raw")
 
+            # CF
             ax2 = ax.twinx()
-            ln2, = ax2.plot(t[:len(tr_cf.data)], tr_cf.data, color="orange", linestyle="-", linewidth=0.75,
-                            alpha=0.75, label="CF")
+            ln2, = ax2.plot(
+                t[:len(tr_cf.data)], tr_cf.data,
+                linestyle="-", linewidth=0.75, alpha=0.75, label="CF", color="orange"
+            )
             ax2.set_ylabel("CF")
 
+            # event vertical lines (only those within this subplot's time window)
+            if event_x:
+                tmin, tmax = t[0], t[-1]
+                first_label_done = False
+                for x in event_x:
+                    if tmin <= x <= tmax:
+                        label = "Event" if (ax_idx == 0 and not first_label_done) else None
+                        ax.axvline(x=x, linestyle=":", linewidth=1.2, alpha=0.9, color="tab:red", label=label)
+                        first_label_done = True
+
+            # annotation
             date_str = starttime.strftime("%Y-%m-%d")
             textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
             ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=8,
                     va='top', ha='left',
                     bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
 
+            # x-axis formatting
             ax.xaxis_date()
             ax.xaxis.set_major_locator(mdt.AutoDateLocator())
-            ax.xaxis.set_major_formatter(FuncFormatter(_hms_tenths))  # <<< 0.1s precision here
+            ax.xaxis.set_major_formatter(FuncFormatter(_hms_tenths))
 
+            # legend
             lines = [ln1, ln2]
-            labels = [l.get_label() for l in lines]
+            labels = [l.get_label() for l in lines if l.get_label() != "_nolegend_"]
             ax.legend(lines, labels, loc="upper right")
 
+            # tick visibility
             if ax_idx < len(axes) - 1:
                 ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
                 ax.spines['bottom'].set_visible(False)
@@ -339,7 +446,14 @@ class PlotCoincidence:
             ax_idx += 1
 
         fig.tight_layout()
+
         if savepath:
-            name = str(starttime)+"_"+"CF"+".pdf"
+            name = f"{starttime}_CF.pdf"
             plot_path = os.path.join(savepath, name)
             fig.savefig(plot_path, dpi=150, bbox_inches="tight")
+
+        # Ensure the figure is shown when not saving
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)

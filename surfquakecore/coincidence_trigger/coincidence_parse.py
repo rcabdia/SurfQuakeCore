@@ -56,13 +56,12 @@ def load_concidence_configuration(config_file: str) -> CoincidenceConfig:
                 method_preferred=Cast(coincidence_config_ini['Cluster']['method_preferred'], str),
                 centroid_radio=Cast(coincidence_config_ini['Cluster']['centroid_radio'], float),
                 coincidence=Cast(coincidence_config_ini['Cluster']['coincidence'], int),
-                channels=Cast(coincidence_config_ini['Cluster']['channels'], str),
                 threshold_off=Cast(coincidence_config_ini['Cluster']['threshold_off'], float),
                 threshold_on=Cast(coincidence_config_ini['Cluster']['threshold_on'], float),
                 fmin=Cast(coincidence_config_ini['Cluster']['fmin'], float),
                 fmax=Cast(coincidence_config_ini['Cluster']['fmax'], float)))
 
 if __name__ == '__main__':
-    config_file = "/Users/admin/Desktop/surf_test/test_coincidence/coincidence.ini"
+    config_file = "/Users/robertocabiecesdiaz/Desktop/surf_test/coincidence.ini"
     CoincidenceConfig = load_concidence_configuration(config_file)
     print(CoincidenceConfig)

@@ -19,7 +19,7 @@ except:
           "try >>python setup_user.py build_ext --inplace")
 
 class CFKurtosis:
-    def __init__(self, source: Union[Iterable[str], Stream, Trace], config, fmin, fmax):
+    def __init__(self, source: Union[Iterable[str], Stream, Trace], CF_decay_win, hos_order,  fmin, fmax):
 
         """
         Initialize with either:
@@ -43,7 +43,8 @@ class CFKurtosis:
         else:
             raise TypeError("source must be a list of paths, an ObsPy Stream, or a Trace")
 
-        self.config = config
+        self.CF_decay_win = CF_decay_win
+        self.hos_order = hos_order
         self.fmin = fmin
         self.fmax = fmax
 
@@ -72,7 +73,7 @@ class CFKurtosis:
         tr.detrend("demean").detrend("linear")
         Tn = 1.0 / freqs
         Nb = len(freqs)
-        CF_decay_nsmps = self.config.CF_decay_win / delta
+        CF_decay_nsmps = self.CF_decay_win / delta
 
         # compute coefficients/norm if not provided (same helpers as your code)
         if CN_HP is None or CN_LP is None:
@@ -103,7 +104,7 @@ class CFKurtosis:
 
             # CF per band (preserved)
 
-            CF1[n] = CFKurtosis._hos(YN1[n], C_WIN=CF_decay_constant, order=self.config.hos_order,
+            CF1[n] = CFKurtosis._hos(YN1[n], C_WIN=CF_decay_constant, order=self.hos_order,
                 sigma_min=hos_sigma)
 
 

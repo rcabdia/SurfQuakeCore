@@ -33,7 +33,6 @@ class Cluster(BaseDataClass):
     method_preferred: str
     centroid_radio: float
     coincidence: int
-    channels: list[str]
     threshold_on: float
     threshold_off: float
     fmin: float
