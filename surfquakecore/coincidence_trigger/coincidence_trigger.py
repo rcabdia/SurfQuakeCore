@@ -40,7 +40,6 @@ class CoincidenceTrigger:
         self.coincidence = self.coincidence_config.cluster_configuration.coincidence
         self.method_preferred = self.coincidence_config.cluster_configuration.method_preferred
 
-
         if self.method_preferred == "SNR":
 
             self.method_snr: str = self.coincidence_config.sta_lta_configuration.method
@@ -50,7 +49,7 @@ class CoincidenceTrigger:
         elif self.method_preferred == "Kurtosis":
 
             self.CF_decay_win = self.coincidence_config.kurtosis_configuration.CF_decay_win
-            self.hos_order = self.coincidence_config.kurtosis_configuration.hos_order
+            self.hos_order = 4 #kurtosis
         else:
             print("Available preferred methods are: SNR or Kurtosis")
 

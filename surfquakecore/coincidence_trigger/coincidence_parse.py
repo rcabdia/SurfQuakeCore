@@ -46,8 +46,7 @@ def load_concidence_configuration(config_file: str) -> CoincidenceConfig:
 
     return CoincidenceConfig(
             kurtosis_configuration=Kurtosis(
-                    CF_decay_win=Cast(coincidence_config_ini['Kurtosis']['CF_decay_win'], float),
-                    hos_order=Cast(coincidence_config_ini['Kurtosis']['hos_order'], int)),
+                    CF_decay_win=Cast(coincidence_config_ini['Kurtosis']['CF_decay_win'], float)),
             sta_lta_configuration=STA_LTA(
                     method=Cast(coincidence_config_ini['STA_LTA']['method'], str),
                     sta_win=Cast(coincidence_config_ini['STA_LTA']['sta_win'], float),

@@ -20,7 +20,6 @@ from surfquakecore.utils import BaseDataClass
 @dataclass
 class Kurtosis(BaseDataClass):
     CF_decay_win: float
-    hos_order: int
 
 @dataclass
 class STA_LTA(BaseDataClass):
