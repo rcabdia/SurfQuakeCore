@@ -35,7 +35,7 @@ class TraceSpectrumResult:
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         else:
-            mplt.use("TkAgg")
+            mplt.use("Qt5Agg")
 
         fig, ax = plt.subplots()
 
@@ -143,7 +143,7 @@ class TraceSpectrogramResult:
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         else:
-            mplt.use("TkAgg")
+            mplt.use("Qt5Agg")
 
 
         if clip is not None:

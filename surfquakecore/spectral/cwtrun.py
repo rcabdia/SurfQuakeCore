@@ -68,7 +68,7 @@ class TraceCWTResult:
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         else:
-            mplt.use("TkAgg")
+            mplt.use("Qt5Agg")
 
         t, f, scalogram, pred, pred_comp = self.cwt_data
         tr = self.trace

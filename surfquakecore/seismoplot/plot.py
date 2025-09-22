@@ -28,7 +28,7 @@ from obspy.signal.polarization import flinn
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
-from surfquakecore.seismoplot.crosshair import BlittedCursor
+#from surfquakecore.seismoplot.crosshair import BlittedCursor
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil

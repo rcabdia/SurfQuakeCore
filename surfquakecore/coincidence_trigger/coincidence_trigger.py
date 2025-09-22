@@ -178,7 +178,7 @@ class CoincidenceTrigger:
         events, events_times_cluster = self.run_coincidence(st_SNR)
 
         if self.plot:
-            PlotCoincidence.plot_stream_and_cf_simple(st, st_SNR, events=events_times_cluster,
+            PlotCoincidence.plot_stream_and_cf_simple(st, st_SNR, type="SNR", events=events_times_cluster,
                                                       savepath=self.output_folder)
 
         return events, events_times_cluster
@@ -213,7 +213,7 @@ class CoincidenceTrigger:
 
         if self.plot:
             print("Plotting CFs")
-            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, events=events_times_cluster,
+            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, type = "Kurtosis", events=events_times_cluster,
                                                       savepath=self.output_folder)
 
         return events, events_times_cluster
@@ -347,12 +347,12 @@ class CoincidenceTrigger:
 
 class PlotCoincidence:
     import matplotlib as mplt
-    mplt.use("TkAgg")
+    mplt.use("Qt5Agg")
 
     @staticmethod
     def plot_stream_and_cf_simple(
         stream: Stream,
-        cf_stream: Stream,
+        cf_stream: Stream, type="SNR",
         events: list | None = None,          # list of UTCDateTime
         savepath: str | None = None,
         show: bool = True
@@ -382,9 +382,12 @@ class PlotCoincidence:
             except Exception:
                 # If items are already datetimes or floats, try converting generically
                 event_x = sorted(mdt.date2num(getattr(ev, "datetime", ev)) for ev in events)
+        name = "Characteristic functions:"+" "+type
 
         ax_idx = 0
         for ax, tr_raw, tr_cf in zip(axes, stream[:n], cf_stream[:n]):
+            if ax_idx==0:
+                ax.set_title(name, fontsize=12, fontstyle='italic')
             starttime = tr_raw.stats.starttime
             t = tr_raw.times("matplotlib")
 
@@ -396,8 +399,7 @@ class PlotCoincidence:
             ax2 = ax.twinx()
             ln2, = ax2.plot(
                 t[:len(tr_cf.data)], tr_cf.data,
-                linestyle="-", linewidth=0.75, alpha=0.75, label="CF", color="orange"
-            )
+                linestyle="-", linewidth=0.75, alpha=0.75, color="orange")
             #ax2.set_ylabel("CF")
 
             # event vertical lines (only those within this subplot's time window)
@@ -427,21 +429,25 @@ class PlotCoincidence:
             labels = [l.get_label() for l in lines if l.get_label() != "_nolegend_"]
             ax.legend(lines, labels, loc="upper right")
 
-            # tick visibility
+            # tick visibility for inner plots
             if ax_idx < len(axes) - 1:
+                # raw axis
                 ax.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
                 ax.spines['bottom'].set_visible(False)
+                # CF twin axis
+                ax2.tick_params(axis='x', which='both', labelbottom=False, bottom=False)
+                ax2.spines['bottom'].set_visible(False)
             else:
                 ax.tick_params(axis='x', which='both', labelbottom=True, bottom=True)
                 ax.spines['bottom'].set_visible(True)
-
-            for spine in ['top', 'right']:
-                ax.spines[spine].set_visible(False)
+                ax2.tick_params(axis='x', which='both', labelbottom=True, bottom=True)
+                ax2.spines['bottom'].set_visible(True)
 
             ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
             ax.yaxis.set_major_formatter(formatter_pow)
             ax.yaxis.get_offset_text().set_visible(True)
             ax_idx += 1
+
 
         fig.tight_layout()
 

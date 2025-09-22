@@ -534,7 +534,7 @@ class FirstPolarity:
 
     @staticmethod
     def drawFocMec(strike, dip, rake, sta, az, inc, pol, P_Trend, P_Plunge,
-                                      T_Trend, T_Plunge, output_folder_file):
+                                      T_Trend, T_Plunge, output_folder_file, plot_polarities=False, solution_collection = None):
 
         from obspy.imaging.beachball import beach
         import numpy as np
@@ -544,7 +544,7 @@ class FirstPolarity:
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         else:
-            mplt.use("TkAgg")
+            mplt.use("Qt5Agg")
 
         azims_pos = []
         incis_pos = []
@@ -552,54 +552,68 @@ class FirstPolarity:
         incis_neg = []
         polarities = []
         bbox = dict(boxstyle="round, pad=0.2", fc="w", ec="k", lw=1.5, alpha=0.7)
-        beach2 = beach([strike, dip, rake], facecolor='r', linewidth=1., alpha=0.3, width=2)
+
         fig, ax = plt.subplots()
         fig.subplots_adjust(left=0.179, bottom=0.09, right=0.84, top=0.854, wspace=0.0, hspace=0.0)
+
+        if solution_collection:
+            for mech in solution_collection:
+                strike_aux = mech["nodal_planes"].nodal_plane_1.strike
+                dip_aux = mech["nodal_planes"].nodal_plane_1.dip
+                rake_aux = mech["nodal_planes"].nodal_plane_1.rake
+                beach_aux = beach([strike_aux, dip_aux, rake_aux], facecolor='b',
+                                  edgecolor='0.3', linewidth=0.8, alpha=0.35, width=2, zorder=1)
+                ax.add_collection(beach_aux)
+
+        beach2 = beach([strike, dip, rake], facecolor='r', linewidth=1., alpha=0.75, width=2, zorder=2)
         ax.add_collection(beach2)
+
         ax.set_ylim(-1, 1)
         ax.set_xlim(-1, 1)
 
-        N= len(sta)
-        for j in range(N):
-            station = sta[j]
-            azim = az[j]
-            inci = inc[j]
-            polarity = str(pol[j])
-            polarity = polarity[0]
-            if inci > 90:
-                inci = 180. - inci
-                azim = -180. + azim
-            plotazim = (np.pi / 2.) - ((azim / 180.) * np.pi)
-            if polarity == "U":
-                azims_pos.append(plotazim)
-                incis_pos.append(inci)
-                x_pos = (inci * np.cos(plotazim))/90
-                y_pos = (inci * np.sin(plotazim))/90
-                polarities.append(polarity)
-                ax.text(x_pos, y_pos, "  " + station, va="top", bbox=bbox, zorder=2)
-            if polarity == "D":
-                azims_neg.append(plotazim)
-                incis_neg.append(inci)
-                x_neg = (inci * np.cos(plotazim)) / 90
-                y_neg = (inci * np.sin(plotazim)) / 90
-                polarities.append(polarity)
-                ax.text(x_neg, y_neg, "  " + station, va="top", bbox=bbox, zorder=2)
+        if plot_polarities:
+            N= len(sta)
+            for j in range(N):
+                station = sta[j]
+                azim = az[j]
+                inci = inc[j]
+                polarity = str(pol[j])
+                polarity = polarity[0]
+                if inci > 90:
+                    inci = 180. - inci
+                    azim = -180. + azim
+                plotazim = (np.pi / 2.) - ((azim / 180.) * np.pi)
+                if polarity == "U":
+                    azims_pos.append(plotazim)
+                    incis_pos.append(inci)
+                    x_pos = (inci * np.cos(plotazim))/90
+                    y_pos = (inci * np.sin(plotazim))/90
+                    polarities.append(polarity)
+                    ax.text(x_pos, y_pos, "  " + station, va="top", bbox=bbox, zorder=3)
+                if polarity == "D":
+                    azims_neg.append(plotazim)
+                    incis_neg.append(inci)
+                    x_neg = (inci * np.cos(plotazim)) / 90
+                    y_neg = (inci * np.sin(plotazim)) / 90
+                    polarities.append(polarity)
+                    ax.text(x_neg, y_neg, "  " + station, va="top", bbox=bbox, zorder=3)
 
-        azims_pos = np.array(azims_pos)
-        incis_pos = np.array(incis_pos)
-        incis_pos=incis_pos/90
-        x_pos=incis_pos*np.cos(azims_pos)
-        y_pos=incis_pos*np.sin(azims_pos)
-        #polarities = np.array(polarities, dtype=bool)
-        ax.scatter(x_pos, y_pos, marker="o", lw=1, facecolor="b", edgecolor="k", s=50, zorder=3)
+            azims_pos = np.array(azims_pos)
+            incis_pos = np.array(incis_pos)
+            incis_pos=incis_pos/90
+            x_pos=incis_pos*np.cos(azims_pos)
+            y_pos=incis_pos*np.sin(azims_pos)
+            #polarities = np.array(polarities, dtype=bool)
+            ax.scatter(x_pos, y_pos, marker="o", lw=1, facecolor="b", edgecolor="k", s=50, zorder=4)
 
-        azims_neg = np.array(azims_neg)
-        incis_neg = np.array(incis_neg)
-        incis_neg = incis_neg / 90
-        x_neg = incis_neg * np.cos(azims_neg)
-        y_neg = incis_neg * np.sin(azims_neg)
-        ax.scatter(x_neg, y_neg, marker="o", lw=1, facecolor="w", edgecolor="k", s=50, zorder=3)
-        #lets plot P and T axes
+            azims_neg = np.array(azims_neg)
+            incis_neg = np.array(incis_neg)
+            incis_neg = incis_neg / 90
+            x_neg = incis_neg * np.cos(azims_neg)
+            y_neg = incis_neg * np.sin(azims_neg)
+            ax.scatter(x_neg, y_neg, marker="o", lw=1, facecolor="w", edgecolor="k", s=50, zorder=4)
+
+        #Let's plot P and T axes
 
         Paz = P_Trend
         Pinc = 90 - P_Plunge
@@ -612,7 +626,7 @@ class FirstPolarity:
         x_pos = (Pinc * np.cos(Paz)) / 90
         y_pos = (Pinc * np.sin(Paz)) / 90
         ax.scatter(x_pos, y_pos, marker="P", lw=1, facecolor="green", edgecolor="k", s=50, zorder=4)
-        ax.text(x_pos, y_pos, "P-axis", va="top", bbox=bbox, zorder=4)
+        ax.text(x_pos, y_pos, "P-axis", va="top", bbox=bbox, zorder=3)
 
         if Tinc > 90:
             Tinc = 180. - Tinc
@@ -621,7 +635,7 @@ class FirstPolarity:
         x_pos = (Tinc * np.cos(Taz)) / 90
         y_pos = (Tinc * np.sin(Taz)) / 90
         ax.scatter(x_pos, y_pos, marker="X", lw=1, facecolor="green", edgecolor="k", s=50, zorder=4)
-        ax.text(x_pos, y_pos, "T-axis", va="top", bbox=bbox, zorder=4)
+        ax.text(x_pos, y_pos, "T-axis", va="top", bbox=bbox, zorder=3)
 
         #mask = (polarities == True)
         #ax.set_title("Focal Mechanism")

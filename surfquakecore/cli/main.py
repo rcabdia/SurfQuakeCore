@@ -401,7 +401,7 @@ def _plotmec():
         Example usage:
 
         surfquake plotmec -d './focmec_folder_path' -o './output_folder'
-        surfquake plotmec -f './focmec_file_path' -o './output_folder'
+        surfquake plotmec -f './focmec_file_path' -o './output_folder' -p -a -m pdf
             
         if output is not provided the beachball of the focal mechanism will be shown on screen, 
         but if user provide output folder, the beach ball plot will be saved in the folder
@@ -414,8 +414,13 @@ def _plotmec():
     parser.add_argument("-d", "--focmec_folder_path", required=False, help="path to folder with all *.lst "
                                                                            "focmec solutions", type=str)
     parser.add_argument("-o", "--output_folder", required=False, help="output folder", type=str)
+    parser.add_argument("-p", "--plot_polarities", required=False, help="plot P-Wave polarities", action="store_true")
+    parser.add_argument("-a", "--all_solutions", required=False, help="plot all searching fault planes",
+                        action="store_true")
+
     parser.add_argument("-m", "--format", required=False, help="format output plot (defaults pdf)",
                         type=str, default="pdf")
+
     args = parser.parse_args()
 
     firstpolarity_manager = FirstPolarity()
@@ -433,8 +438,6 @@ def _plotmec():
         # Station, Az, Dip, Motion = firstpolarity_manager.get_dataframe(location_file)
         Station, Az, Dip, Motion = FirstPolarity.extract_station_data(file)
         cat, focal_mechanism = firstpolarity_manager.extract_focmec_info(file)
-        # TODO MIGHT BE FOR PLOTTING ALL POSSIBLE FAUL PLANES
-        # focmec_full_Data = parse_focmec_file(focmec_file)
         file_output_name = FirstPolarity.extract_name(file)
 
         if args.output_folder:
@@ -457,6 +460,12 @@ def _plotmec():
         misfit_first_polarity = focal_mechanism.misfit
         azimuthal_gap = focal_mechanism.azimuthal_gap
         number_of_polarities = focal_mechanism.station_polarity_count
+        if args.all_solutions:
+            solution_collection = cat[0]["focal_mechanisms"]
+        else:
+            solution_collection = None
+
+
         #
         first_polarity_results = {"First_Polarity": ["Strike", "Dip", "Rake", "misfit_first_polarity", "azimuthal_gap",
                                                      "number_of_polarities", "P_axis_Trend", "P_axis_Plunge",
@@ -466,7 +475,9 @@ def _plotmec():
 
         FirstPolarity.print_first_polarity_info(file_output_name, first_polarity_results)
         FirstPolarity.drawFocMec(strike_A, dip_A, rake_A, Station, Az, Dip, Motion, P_Trend, P_Plunge,
-                                              T_Trend, T_Plunge, output_folder_file)
+                                              T_Trend, T_Plunge, output_folder_file,
+                                 plot_polarities=args.plot_polarities,
+                                 solution_collection=solution_collection)
 
 
 def _associate():
