@@ -1114,6 +1114,42 @@ class PlotProj:
             time.sleep(0.1)
         self.fig_spec.canvas.mpl_disconnect(cid)
 
+
+    def _plot_stack(self, tr:Trace):
+        self._exit = False
+        # try:
+        #     plt.close(self.fig_stack)
+        # except:
+        #     pass
+        def _hms_tenths(x, pos=None):
+            d = mdt.num2date(x) + timedelta(milliseconds=50)  # round to nearest 0.1 s
+            return f"{d:%H:%M:%S}.{d.microsecond // 100000}"
+
+        self.fig_stack, ax = plt.subplots(figsize=(8, 5))
+        starttime = tr.stats.starttime
+        t = tr.times("matplotlib")
+        ax.plot(t, tr.data, linewidth=1.0, label=f"{tr.id}")
+        # annotation
+        date_str = starttime.strftime("%Y-%m-%d")
+        textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
+        ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=8,
+                va='top', ha='left',
+                bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+
+        # x-axis formatting
+        ax.xaxis_date()
+        ax.xaxis.set_major_locator(mdt.AutoDateLocator())
+        ax.xaxis.set_major_formatter(FuncFormatter(_hms_tenths))
+        self.fig_stack.tight_layout()
+
+        cid = self.fig_stack.canvas.mpl_connect("key_press_event", self._on_key_press)
+        # Poll until the figure is closed
+        plt.show(block=False)
+        while plt.fignum_exists(self.fig_stack.number) and not self._exit:
+            plt.pause(0.2)
+            time.sleep(0.1)
+        self.fig_stack.canvas.mpl_disconnect(cid)
+
     def _slowness_map(self, **kwargs):
 
         self._exit = False

@@ -36,6 +36,7 @@ class PlotCommandPrompt:
             "p": self._cmd_pick,
             "beam": self._cmd_beam,
             "smap": self._cmd_smap,
+            "stack": self._cmd_stack,
             "xcorr": self._cmd_xcorr,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
@@ -195,6 +196,159 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"Error displaying info: {e}")
 
+    def _cmd_stack(self, args):
+        """
+        Stack traces using ObsPy's Stream.stack().
+
+        Usage:
+            stack                        # default: all displayed traces (mean)
+            stack all
+            stack 0,3,7                  # comma/space/range supported
+            stack 0-5
+            stack all --method mean      # mean (default)
+            stack all --method sum       # linear stack scaled by N
+            stack all --method pw:2      # phase-weighted, order=2
+            stack all --method root:3    # root stack, order=3
+
+        Notes:
+            - Requires identical sampling intervals (delta); others are skipped.
+            - Trims to common overlap before stacking.
+            - Appends the stacked trace as ST.STACK..BHS and replots.
+        """
+        from obspy import Stream, Trace, UTCDateTime
+        import numpy as np
+
+        # --- choose source traces ---
+        source = getattr(self.plot_proj, "displayed_traces", None) or getattr(self.plot_proj, "trace_list", [])
+        if not source:
+            print("[WARN] No traces available to stack.")
+            return
+
+        # --- parse args ---
+        method = "mean"  # mean|sum|pw:k|root:k
+        # collect tokens, allowing "0,3,7"
+        raw_tokens = []
+        for a in args[1:]:
+            if a.startswith("--"):
+                raw_tokens.append(a)
+            else:
+                raw_tokens.extend(a.split(","))
+
+        idx_tokens, it = [], iter(raw_tokens)
+        for t in it:
+            if t == "--method":
+                try:
+                    method = next(it).lower()
+                except StopIteration:
+                    print("[ERROR] Missing value after --method")
+                    return
+            elif t.startswith("--"):
+                print(f"[WARNING] Unknown option '{t}' ignored.")
+            else:
+                idx_tokens.append(t.strip())
+
+        def expand_range(tok):
+            try:
+                a, b = tok.split("-")
+                a, b = int(a), int(b)
+                return list(range(min(a, b), max(a, b) + 1))
+            except Exception:
+                return None
+
+        if not idx_tokens or (len(idx_tokens) == 1 and idx_tokens[0] in ("all", "default", "")):
+            sel_idx = list(range(len(source)))
+        else:
+            sel = []
+            for tok in idx_tokens:
+                if not tok or tok.lower() == "all":
+                    sel = list(range(len(source)))
+                    break
+                if "-" in tok and tok.replace("-", "").isdigit():
+                    rng = expand_range(tok)
+                    if rng is not None:
+                        sel += rng
+                        continue
+                if tok.isdigit():
+                    sel.append(int(tok))
+                else:
+                    print(f"[WARN] Ignoring invalid index token '{tok}'.")
+            sel_idx = sorted(set(i for i in sel if 0 <= i < len(source)))
+
+        if not sel_idx:
+            print("[WARN] No valid indices to stack.")
+            return
+
+        # --- enforce same delta & gather traces ---
+        ref_delta = getattr(source[sel_idx[0]].stats, "delta", None)
+        keep = []
+        for i in sel_idx:
+            tr = source[i]
+            d = getattr(tr.stats, "delta", None)
+            if d is None or abs(d - ref_delta) > 1e-9:
+                print(f"[WARN] Skip {i} ({tr.id}) due to mismatched delta ({d}) vs ref ({ref_delta}).")
+                continue
+            keep.append(tr)
+        if not keep:
+            print("[WARN] No traces left after sampling checks.")
+            return
+
+        # --- trim to common overlap (prevents odd starttimes in stack) ---
+        try:
+            t1 = max(tr.stats.starttime for tr in keep)
+            t2 = min(tr.stats.endtime for tr in keep)
+        except Exception as e:
+            print(f"[ERROR] Failed to determine overlap: {e}")
+            return
+        if not (isinstance(t1, UTCDateTime) and isinstance(t2, UTCDateTime) and t2 > t1):
+            print("[ERROR] No common time overlap among selected traces.")
+            return
+
+        trimmed = Stream(tr.copy().trim(starttime=t1, endtime=t2, pad=False) for tr in keep)
+        if len(trimmed) == 0:
+            print("[WARN] Nothing to stack after trimming.")
+            return
+
+        # --- map --method → stack_type ---
+        stack_type = "linear"
+        post_scale = 1.0
+        if method == "mean":
+            stack_type = "linear"
+        elif method == "sum":
+            stack_type = "linear"
+            post_scale = float(len(trimmed))  # linear gives mean → scale to sum
+        elif method.startswith("pw:"):
+            try:
+                order = float(method.split(":", 1)[1])
+                stack_type = ("pw", order)
+            except Exception:
+                print("[WARN] Bad pw order; using default pw:2.")
+                stack_type = ("pw", 2.0)
+        elif method.startswith("root:"):
+            try:
+                order = float(method.split(":", 1)[1])
+                stack_type = ("root", order)
+            except Exception:
+                print("[WARN] Bad root order; using root:2.")
+                stack_type = ("root", 2.0)
+        else:
+            print(f"[WARN] Unknown method '{method}', defaulting to mean.")
+            stack_type = "linear"
+
+        # --- perform stack with ObsPy ---
+        # npts_tol/time_tol keep things robust to tiny off-by-ones; we trimmed anyway.
+        stacked_stream = trimmed.copy().stack(group_by="all", stack_type=stack_type, npts_tol=1, time_tol=0.0)
+        if len(stacked_stream) != 1:
+            print("[ERROR] Unexpected stack result.")
+            return
+        stack_tr = stacked_stream[0]
+
+        # sum scaling if requested
+        if post_scale != 1.0:
+            stack_tr.data = (stack_tr.data * post_scale).astype(trimmed[0].data.dtype, copy=False)
+            stack_tr.stats.stack["type"] = "sum-linear"  # annotate
+
+        # plotting
+        self.plot_proj._plot_stack(stack_tr)
 
     def _cmd_filter(self, args):
         """
@@ -955,7 +1109,7 @@ class PlotCommandPrompt:
         detailed_help = {
             "filter": """
     filter <type> <fmin> <fmax> [--corners N] [--zerophase Bool] [--ripple R] [--rp R] [--rs R]
-        Apply filter to current traces.
+        Apply filter to all traces list.
 
         Supported types:
             - bandpass, highpass, lowpass (Butterworth)
@@ -1113,6 +1267,15 @@ class PlotCommandPrompt:
                     >> smap --method CAPON --fmin 1.0 --fmax 3.0 --grid 0.01
                     >> smap --method MUSIC --fmin 1.0 --fmax 3.0 --grid 0.01  --nsignals 1
         
+        """,
+        "stack": """
+            Stack traces using ObsPy's Stream.stack(). 'mean' (linear) by default.
+            'sum' scales the linear stack by N. 'pw:k' phase-weighted, 'root:k' root stack.
+            Examples:
+                >> stack
+                >> stack 0,3,7
+                >> stack 0-5 --method root:4
+                >> stack all --method pw:2
         """
 
         }
@@ -1138,6 +1301,9 @@ class PlotCommandPrompt:
         print(" cwt <idx> <wavelet> <param>   Continuous wavelet transform (help cwt)")
         print(" beam [--fmin --fmax --overlap ....] Beamforming analysis (type: help beam for options)")
         print(" smap [--method --fmin --fmax ....] Slowness map (type: help smap for options)")
+        print(" stack [all|idxs]              Stack traces  (type: help stack)")
+        print(" xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--trim True|False] (type: help xcorr)")
+        print(" pm                            Run Particle motion analysis, (type: help pm)")
         print(" plot_type <type>              Change plot mode: standard, record, overlay")
         print(" concat                        Merge/concatenate traces")
         print(" shift --phase <name>          Shift by pick (type: help shift for info)")
