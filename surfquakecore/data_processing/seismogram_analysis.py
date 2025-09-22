@@ -3,6 +3,7 @@ import os
 from obspy import Stream, Trace, UTCDateTime, Inventory
 import numpy as np
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
+from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
@@ -252,7 +253,8 @@ class StreamProcessing:
     Class for applying stream-wide processing steps (e.g., stack, cross-correlation, rotate, shift).
     """
 
-    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam", "particle_motion"}
+    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
+                      "kurtosis"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -293,6 +295,8 @@ class StreamProcessing:
                     self.apply_beam(step)
                 elif method_name == "particle_motion":
                     self.apply_pm(step)
+                elif method_name == "kurtosis":
+                    self.apply_kurtosis(step)
 
             return self.stream
 
@@ -524,6 +528,11 @@ class StreamProcessing:
 
         bm.compute_beam()
         bm.to_pickle(folder_path=step_config["output_folder"])
+
+    def apply_kurtosis(self, step_config):
+        cf_kurt = CFKurtosis(self.stream, step_config["CF_decay_win"], 4,  step_config["fmin"], step_config["fmax"])
+        self.stream = cf_kurt.run_kurtosis()
+
 
     def apply_pm(self, step_config):
 

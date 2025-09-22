@@ -11,8 +11,6 @@
 import warnings
 import os
 
-from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
-
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore")
 
@@ -40,6 +38,8 @@ from surfquakecore.spectral.cwtrun import TraceCWTResult
 from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
 from surfquakecore.utils.create_station_xml import Convert
 from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
+from datetime import datetime, timedelta
+from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -64,11 +64,23 @@ def _create_actions():
         "associate": _CliActions(
             name="associate", run=_associate, description=f"Type {__entry_point_name} -h for help.\n"),
 
+        "trigg": _CliActions(
+            name="trigg", run=_trigg, description=f"Type {__entry_point_name} -h for help.\n"),
+
         "locate": _CliActions(
             name="locate", run=_locate, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "source": _CliActions(
             name="source", run=_source, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "polarity": _CliActions(
+            name="polarity", run=_polarity, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "focmec": _CliActions(
+            name="focmec", run=_focmec, description=f"Type {__entry_point_name} -h for help.\n"),
+
+        "plotmec": _CliActions(
+            name="plotmec", run=_plotmec, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "mti": _CliActions(
             name="mi", run=_mti, description=f"Type {__entry_point_name} -h for help.\n"),
@@ -101,19 +113,7 @@ def _create_actions():
             name="info", run=_info, description=f"Type {__entry_point_name} -h for help.\n"),
 
         "explore": _CliActions(
-            name="explore", run=_explore, description=f"Type {__entry_point_name} -h for help.\n"),
-
-        "polarity": _CliActions(
-            name="polarity", run=_polarity, description=f"Type {__entry_point_name} -h for help.\n"),
-
-        "focmec": _CliActions(
-            name="focmec", run=_focmec, description=f"Type {__entry_point_name} -h for help.\n"),
-
-        "plotmec": _CliActions(
-            name="plotmec", run=_plotmec, description=f"Type {__entry_point_name} -h for help.\n"),
-
-        "trigg": _CliActions(
-            name="trigg", run=_trigg, description=f"Type {__entry_point_name} -h for help.\n")
+            name="explore", run=_explore, description=f"Type {__entry_point_name} -h for help.\n")
 
     }
 
@@ -1355,10 +1355,8 @@ def _trigg():
     min_date, max_date = None, None
     try:
         if parsed_args.min_date:
-            # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
             min_date = parser.parse(parsed_args.min_date)
         if parsed_args.max_date:
-            # max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
             max_date = parser.parse(parsed_args.max_date)
         if min_date or max_date:
             print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
@@ -1368,18 +1366,28 @@ def _trigg():
         raise ve
 
     # --- Decide between time segment or split ---
+    info = sp.get_project_basic_info()
+    min_date = info["Start"]
+    max_date = info["End"]
+    dt1 = parse_datetime(min_date)
+    dt2 = parse_datetime(max_date)
 
-    print(f"[INFO] Splitting into subprojects every {parsed_args.span_seconds} seconds")
-    subprojects = sp.split_by_time_spans(
-        span_seconds=parsed_args.span_seconds,
-        min_date=parsed_args.min_date,
-        max_date=parsed_args.max_date,
-        file_selection_mode="overlap_threshold",
-        verbose=True)
+    diff = abs(dt2 - dt1)
+    if diff < timedelta(days=1):
+        subprojects = [sp]
+    else:
+        print(f"[INFO] Splitting into subprojects every {parsed_args.span_seconds} seconds")
+        subprojects = sp.split_by_time_spans(
+            span_seconds=parsed_args.span_seconds,
+            min_date=parsed_args.min_date,
+            max_date=parsed_args.max_date,
+            file_selection_mode="overlap_threshold",
+            verbose=True)
 
     config_file = make_abs(parsed_args.config_file)
-    picking_file = make_abs(parsed_args.config_file)
+    picking_file = make_abs(parsed_args.picking_file)
     output_folder = make_abs(parsed_args.output_folder)
+
     ct = CoincidenceTrigger(subprojects, config_file, picking_file, output_folder, parsed_args.plot)
     ct.optimized_project_processing()
 
@@ -1902,6 +1910,14 @@ def resolve_path(path: Optional[str]) -> Optional[str]:
 def make_abs(path: Optional[str]) -> Optional[str]:
     return os.path.abspath(path) if path else None
 
+def parse_datetime(dt_str: str) -> datetime:
+    # try with microseconds, fall back if not present
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(dt_str, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Date string not in expected format: {dt_str}")
 
 if __name__ == "__main__":
     freeze_support()

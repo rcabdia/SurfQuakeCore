@@ -5,10 +5,10 @@ plotting:
   show_legend: true
   title_fontsize: 9
   autosave: false              # option to save plots instead of just showing
-  plot_type: overlay       # folder to save figures if autosave is true
+  plot_type: standard       # folder to save figures if autosave is true
   sharey: False
-  show_crosshair: False
   show_arrivals: False
   pick_output_file: ./picks.csv
   auto_load_pick_file: False
-  show_info_picks: True
+  show_info_picks: False # show pick info on screen interactively
+  backend: Qt5Agg #TkAgg (maximum robustness, default), MacOSX (only for mac), Qt5Agg (fast, picking  & interactive commands raise problems)

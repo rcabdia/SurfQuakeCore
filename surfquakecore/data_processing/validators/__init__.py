@@ -31,6 +31,7 @@ from .smoothing import validate_smoothing
 from .rotate import validate_rotate
 from .cross_correlate import validate_cross_correlate
 from .envelope import validate_envelope
+from .kurtosis import validate_kurtosis
 
 
 CHECK_DISPATCH = {
@@ -66,7 +67,8 @@ CHECK_DISPATCH = {
     'beam': validate_beam,
     'concat': validate_concat,
     'particle_motion': validate_particle,
-    'rename': validate_rename
+    'rename': validate_rename,
+    'kurtosis': validate_kurtosis
 }
 
 def validate_step(step_type, config):

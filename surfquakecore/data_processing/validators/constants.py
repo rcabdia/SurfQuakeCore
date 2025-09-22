@@ -8,7 +8,7 @@ ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'f
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
                  'cross_correlate', 'stack', 'synch', 'envelope', 'cut', 'concat', 'spectrum', 'spectrogram', 'cwt',
-                 'entropy', 'snr', 'raw', 'beam', 'particle_motion', 'rename']
+                 'entropy', 'snr', 'raw', 'beam', 'particle_motion', 'rename', 'kurtosis']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 

@@ -14,10 +14,11 @@ import math
 import os
 import time
 from collections import defaultdict
+from datetime import timedelta
 from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
-from matplotlib.ticker import ScalarFormatter
+from matplotlib.ticker import ScalarFormatter, FuncFormatter
 from obspy import UTCDateTime, Stream
 from obspy.core.trace import Trace
 import matplotlib as mplt
@@ -62,12 +63,11 @@ class PlotProj:
             "show_legend": True,
             "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
             "sharey": False,
-            "show_crosshair": False,
             "show_arrivals": False,
             "show_info_picks": False,
-            "pick_output_format": "NLLOC_OBS",
             "pick_output_file": "./picks.csv",
-            "auto_load_pick_file": False}
+            "auto_load_pick_file": False,
+            "backend": "TkAgg"}
 
         self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
@@ -105,10 +105,7 @@ class PlotProj:
 
     def plot(self, page=0):
 
-        # if platform.system() == 'Darwin':
-        #      mplt.use("MacOSX")
-        # else:
-        mplt.use("TkAgg")
+        mplt.use(self.plot_config["backend"])
 
         self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
@@ -126,6 +123,10 @@ class PlotProj:
 
     def _plot_standard_traces(self, page):
         plt.close(self.fig)
+
+        def _hms_tenths(x, pos=None):
+            d = mdt.num2date(x) + timedelta(milliseconds=50)  # round to nearest 0.1 s
+            return f"{d:%H:%M:%S}.{d.microsecond // 100000}"
 
         formatter_pow = ScalarFormatter(useMathText=True)
         formatter_pow.set_powerlimits((0, 0))  # Force scientific notation
@@ -169,12 +170,12 @@ class PlotProj:
         self.__selected_ax_index = 0
 
         # Crosshair cursor
-        if self.plot_config.get("show_crosshair", True):
-            self.cursors = []
-            for ax in self.axs:
-                cursor = BlittedCursor(ax, self.axs)
-                ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
-                self.cursors.append(cursor)
+        # if self.plot_config.get("show_crosshair", True):
+        #     self.cursors = []
+        #     for ax in self.axs:
+        #         cursor = BlittedCursor(ax, self.axs)
+        #         ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
+        #         self.cursors.append(cursor)
 
         self._setup_pick_interaction()
         self._restore_state()
@@ -227,8 +228,9 @@ class PlotProj:
 
             # Format x-axis
             ax.xaxis_date()
-            ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
             ax.xaxis.set_major_locator(mdt.AutoDateLocator())
+            #ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
+            ax.xaxis.set_major_formatter(FuncFormatter(_hms_tenths))
 
             # Hide bottom ticks except for last subplot
             if ax_idx < len(self.axs) - 1:
@@ -606,7 +608,7 @@ class PlotProj:
             return
 
         # Interactive pick with prompt at cursor time
-        if key == 'e':
+        if key == 'e' and self.plot_config["backend"] != "Qt5Agg":
             if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
                 print("[WARNING] Move the mouse over a trace before pressing 'e'.")
                 return
