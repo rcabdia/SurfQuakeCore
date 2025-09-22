@@ -323,7 +323,6 @@ def _polarity():
         Example usage:
         surfquake polarity -f './nll_picks.txt' -p './project_file.pkl' -o './nll_picks_polarities.txt' -t 0.95 
         
-
         """
     )
 
@@ -1879,11 +1878,7 @@ def _explore():
                 print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
                 raise ve
 
-        data_files = []
-        for item in sp.project.items():
-            list_channel = item[1]
-            for file_path in list_channel:
-                data_files.append(file_path[0])
+        data_files = sp.data_files_clean
 
     else:
         if "," in args.wave_files or " " in args.wave_files:

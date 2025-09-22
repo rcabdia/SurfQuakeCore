@@ -254,8 +254,7 @@ class CoincidenceTrigger:
         for i, project in enumerate(self.projects):
             print("Working in project", i)
             try:
-                data_files = project.data_files
-                results.append(self._process_coincidence_trigger(data_files))
+                results.append(self._process_coincidence_trigger(project.data_files_clean))
             except:
                 print("An exception raise at project ", i)
 
