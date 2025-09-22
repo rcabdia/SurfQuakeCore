@@ -1361,19 +1361,6 @@ def _trigg():
         print(f"[INFO] Filtering project by: {filters}")
         sp.filter_project_keys(**filters)
 
-    # --- Apply time filters ---
-    min_date, max_date = None, None
-    try:
-        if parsed_args.min_date:
-            min_date = parser.parse(parsed_args.min_date)
-        if parsed_args.max_date:
-            max_date = parser.parse(parsed_args.max_date)
-        if min_date or max_date:
-            print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
-            sp.filter_project_time(starttime=min_date, endtime=max_date, tol=120, verbose=True)
-    except ValueError as ve:
-        print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
-        raise ve
 
     # --- Decide between time segment or split ---
     info = sp.get_project_basic_info()
@@ -1384,7 +1371,9 @@ def _trigg():
 
     diff = abs(dt2 - dt1)
     if diff < timedelta(days=1):
+        sp.get_data_files()
         subprojects = [sp]
+
     else:
         print(f"[INFO] Splitting into subprojects every {parsed_args.span_seconds} seconds")
         subprojects = sp.split_by_time_spans(
@@ -1872,7 +1861,7 @@ def _explore():
         if filters:
             print(f"[INFO] Filtering project by: {filters}")
             sp.filter_project_keys(**filters)
-
+            sp.get_data_files()
             # --- Apply time filters ---
             min_date, max_date = None, None
             try:
@@ -1889,7 +1878,7 @@ def _explore():
                 print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
                 raise ve
 
-        data_files = sp.data_files_clean
+        data_files = sp.data_files
 
     else:
         if "," in args.wave_files or " " in args.wave_files:
