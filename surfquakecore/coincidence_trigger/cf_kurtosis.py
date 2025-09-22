@@ -15,8 +15,8 @@ try:
     from surfquakecore.cython_module import rec_filter, lib_rec_hos, lib_rec_rms
     # from isp.cython_code import lib_rosenberger  # not used for 1C
 except:
-    print("Kurtosis is not installesd correcty. In your isp environment, from ./ISP, "
-          "try >>python setup_user.py build_ext --inplace")
+    print("Kurtosis is not installesd correcty. Install gcc compiler and reinstall surfquake")
+
 
 class CFKurtosis:
     def __init__(self, source: Union[Iterable[str], Stream, Trace], CF_decay_win, hos_order,  fmin, fmax):

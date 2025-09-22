@@ -20,7 +20,10 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter, sosfiltfilt, bessel, ellip, cheby2, cheby1, sosfilt, periodogram
 from surfquakecore.utils.obspy_utils import Filters
 from obspy.signal.filter import envelope
-from surfquakecore.cython_module.whiten import whiten_aux
+try:
+    from surfquakecore.cython_module.whiten import whiten_aux
+except:
+    print("Whitenning no compiled. Install gcc compiler and reinstall surfquake")
 from typing import Union, Sequence
 
 def filter_trace(trace, type, fmin, fmax, **kwargs):

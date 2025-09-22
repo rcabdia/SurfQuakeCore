@@ -1,5 +1,3 @@
-import os
-
 from obspy import Stream, Trace, UTCDateTime, Inventory
 import numpy as np
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
@@ -8,7 +6,11 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
     rename_trace
-from surfquakecore.cython_module.hampel import hampel
+try:
+    from surfquakecore.cython_module.hampel import hampel
+except:
+    print("Hampel no compiled. Install gcc compiler and reinstall surfquake")
+
 from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
 from surfquakecore.data_processing.seismicUtils import SeismicUtils

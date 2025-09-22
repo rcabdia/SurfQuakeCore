@@ -390,7 +390,7 @@ class PlotCoincidence:
 
             # raw
             ln1, = ax.plot(t, tr_raw.data, linewidth=1.0, label=f"{tr_raw.id}")
-            ax.set_ylabel("Raw")
+            #ax.set_ylabel("Raw")
 
             # CF
             ax2 = ax.twinx()
@@ -398,7 +398,7 @@ class PlotCoincidence:
                 t[:len(tr_cf.data)], tr_cf.data,
                 linestyle="-", linewidth=0.75, alpha=0.75, label="CF", color="orange"
             )
-            ax2.set_ylabel("CF")
+            #ax2.set_ylabel("CF")
 
             # event vertical lines (only those within this subplot's time window)
             if event_x:
