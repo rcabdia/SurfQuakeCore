@@ -320,8 +320,15 @@ def _polarity():
         PolarCAP–A deep learning approach for first motion polarity classification of earthquake waveforms. 
         Artificial Intelligence in Geosciences, 3, 46-52.
         
+        Key Arguments:
+        -p, --project_file_path     [REQUIRED] Path to a surfquake project
+        -f, --picking_file_path     [REQUIRED] Path to a picking files
+        -o, --output_file_path      [REQUIRED] Path to the new picking file edited with polarities
+        -t, --thresh                [OPTIONAL] Threshold for Polarity declaration 
+
+        
         Example usage:
-        surfquake polarity -f './nll_picks.txt' -p './project_file.pkl' -o './nll_picks_polarities.txt' -t 0.95 
+        > surfquake polarity -f ./nll_picks.txt -p ./project_file.pkl -o ./nll_picks_polarities.txt -t 0.95 
         
         """
     )
@@ -358,8 +365,14 @@ def _focmec():
         International Handbook of Earthquake and Engineering Seismology, Part B, Academic Press, pp. 1629–1630.
         https://seiscode.iris.washington.edu/projects/focmec
         
+        
+        Key Arguments:
+        -d, --hyp_folder        [REQUIRED] Path to folder containing hyp files
+        -o, --output_folder     [REQUIRED] Path to the output folder
+        -a, --accepted          [OPTIONAL] Number of accepted wrong polarities (float, default 1.0)
+        
         Example usage:
-        > surfquake focmec -d './folder_hyp_path' -a 1.0 -o './output_folder'
+        > surfquake focmec -d ./folder_hyp_path -a 1.0 -o ./output_folder
         
         """
     )
@@ -368,7 +381,7 @@ def _focmec():
                         type=str)
     parser.add_argument("-a", "--accepted", required=False, help="Number of accepted wrong polarities",
                         type=float, default=1.0)
-    parser.add_argument("-o", "--output_folder", required=False, help="output folder", type=str)
+    parser.add_argument("-o", "--output_folder", required=True, help="output folder", type=str)
 
 
     args = parser.parse_args()
@@ -398,22 +411,31 @@ def _plotmec():
         
         Plot fault planes, T & P axis, and P-wave polarities.
         
+        
+        Key Arguments:
+        -f, --focmec_file           [OPTIONAL] Path to a specific *.lst file
+        -d, --focmec_folder_path    [OPTIONAL] Path to folder with all *.lst files (focmec output)
+        -o, --output_folder         [REQUIRED] Path to the output folder
+        -a, --all_solutions         [OPTIONAL] If set, all searching fault planes will be plot
+        -p, --plot_polarities       [OPTIONAL] If plot P-Wave polarities on the beachball
+        -m, --format                [OPTIONAL] Format output plot (defaults pdf)
+        
         Example usage:
 
-        surfquake plotmec -d './focmec_folder_path' -o './output_folder'
-        surfquake plotmec -f './focmec_file_path' -o './output_folder' -p -a -m pdf
+        surfquake plotmec -d ./focmec_folder_path -o ./output_folder
+        surfquake plotmec -f ./focmec_file_path.lst -o ./output_folder -p -a -m pdf
             
         if output is not provided the beachball of the focal mechanism will be shown on screen, 
         but if user provide output folder, the beach ball plot will be saved in the folder
         
             """
     )
-    parser.add_argument("-f", "--focmec_file", required=False,
-                        help="file with focmec.lst solution", type=str)
+
+    parser.add_argument("-f", "--focmec_file", required=False, help="file with focmec.lst solution", type=str)
 
     parser.add_argument("-d", "--focmec_folder_path", required=False, help="path to folder with all *.lst "
                                                                            "focmec solutions", type=str)
-    parser.add_argument("-o", "--output_folder", required=False, help="output folder", type=str)
+    parser.add_argument("-o", "--output_folder", required=True, help="output folder", type=str)
     parser.add_argument("-p", "--plot_polarities", required=False, help="plot P-Wave polarities", action="store_true")
     parser.add_argument("-a", "--all_solutions", required=False, help="plot all searching fault planes",
                         action="store_true")
@@ -475,8 +497,7 @@ def _plotmec():
 
         FirstPolarity.print_first_polarity_info(file_output_name, first_polarity_results)
         FirstPolarity.drawFocMec(strike_A, dip_A, rake_A, Station, Az, Dip, Motion, P_Trend, P_Plunge,
-                                              T_Trend, T_Plunge, output_folder_file,
-                                 plot_polarities=args.plot_polarities,
+            T_Trend, T_Plunge, output_folder_file, plot_polarities=args.plot_polarities,
                                  solution_collection=solution_collection)
 
 
