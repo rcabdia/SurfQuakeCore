@@ -69,7 +69,6 @@ class SurfProject:
         self.root_path = root_path
         self.project = {}
         self.data_files = []
-        self.data_files_clean = []
         self.data_files_full = []
 
     def __add__(self, other):
@@ -77,12 +76,11 @@ class SurfProject:
 
             root_path = [self.root_path, other.root_path]
             data_files = self.data_files + other.data_files
-            data_files_clean = self.data_files_clean + other.data_files_clean
             join_project = {**self.project, **other.project}
             sp = SurfProject(root_path)
             sp.project = join_project
             sp.data_files = data_files
-            sp.data_files_clean = data_files_clean
+
             return sp
         else:
             raise TypeError("It couldn't be joined both projects")
@@ -331,12 +329,16 @@ class SurfProject:
             print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
                   info["Channels"][1], "Num Total Files: ", info["num_files"])
 
+    def get_data_files(self):
+        self._fill_list()
+        return self.data_files
+
     def _fill_list(self):
+        self.data_files = []
         for item in self.project.items():
             list_channel = item[1]
             for file_path in list_channel:
                 self.data_files.append(file_path[0])
-        self.data_files_clean = self.data_files
 
     def _fill_list_full(self):
         self.data_files_full = []
@@ -452,12 +454,11 @@ class SurfProject:
                 if value[0][0] is not None:
                     for j in value:
                         self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
-                        self.data_files_clean.append(j[0])
+
         else:
             for key, value in project_filtered.items():
                 for j in value:
                     self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
-                    self.data_files_clean.append(j[0])
 
         # clean possible empty lists
         # self.remove_empty_keys()

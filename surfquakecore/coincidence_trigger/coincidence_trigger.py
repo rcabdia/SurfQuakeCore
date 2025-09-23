@@ -177,9 +177,9 @@ class CoincidenceTrigger:
 
         events, events_times_cluster = self.run_coincidence(st_SNR)
 
-        if self.plot:
+        if self.plot and self.output_folder:
             PlotCoincidence.plot_stream_and_cf_simple(st, st_SNR, type="SNR", events=events_times_cluster,
-                                                      savepath=self.output_folder)
+                                                      savepath=self.output_folder, show=False)
 
         return events, events_times_cluster
 
@@ -213,8 +213,8 @@ class CoincidenceTrigger:
 
         if self.plot:
             print("Plotting CFs")
-            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, type = "Kurtosis", events=events_times_cluster,
-                                                      savepath=self.output_folder)
+            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, type="Kurtosis", events=events_times_cluster,
+                                                      savepath=self.output_folder, show=False)
 
         return events, events_times_cluster
 

@@ -1305,8 +1305,8 @@ def _trigg():
                 
         Key Arguments:
             -p, --project_file        [REQUIRED] Path to a saved project files
-            -o, --output_folder       [OPTIONAL] Directory for processed output
-            -c, --config_file         [OPTIONAL] Processing configuration (YAML)
+            -o, --output_folder       [REQUIRED] Directory for processed output
+            -c, --config_file         [REQUIRED] Processing configuration (YAML)
             -n, --net                 [OPTIONAL] Network code filter
             -s, --station             [OPTIONAL] Station code filter
             -ch, --channel            [OPTIONAL] Channel filter
@@ -1319,9 +1319,9 @@ def _trigg():
 
     arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
 
-    arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
+    arg_parse.add_argument("-o", "--output_folder", required=True, help="Folder to save processed data")
 
-    arg_parse.add_argument("-c", "--config_file", required=False, help="YAML config for processing")
+    arg_parse.add_argument("-c", "--config_file", required=True, help="YAML config for processing")
 
     arg_parse.add_argument("--span_seconds", type=int, default=86400,
                            help="Time span to split your dataset (in seconds), default 86400s")
