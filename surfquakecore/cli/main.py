@@ -396,7 +396,7 @@ def _focmec():
                 file_input = FirstPolarity().create_input(file, header)
 
                 if FirstPolarity.check_no_empty(file_input):
-                    FirstPolarity().run_focmec(file_input, 3, output_folder)
+                    FirstPolarity().run_focmec(file_input, args.accepted, output_folder)
         except Exception as e:
             print(f"Error processing file {file}: {e}")
             traceback.print_exc()
