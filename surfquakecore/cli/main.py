@@ -11,6 +11,8 @@
 import warnings
 import os
 
+from surfquakecore.utils.os_utils import OSutils
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore")
 
@@ -389,17 +391,23 @@ def _focmec():
     hyp_folder = make_abs(args.hyp_folder)
     output_folder = make_abs(args.output_folder)
     files_list = FirstPolarity.find_hyp_files(hyp_folder)
-    for file in files_list:
-        try:
-            header = FirstPolarity.set_head(file)
-            if file is not None:
-                file_input = FirstPolarity().create_input(file, header)
+    if len(files_list) > 0:
+        # Reset the output case of exist
+        OSutils.delete_folder_contents(output_folder)
+        for file in files_list:
+            try:
+                header = FirstPolarity.set_head(file)
+                if file is not None:
+                    file_input = FirstPolarity().create_input(file, header)
 
-                if FirstPolarity.check_no_empty(file_input):
-                    FirstPolarity().run_focmec(file_input, args.accepted, output_folder)
-        except Exception as e:
-            print(f"Error processing file {file}: {e}")
-            traceback.print_exc()
+                    if FirstPolarity.check_no_empty(file_input):
+                        FirstPolarity().run_focmec(file_input, args.accepted, output_folder)
+            except Exception as e:
+                print(f"Error processing file {file}: {e}")
+                traceback.print_exc()
+    else:
+        print("No files *hyp to compute focmec")
+
 
 def _plotmec():
     parser = ArgumentParser(
