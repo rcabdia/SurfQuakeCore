@@ -600,16 +600,18 @@ class AnalysisEvents:
             if len(st) == 0:
                 return []
 
-            stats = file_group[0][1]
+            # stats = file_group[0][1]
             # net, sta = stats.network, stats.station
 
             traces = []
             for tr in st:
                 if self.config:
                     tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
-
-                tr = set_header_func(tr, distance_km=-1, BAZ=-1, AZ=-1, incidence_angle=-1,
-                                     otime=None, lat=None, lon=None, depth=None)
+                if 'geodetic' in tr.stats:
+                    pass
+                else:
+                    tr = set_header_func(tr, distance_km=-1, BAZ=-1, AZ=-1, incidence_angle=-1,
+                                         otime=None, lat=None, lon=None, depth=None)
                 traces.append(tr)
 
             return traces
