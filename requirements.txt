@@ -1,6 +1,7 @@
 python-dateutil~=2.8.2
 numpy~=1.26.1
 obspy~=1.4.0
+obspyh5==0.5.0
 pyproj~=3.6.1
 pandas~=2.1.2
 tensorflow~=2.15.0
