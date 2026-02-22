@@ -4,8 +4,9 @@ from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
-    trace_envelope, whiten_new, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
-    rename_trace
+    trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
+    rename_trace, whiten_new_band_freq_single
+
 try:
     from surfquakecore.cython_module.hampel import hampel
 except:
@@ -150,7 +151,10 @@ class SeismogramData:
 
                 if _config['name'] == 'whitening':
                     # tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
-                    tr = whiten_new(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
+                    # tr = whiten_new(tr, _config['freq_width'], taper_edge=_config['taper_edge'])
+                    tr = whiten_new_band_freq_single(tr, fmin=_config['fmin'], fmax=_config['fmax'],
+                                                     freq_width=_config['freq_width'], taper=_config['taper_edge'],
+                                                     outside_scale=1e-3, eps=1e-12)
 
                 if _config['name'] == 'remove_spikes':
                     filtered, outliers, medians, mads, thresholds = (

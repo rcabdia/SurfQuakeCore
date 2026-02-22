@@ -32,9 +32,9 @@ def try_cythonize(ext: Extension):
             },
         )
     except CompileError as e:
-        warnings.warn(f"⚠️ Could not compile {ext.name}: {e}. Skipping.")
+        warnings.warn(f"Warning Could not compile {ext.name}: {e}. Skipping.")
     except Exception as e:
-        warnings.warn(f"⚠️ Unexpected error compiling {ext.name}: {e}. Skipping.")
+        warnings.warn(f"Warning Unexpected error compiling {ext.name}: {e}. Skipping.")
     return []
 
 # Explicit list of pyx modules to build
@@ -54,7 +54,7 @@ ext_specs = [
 extensions = []
 for modname, relsrc in ext_specs:
     if not os.path.isfile(relsrc):
-        warnings.warn(f"⚠️ Source not found for {modname}: {relsrc}. Skipping.")
+        warnings.warn(f"Warning Source not found for {modname}: {relsrc}. Skipping.")
         continue
     ext = Extension(
         name=modname,
@@ -72,7 +72,7 @@ class BuildExt(build_ext):
 
 setup(
     name="surfquake",
-    version="0.1.6",
+    version="0.1.8",
     description="SurfQuake core with Cython accelerations",
     packages=["surfquakecore", "surfquakecore.cython_module"],
     cmdclass={"build_ext": BuildExt},

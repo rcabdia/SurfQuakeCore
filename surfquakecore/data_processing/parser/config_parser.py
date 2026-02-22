@@ -266,9 +266,10 @@ def parse_whitening(config):
     """
     template = {
         'name': 'whitening',
+        'fmin': 0.05,
+        'fmax': 20.0,
         'taper_edge': True,
-        'freq_width': 0.05
-    }
+        'freq_width': 0.02}
     template.update(config)
     return template
 

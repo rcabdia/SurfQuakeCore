@@ -6,57 +6,59 @@ Analysis:
   process_3:
     name: 'rmean'
     method: 'simple'
-  process_3:
+  process_4:
     name: 'normalize'
     norm:
-  process_4:
+  process_5:
     name: 'differentiate'
     diff: true
-  process_5:
+  process_6:
     name: 'integrate'
     method: 'spline'
-  process_6:
+  process_7:
     name: 'filter'
     method: 'bandpass'
     freqmin: 4.0
     freqmax: 8.0
-  process_7:
-    name: 'wiener_filter'
-    time_window: 0
-    noise_power: 0
   process_8:
-    name: 'remove_response'
-    inventory: '/home/sysop/Escritorio/geofisica/ISP/isp/Metadata/xml/metadata.xml'
-    water_level: 0
-    units: 'Wood Anderson'
-    pre_filt: [1,2,3,4]
+    name: 'wiener_filter'
+    time_window: 1.0
+    noise_power: 0
   process_9:
+    name: 'remove_response'
+    inventory: 'path/metadata.xml'
+    water_level: 90
+    units: 'Wood Anderson'
+    pre_filt: [0.01,0.02,30,32]
+  process_10:
     name: 'add_white_noise'
     SNR_dB: 10
-  process_10:
+  process_11:
     name: 'whitening'
+    fmin: 0.05
+    fmax: 20
     freq_width: 0.04
     taper_edge: True
-  process_11:
+  process_12:
     name: 'remove_spikes'
     window_size: 10
     n: 4
-  process_12:
+  process_13:
     name: 'time_normalization'
     method: '1bit'
     norm_win: 10
-  process_13:
+  process_14:
     name: 'wavelet_denoise'
     dwt: 'db2'
     threshold: 0.5
-  process_14:
+  process_15:
     name: 'resample'
     pre_filter: True
     sampling_rate: 100
-  process_15:
+  process_16:
     name: 'fill_gaps'
     method: 'interpolate'
-  process_16:
+  process_17:
     name: 'smoothing'
     method: 'gaussian'
     time_window: 5

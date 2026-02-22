@@ -14,4 +14,4 @@ pywavelets~=1.6.0
 nitime~=0.11
 cython~=3.0.11
 deprecated~=1.2.15
-future~=1.0.0
+future<=1.0.0

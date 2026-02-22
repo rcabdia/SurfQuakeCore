@@ -26,6 +26,14 @@ except:
     print("Whitenning no compiled. Install gcc compiler and reinstall surfquake")
 from typing import Union, Sequence
 
+
+def next_power_of_2(n):
+    """
+    Return next power of 2 greater than or equal to n
+    """
+    n = math.ceil(n)
+    return 2 ** (n - 1).bit_length()
+
 def filter_trace(trace, type, fmin, fmax, **kwargs):
     """
         Filter an ObsPy Trace using standard and advanced filters.
@@ -427,6 +435,102 @@ def whiten(tr, freq_width=0.05, taper_edge=True):
     data = data[0:N]
     tr.data = data
 
+    return tr
+
+
+def whiten_new_band_freq_single(tr, fmin: float, fmax: float, freq_width: float = 0.02, taper: bool = True,
+    outside_scale: float = 1e-3, eps: float = 1e-12):
+
+    """
+    Band-limited spectral whitening of a seismic trace.
+
+    Whitening is performed in the frequency domain by dividing the complex spectrum
+    by a smoothed estimate of its magnitude within [fmin, fmax], preserving phase.
+
+    Parameters
+    ----------
+    tr : obspy.Trace-like
+        Input trace. Must have `tr.data` (1D array) and `tr.stats.sampling_rate`.
+    fmin, fmax : float
+        Whitening band edges in Hz. Must satisfy 0 <= fmin < fmax <= Nyquist.
+    freq_width : float, default=0.02
+        Smoothing width in Hz used to compute a running-average magnitude spectrum.
+        Internally converted to an odd number of FFT bins (>=3).
+    taper : bool, default=True
+        If True, apply a cosine-squared taper at the band edges to reduce ringing.
+    outside_scale : float, default=1e-3
+        Controls spectrum outside the whitening band:
+          - if 0.0: set outside-band spectrum to zero
+          - else: set outside-band magnitude to outside_scale * median(in-band magnitude)
+            while preserving the original phase.
+    eps : float, default=1e-12
+        Small constant to avoid division by zero.
+    copy : bool, default=True
+        If True, return a new trace object; if False, modify input trace in-place.
+
+    Returns
+    -------
+    tr_out : Trace-like
+        Time-domain whitened trace (length equals original).
+    f : np.ndarray
+        Frequency axis (Hz) for the rFFT (length D//2 + 1).
+    X : np.ndarray (complex)
+        Original rFFT spectrum (length D//2 + 1).
+    Xw : np.ndarray (complex)
+        Whitened rFFT spectrum (length D//2 + 1).
+
+    Notes
+    -----
+    - Whitening flattens the amplitude spectrum inside [fmin, fmax] while keeping phase.
+    - A sharp bandpass can create time-domain ringing; `taper=True` helps.
+    - The result depends on smoothing width: too small => noisy whitening,
+      too large => incomplete whitening.
+    """
+
+    N = tr.count()
+    D = next_power_of_2(N)
+    fs = float(tr.stats.sampling_rate)
+    df = fs / D
+    x = np.asarray(tr.data, dtype=np.float32)
+    X = np.fft.rfft(x, n=D)
+    f = np.fft.rfftfreq(D, d=1.0 / fs)
+    band = (f >= fmin) & (f <= fmax)
+    if not np.any(band):
+        return X.astype(np.complex64, copy=False)
+
+    w = max(3, int(round(freq_width / df)))
+    if w % 2 == 0: w += 1
+    halfw = (w - 1) // 2
+    win = np.ones(w, dtype=float)
+
+    mag = np.abs(X)
+    mask = band.astype(float)
+    num = np.convolve(mag * mask, win, mode="same")
+    denw = np.convolve(mask, win, mode="same")
+    denom = num / np.maximum(denw, eps)
+
+    Xw = X.copy()
+    sel = band & (denom > 0)
+    Xw[sel] = X[sel] / np.maximum(denom[sel], eps)
+
+    if outside_scale == 0.0:
+        Xw[~band] = 0.0
+    else:
+        inmag = np.median(np.abs(Xw[sel])) if np.any(sel) else 1.0
+        alpha = float(outside_scale) * max(inmag, eps)
+        phase = X / (np.abs(X) + eps)
+        Xw[~band] = alpha * phase[~band]
+
+    if taper:
+        i1 = np.argmax(band)
+        i2 = len(band) - 1 - np.argmax(band[::-1])
+        nsmo = min(halfw, max(1, i2 - i1 + 1))
+        left = (np.cos(np.linspace(np.pi / 2, np.pi, nsmo)) ** 2)
+        right = left[::-1]
+        Xw[i1:i1 + nsmo] *= left
+        Xw[i2 - nsmo + 1:i2 + 1] *= right
+
+    tr.data = np.fft.irfft(Xw.astype(np.complex64, copy=False))[0:N]
     return tr
 
 
