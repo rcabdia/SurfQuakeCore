@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 from datetime import datetime
 from surfquakecore.project.surf_project import SurfProject
-from surfquakecore.utils.obspy_utils import MseedUtil, ObspyUtil
+from surfquakecore.utils.obspy_utils import ObspyUtil
 
 
 # def init_worker():

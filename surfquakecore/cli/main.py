@@ -10,38 +10,15 @@
 
 import warnings
 import os
-
-from surfquakecore.utils.os_utils import OSutils
-
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore")
-
 import sys
 import traceback
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from dataclasses import dataclass
-from dateutil import parser
 from multiprocessing import freeze_support
 from typing import Optional
-from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
-from surfquakecore.data_processing.analysis_events import AnalysisEvents
-from surfquakecore.data_processing.processing_methods import print_surfquake_trace_headers
-from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
-from surfquakecore.first_polarity.first_polarity import FirstPolarity
-from surfquakecore.first_polarity.get_pol import RunPolarity
-from surfquakecore.magnitudes.run_magnitudes import Automag
-from surfquakecore.magnitudes.source_tools import ReadSource
-from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
-from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
-from surfquakecore.project.surf_project import SurfProject
-from surfquakecore.real.real_core import RealCore
-from surfquakecore.seismoplot.availability import PlotExplore
-from surfquakecore.spectral.cwtrun import TraceCWTResult
-from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
-from surfquakecore.utils.create_station_xml import Convert
-from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
-from datetime import datetime, timedelta
-from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
+
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -54,95 +31,138 @@ class _CliActions:
     run: callable
     description: str = ""
 
+# Add this helper somewhere near main() (e.g., above main)
+def _print_main_help(actions: dict):
+    print(f"Usage: {__entry_point_name} <command> [options]\n")
+    print("Commands:\n")
+
+    # compute padding for alignment
+    width = max((len(k) for k in actions.keys()), default=0)
+
+    for name, action in actions.items():
+        desc = (action.description or "").strip()
+        print(f"  {name:<{width}}  {desc}")
+
+    print("\nRun `surfquake <command> -h` for command-specific help.")
+
 
 def _create_actions():
     _actions = {
         "project": _CliActions(
-            name="project", run=_project, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="project", run=_project,
+            description="Create a project by indexing waveform files."
+        ),
         "pick": _CliActions(
-            name="pick", run=_pick, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="pick", run=_pick,
+            description="Run PhaseNet to pick P/S arrivals."
+        ),
         "associate": _CliActions(
-            name="associate", run=_associate, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="associate", run=_associate,
+            description="Associate picks into events using REAL."
+        ),
         "trigg": _CliActions(
-            name="trigg", run=_trigg, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="trigg", run=_trigg,
+            description="Detect events in continuous data (coincidence trigger)."
+        ),
         "locate": _CliActions(
-            name="locate", run=_locate, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="locate", run=_locate,
+            description="Locate events using NonLinLoc."
+        ),
         "source": _CliActions(
-            name="source", run=_source, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="source", run=_source,
+            description="Estimate source parameters from spectra."
+        ),
         "polarity": _CliActions(
-            name="polarity", run=_polarity, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="polarity", run=_polarity,
+            description="Determine first-motion polarities."
+        ),
         "focmec": _CliActions(
-            name="focmec", run=_focmec, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="focmec", run=_focmec,
+            description="Compute focal mechanisms from polarities (FOCMEC)."
+        ),
         "plotmec": _CliActions(
-            name="plotmec", run=_plotmec, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="plotmec", run=_plotmec,
+            description="Plot focal mechanism beachballs and polarities."
+        ),
         "mti": _CliActions(
-            name="mi", run=_mti, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="mti", run=_mti,
+            description="Moment tensor inversion (Bayesian ISOLA)."
+        ),
         "csv2xml": _CliActions(
-            name="csv2xml", run=_csv2xml, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="csv2xml", run=_csv2xml,
+            description="Convert station CSV to StationXML."
+        ),
         "buildcatalog": _CliActions(
-            name="buildcatalog", run=_buildcatalog, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="buildcatalog", run=_buildcatalog,
+            description="Build a catalog combining SurfQuake outputs."
+        ),
         "buildmticonfig": _CliActions(
-            name="buildmticonfig", run=_buildmticonfig, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="buildmticonfig", run=_buildmticonfig,
+            description="Generate MTI config files from a catalog + template."
+        ),
         "processing": _CliActions(
-            name="processing", run=_processing, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="processing", run=_processing,
+            description="Process/cut event waveforms (interactive or auto)."
+        ),
         "processing_daily": _CliActions(
-            name="processing_daily", run=_processing_daily, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="processing_daily", run=_processing_daily,
+            description="Process continuous data in daily/time segments."
+        ),
         "quick": _CliActions(
-            name="processing_quick", run=_quickproc, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="quick", run=_quickproc,
+            description="Quick processing directly from waveform files."
+        ),
         "specplot": _CliActions(
-            name="specplot", run=_specplot, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="specplot", run=_specplot,
+            description="Plot saved spectrum/spectrogram/CWT results."
+        ),
         "beamplot": _CliActions(
-            name="beamplot", run=_beamplot, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="beamplot", run=_beamplot,
+            description="Plot saved beamforming results and detect peaks."
+        ),
         "info": _CliActions(
-            name="info", run=_info, description=f"Type {__entry_point_name} -h for help.\n"),
-
+            name="info", run=_info,
+            description="Print waveform header information."
+        ),
         "explore": _CliActions(
-            name="explore", run=_explore, description=f"Type {__entry_point_name} -h for help.\n")
-
+            name="explore", run=_explore,
+            description="Plot data availability."
+        ),
     }
-
     return _actions
 
 
 def main(argv: Optional[str] = None):
-    # actions must be always the first arguments after the command surfquake
-    try:
-        input_action = sys.argv.pop(1)
-    except IndexError:
-        input_action = ""
-
     actions = _create_actions()
+
+    try:
+        input_action = sys.argv[1]
+    except IndexError:
+        # No arguments → show help and exit cleanly
+        _print_main_help(actions)
+        sys.exit(0)
+
+    # Remove the command from argv so subcommands work as before
+    sys.argv.pop(1)
+
+    if input_action in ("-h", "--help", "help"):
+        _print_main_help(actions)
+        sys.exit(0)
 
     if action := actions.get(input_action, None):
         action.run()
+        sys.exit(0)
     else:
-        print(f"- Possible surfquake commands are: {', '.join(actions.keys())}\n"
-              f"- Command documentation typing: surfquake command -h ")
+        print(f"[ERROR] Unknown command: {input_action}\n")
+        _print_main_help(actions)
+        sys.exit(1)
 
 
 def _project():
     """
     Command-line interface for creating a seismic project.
     """
-
+    from surfquakecore.project.surf_project import SurfProject
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} project",
         description="Create a seismic project by indexing seismogram files and storing their metadata.",
@@ -194,7 +214,8 @@ def _project():
 
 def _pick():
     from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
-
+    from surfquakecore.project.surf_project import SurfProject
+    from dateutil import parser
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} pick",
         description="Use PhaseNet deep learning model to pick P- and S-wave arrivals.",
@@ -306,6 +327,9 @@ def _pick():
 
 
 def _polarity():
+    from surfquakecore.project.surf_project import SurfProject
+    from surfquakecore.first_polarity.get_pol import RunPolarity
+
     parser = ArgumentParser(
         prog="surfquake polarity",
         description="Determines Polarities from P-wave first motion",
@@ -351,6 +375,8 @@ def _polarity():
 
 
 def _focmec():
+    from surfquakecore.utils.os_utils import OSutils
+
     parser = ArgumentParser(
         prog="surfquake focmec",
         description="Focal Mechanism from P-Wave first motion polarity",
@@ -379,6 +405,7 @@ def _focmec():
         """
     )
 
+    from surfquakecore.first_polarity.first_polarity import FirstPolarity
     parser.add_argument("-d", "--hyp_folder", required=True, help="path to folder containing hyp files",
                         type=str)
     parser.add_argument("-a", "--accepted", required=False, help="Number of accepted wrong polarities",
@@ -438,7 +465,7 @@ def _plotmec():
         
             """
     )
-
+    from surfquakecore.first_polarity.first_polarity import FirstPolarity
     parser.add_argument("-f", "--focmec_file", required=False, help="file with focmec.lst solution", type=str)
 
     parser.add_argument("-d", "--focmec_folder_path", required=False, help="path to folder with all *.lst "
@@ -510,6 +537,7 @@ def _plotmec():
 
 
 def _associate():
+    from surfquakecore.real.real_core import RealCore
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} associator",
@@ -586,6 +614,7 @@ def _associate():
 
 
 def _locate():
+    from surfquakecore.earthquake_location.run_nll import NllManager, Nllcatalog
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} locate seismic event",
@@ -685,6 +714,9 @@ def _locate():
 
 
 def _source():
+    from surfquakecore.project.surf_project import SurfProject
+    from surfquakecore.magnitudes.source_tools import ReadSource
+    from surfquakecore.magnitudes.run_magnitudes import Automag
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} source parameters estimation",
@@ -772,6 +804,9 @@ def _source():
 
 
 def _mti():
+    from surfquakecore.project.surf_project import SurfProject
+    from surfquakecore.moment_tensor.sq_isola_tools import BayesianIsolaCore
+    from surfquakecore.moment_tensor.mti_parse import WriteMTI
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} Moment Tensor Inversion",
@@ -844,6 +879,8 @@ def _mti():
 
 
 def _csv2xml():
+    from surfquakecore.utils.create_station_xml import Convert
+
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} Convert CSV to StationXML",
         description="Convert a CSV file of station metadata to a StationXML file.",
@@ -899,6 +936,7 @@ def _csv2xml():
 
 
 def _buildcatalog():
+    from surfquakecore.utils.manage_catalog import BuildCatalog, WriteCatalog
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} Convert CSV file to stations.xml",
@@ -974,6 +1012,7 @@ def _buildcatalog():
 
 
 def _buildmticonfig():
+    from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} Create mti_config.ini from catalog and template",
@@ -1094,6 +1133,8 @@ def _buildmticonfig():
 
 
 def _processing():
+    from surfquakecore.data_processing.analysis_events import AnalysisEvents
+    from surfquakecore.project.surf_project import SurfProject
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} surfquake processing",
@@ -1304,6 +1345,10 @@ def _processing():
 
 def _trigg():
 
+    from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
+    from surfquakecore.project.surf_project import SurfProject
+    from datetime import timedelta
+
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} computes coincidence trigger",
         description="Process seismograms in daily files to detect events using coincidence trigger",
@@ -1420,6 +1465,9 @@ def _trigg():
     ct.optimized_project_processing()
 
 def _processing_daily():
+    from surfquakecore.data_processing.analysis_events import AnalysisEvents
+    from surfquakecore.project.surf_project import SurfProject
+    from dateutil import parser
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} processing continuous waveforms",
@@ -1582,6 +1630,8 @@ def _processing_daily():
     ae.run_waveform_analysis(auto=parsed_args.auto)
 
 def _quickproc():
+    from surfquakecore.data_processing.analysis_events import AnalysisEvents
+    from surfquakecore.project.surf_project import SurfProject
 
     parser = ArgumentParser(
         prog="surfquake quick",
@@ -1682,6 +1732,9 @@ def _quickproc():
     ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto)
 
 def _specplot():
+    from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
+    from surfquakecore.spectral.cwtrun import TraceCWTResult
+
     parser = ArgumentParser(
         prog="surfquake specplot",
         description="Plot serialized spectral analysis (spectrum, spectrogram or cwt)",
@@ -1729,7 +1782,7 @@ Examples:
 
 
 def _beamplot():
-
+    from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
     parser = ArgumentParser(
         prog="surfquake beamplot",
         description="Plot serialized beamforming result and optionally extract peaks",
@@ -1794,6 +1847,9 @@ Examples:
         beam_obj.plot_beam(save_path=make_abs(args.save_path) if args.save_path else None)
 
 def _info():
+    from surfquakecore.data_processing.processing_methods import print_surfquake_trace_headers
+    from surfquakecore.project.surf_project import SurfProject
+
     parser = ArgumentParser(
         prog="surfquake info",
         description="Prints waveform information ",
@@ -1838,6 +1894,9 @@ def _info():
 
 
 def _explore():
+    from surfquakecore.seismoplot.availability import PlotExplore
+    from surfquakecore.project.surf_project import SurfProject
+    from dateutil import parser
 
     arg_parse = ArgumentParser(
         prog="surfquake explore",
@@ -1934,8 +1993,10 @@ def resolve_path(path: Optional[str]) -> Optional[str]:
 def make_abs(path: Optional[str]) -> Optional[str]:
     return os.path.abspath(path) if path else None
 
-def parse_datetime(dt_str: str) -> datetime:
+def parse_datetime(dt_str: str):
     # try with microseconds, fall back if not present
+    from datetime import datetime
+
     for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
         try:
             return datetime.strptime(dt_str, fmt)
