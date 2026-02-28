@@ -961,7 +961,9 @@ class PlotProj:
         self.fig_spec.canvas.mpl_disconnect(cid)
 
 
-    def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0, clip=None):
+    def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0, clip=None,
+                      method="multitaper", nw=None):
+
         self._exit = False
         trace = self.displayed_traces[idx]
         try:
@@ -975,17 +977,17 @@ class PlotProj:
             etime = trace.stats.endtime
 
         print("Spectrogram window: ", stime, etime)
-
         trace.trim(starttime=stime, endtime=etime)
-
+        print(idx, int(win_sec * trace.stats.sampling_rate), (100 - overlap_percent) * 1E-2, method, nw)
         spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(
             trace.data,
             win=int(win_sec * trace.stats.sampling_rate),
             dt=trace.stats.delta,
             linf=0,
             lsup=int(trace.stats.sampling_rate // 2),
-            step_percentage=(100-overlap_percent)*1E-2
-        )
+            step_percentage=(100 - overlap_percent) * 1E-2,
+            method=method,
+            nw=nw)
 
         # --- Set up GridSpec with reserved space for colorbar ---
         self.fig_spec = plt.figure(figsize=(10, 5))

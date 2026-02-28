@@ -414,38 +414,94 @@ class PlotCommandPrompt:
     def _cmd_spectrogram(self, args):
         """
         Usage:
-            spectrogram <index> [<win_sec> <overlap%>] [<clip> (negative value)]
+            spectrogram <index> [<win_sec> <overlap%>] [<clip>]
+                        [--method multitaper|fft]
+                        [--nw <NW>]
         """
+
         if len(args) < 2:
-            print("Usage: spectrogram <index> [<win_sec> <overlap%>] [<clip> (negative value)]")
+            print("Usage: spectrogram <index> [<win_sec> <overlap%>] [<clip>] "
+                  "[--method multitaper|fft] [--nw <NW>]")
             return
 
         try:
             idx = int(args[1])
+
+            # Defaults
             win = 5.0
             overlap = 50.0
             clip = None
+            method = "multitaper"
+            nw = None
 
-            # Detect clip if last arg is negative
-            if len(args) >= 3 and float(args[-1]) < 0:
-                clip = float(args[-1])
-                extra_args = args[2:-1]
-            else:
-                extra_args = args[2:]
+            tokens = args[2:]
+            positional = []
 
-            if len(extra_args) >= 1:
-                win = float(extra_args[0])
-            if len(extra_args) == 2:
-                overlap = float(extra_args[1])
-            elif len(extra_args) > 2:
-                print("Error: Too many arguments.")
+            i = 0
+            while i < len(tokens):
+                tok = tokens[i]
+
+                # -------- METHOD --------
+                if tok == "--method":
+                    if i + 1 >= len(tokens):
+                        print("Error: --method requires a value (multitaper or fft)")
+                        return
+                    method = tokens[i + 1].lower()
+                    if method not in ("multitaper", "fft"):
+                        print("Error: method must be 'multitaper' or 'fft'")
+                        return
+                    i += 2
+
+                # -------- NW --------
+                elif tok == "--nw":
+                    if i + 1 >= len(tokens):
+                        print("Error: --nw requires a numeric value")
+                        return
+                    try:
+                        nw = float(tokens[i + 1])
+                    except ValueError:
+                        print("Error: NW must be numeric")
+                        return
+                    i += 2
+
+                # -------- POSITIONAL --------
+                else:
+                    positional.append(tok)
+                    i += 1
+
+            # -------- Handle clip (negative last positional) --------
+            if positional:
+                try:
+                    if float(positional[-1]) < 0:
+                        clip = float(positional[-1])
+                        positional = positional[:-1]
+                except ValueError:
+                    pass
+
+            # -------- win / overlap --------
+            if len(positional) >= 1:
+                win = float(positional[0])
+            if len(positional) >= 2:
+                overlap = float(positional[1])
+            if len(positional) > 2:
+                print("Error: Too many positional arguments.")
                 return
+            print(idx, win, overlap, clip, method, nw)
+            # -------- Final Call --------
+            self.plot_proj._plot_spectrogram(
+                idx,
+                win,
+                overlap,
+                clip=clip,
+                method=method,
+                nw=nw)
 
-            kwargs = {"clip": clip} if clip is not None else {}
-            self.plot_proj._plot_spectrogram(idx, win, overlap, **kwargs)
+        except ValueError as e:
 
-        except ValueError:
-            print("Error: index, win_sec, overlap%, and clip must be numeric where applicable.")
+            print("Error:", e)
+
+        except (ValueError, IndexError):
+            print("Error: index, win_sec, overlap%, clip, nw, k must be numeric where applicable.")
 
     def _cmd_spectrum(self, args):
 
@@ -1229,8 +1285,8 @@ class PlotCommandPrompt:
         """,
 
             "spectrogram": """
-            spectrogram <index> [<win_sec> <overlap_percent>]
-            spec <index> [<win_sec> <overlap_percent>]
+                        spectrogram <index> [<win_sec> <overlap%>] [<clip> (negative value)] 
+                        [--method multitaper|fft] [--nw <NW>]
                 Plot spectrogram of the selected trace using a moving FFT window, using multitaper.
 
                 Parameters:
@@ -1238,6 +1294,8 @@ class PlotCommandPrompt:
                     win_sec      : (Optional) Window length in seconds (default: 5.0)
                     overlap      : (Optional) Window overlap percentage (default: 50%)
                     clip         : (Optional) Minimum Power dB (e.g., -100) accepted (default: Minimum Power of the full spectrogram)
+                    method       : (Optional) Multitaper or fft using a single 5% cosine taper (default Multitaper low bias)
+                    nw           : (Optional) Time bandwidth, default (no set) low bias activation
 
                 Notes:
                     - Spectrogram shows how power varies with time and frequency.
@@ -1247,6 +1305,8 @@ class PlotCommandPrompt:
                     >> spectrogram 1
                     >> spec 0 3.0 75
                     >> spec 0 5.0 50 -120
+                    >> spectrogram 0 5.0 50 --method fft
+                    >> spectrogram 0 5.0 50 --method multitaper --nw 3.5
         """,
 
             "smap": """
@@ -1296,8 +1356,8 @@ class PlotCommandPrompt:
         print(" b                             Previous set of traces")
         print(" load_picks --file <file_path> Load picks from nlloc pick file")
         print(" filter <type> <fmin> <fmax>   Filter traces (type: help filter for details)")
-        print(" spectrum <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
-        print(" spec <idx> [win overlap]      Plot multitaper-spectrogram of trace, (help spectrogram)")
+        print(" spectrum|sp <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
+        print(" spectrogram|spec <idx> [win overlap]  Plot multitaper-spectrogram of trace, (help spectrogram)")
         print(" cwt <idx> <wavelet> <param>   Continuous wavelet transform (help cwt)")
         print(" beam [--fmin --fmax --overlap ....] Beamforming analysis (type: help beam for options)")
         print(" smap [--method --fmin --fmax ....] Slowness map (type: help smap for options)")
