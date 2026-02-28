@@ -28,7 +28,7 @@ from obspy.signal.polarization import flinn
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
-#from surfquakecore.seismoplot.crosshair import BlittedCursor
+from surfquakecore.seismoplot.crosshair import Cursor
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
@@ -67,6 +67,7 @@ class PlotProj:
             "show_info_picks": False,
             "pick_output_file": "./picks.csv",
             "auto_load_pick_file": False,
+            "show_crosshair": False,
             "backend": "TkAgg"}
 
         self.available_types = ['standard', 'record', 'overlay']
@@ -170,12 +171,13 @@ class PlotProj:
         self.__selected_ax_index = 0
 
         # Crosshair cursor
-        # if self.plot_config.get("show_crosshair", True):
-        #     self.cursors = []
-        #     for ax in self.axs:
-        #         cursor = BlittedCursor(ax, self.axs)
-        #         ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
-        #         self.cursors.append(cursor)
+        if self.plot_config.get("show_crosshair", True):
+            self.cursors = []
+            for ax in self.axs:
+                cursor = Cursor(ax)
+                #cursor = BlittedCursor(ax)
+                ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
+                self.cursors.append(cursor)
 
         self._setup_pick_interaction()
         self._restore_state()
