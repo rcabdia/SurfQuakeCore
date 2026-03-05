@@ -422,64 +422,83 @@ class SurfProject:
         - net (str): String with the name of selected nets to be filtered (i.e., ".")
         - station (str): String with the name of selected stations to be filtered (i.e., "ARNO|UCM|EMAL")
         - channel (str): String with the name of selected channels to be filtered (i.e., "HH.")
+
+        If pattern contains * or ? → treat as glob, Otherwise → treat as regex
+
+        Regular expressions                             In glob patterns
+        .	any single character                        *	any number of characters
+        .+	one or more characters                      ?	exactly one character
+        .?	zero or one character
         """
+
+
+        # filter dict by python wilcards or glob expressions remind
+
+        # * --> .* .+
+        # ? --> .
 
         self.data_files = []
 
-        # filter dict by python wilcards remind
+        net = kwargs.pop("net", "*")
+        station = kwargs.pop("station", "*")
+        channel = kwargs.pop("channel", "*")
+        only_datafiles_list = kwargs.pop("only_datafiles_list", False)
 
-        # * --> .+
-        # ? --> .
+        net_re = self._compile_selector(net)
+        sta_re = self._compile_selector(station)
+        cha_re = self._compile_selector(channel)
 
-        net = kwargs.pop('net', '.+')
-        station = kwargs.pop('station', '.+')
-        channel = kwargs.pop('channel', '.+')
-        verbose = kwargs.pop('verbose', False)
-        only_datafiles_list = kwargs.pop('only_datafiles_list', False)
-
-        if net == '':
-            net = '.+'
-        if station == '':
-            station = '.+'
-        if channel == '':
-            channel = '.+'
-
-        # filter for regular expresions
-        filter_list = [net, station, channel]
-        project_filtered = self._search(self.project, filter_list)
+        project_filtered = self._search(self.project, [net_re, sta_re, cha_re])
 
         if not only_datafiles_list:
             self.project = project_filtered
-            for key, value in self.project.items():
-                if value[0][0] is not None:
+            for _, value in self.project.items():
+                if value and value[0][0] is not None:
                     for j in value:
-                        self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
-
+                        self.data_files.append([j[0], j[1]["starttime"], j[1]["endtime"]])
         else:
-            for key, value in project_filtered.items():
+            for _, value in project_filtered.items():
                 for j in value:
-                    self.data_files.append([j[0], j[1]['starttime'], j[1]['endtime']])
+                    self.data_files.append([j[0], j[1]["starttime"], j[1]["endtime"]])
 
-        # clean possible empty lists
-        # self.remove_empty_keys()
+    def _compile_selector(self, pattern: str) -> re.Pattern:
+        """
+        Accepts:
+          - regex (default): e.g. "ARNO|UCM|EMAL", "HH.", ".+"
+          - glob: "*" and "?" like shell wildcards, e.g. "WM", "H?Z", "HH*"
+        Returns a compiled regex that matches the full token.
+        """
+        if pattern is None or pattern == "":
+            pattern = "*"
 
-        # if verbose:
-        #    info = self.get_project_basic_info()
+        # Decide glob vs regex:
+        # If the user uses glob wildcards, interpret as glob; otherwise regex.
+        is_glob = any(ch in pattern for ch in ["*", "?"])
 
-        #    print('Networks: ', str(info["Networks"][0]))
-        #    print('Stations: ', str(info["Stations"][0]))
-        #    print('Channels: ', str(info["Channels"][0]))
-        #    print("Num Networks: ", info["Networks"][1], "Num Stations: ", info["Stations"][1], "Num Channels: ",
-        #          info["Channels"][1], "Num Total Files: ", info["num_files"])
+        if is_glob:
+            # Escape everything, then re-enable glob wildcards
+            # * -> .*
+            # ? -> .
+            rx = re.escape(pattern)
+            rx = rx.replace(r"\*", ".*").replace(r"\?", ".")
+            rx = f"^{rx}$"
+        else:
+            # Treat as regex, but still anchor to full token
+            rx = f"^(?:{pattern})$"
+
+        return re.compile(rx)
 
     def _search(self, project: dict, event: list):
+        net_re, sta_re, cha_re = event
         res = {}
+
         for key in project.keys():
-            name_list = key.split('.')
-            net = name_list[0]
-            sta = name_list[1]
-            channel = name_list[2]
-            if re.search(event[0], net) and re.search(event[1], sta) and re.search(event[2], channel):
+            name_list = key.split(".")
+            if len(name_list) < 3:
+                continue
+            net, sta, channel = name_list[0], name_list[1], name_list[2]
+
+            if net_re.search(net) and sta_re.search(sta) and cha_re.search(channel):
                 res[key] = project[key]
 
         return res

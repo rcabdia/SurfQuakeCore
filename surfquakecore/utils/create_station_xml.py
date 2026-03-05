@@ -1,7 +1,8 @@
 import os
 import pandas as pd
 from obspy import UTCDateTime, read_inventory
-from obspy.core.inventory import Inventory, Network, Station, Channel, Site
+from obspy.core.inventory import Inventory, Network, Station, Channel, Site, ClockDrift
+
 
 class Convert:
     def __init__(self, file_path, sep=None, resp_files=None):
@@ -282,7 +283,9 @@ class Convert:
             ch.response = resp_ch.response
 
         if clock_drift is not None:
-            ch.clock_drift = float(clock_drift)
+            cd_s_per_s = float(clock_drift)
+            cd_s_per_sample = cd_s_per_s / float(sr)
+            ch.clock_drift_in_seconds_per_sample = ClockDrift(cd_s_per_sample)  # important
 
         return ch
 
