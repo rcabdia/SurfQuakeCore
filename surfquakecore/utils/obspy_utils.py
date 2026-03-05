@@ -1,8 +1,10 @@
 import os
 import pickle
 import re
+import io
+from collections import defaultdict
 from multiprocessing import Pool
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict, Union, Any
 import pandas as pd
 from obspy.core.event import Origin
 from surfquakecore.utils import read_nll_performance
@@ -11,6 +13,7 @@ from functools import partial
 from enum import Enum
 from obspy.core.inventory import Station, Network
 from obspy import Stream, read, Trace, UTCDateTime, Inventory
+TimeLike = Union[UTCDateTime, str, float, int, "datetime.datetime"]
 
 class MseedUtil:
 
@@ -300,6 +303,8 @@ class MseedUtil:
 class ProjectSaveFailed(Exception):
     pass
 
+
+
 class ObspyUtil:
 
     @staticmethod
@@ -451,32 +456,196 @@ class ObspyUtil:
 
         return pick_times
 
-    # def _compute_distance_azimuth(trace: Trace) -> Tuple[float, float]:
-    #     """
-    #     Prefer distance and backazimuth from trace header if available.
-    #     """
-    #     if "geodetic" in trace.stats and isinstance(trace.stats.geodetic, dict):
-    #         try:
-    #             dist, az, baz = trace.stats.geodetic['geodetic']
-    #             return dist, baz
-    #         except Exception:
-    #             pass  # fallback below
-    #
-    #     # Fallback: compute from station coordinates and epicenter
-    #     if trace.id in self._dist_az_cache:
-    #         return self._dist_az_cache[trace.id]
-    #
-    #     coords = self._get_station_coords(trace)
-    #     if coords is None or self.epicenter is None:
-    #         return float('inf'), float('inf')
-    #
-    #     epi_lat, epi_lon = self.epicenter
-    #     sta_lat, sta_lon = coords
-    #     dist_m, az, baz = gps2dist_azimuth(epi_lat, epi_lon, sta_lat, sta_lon)
-    #     dist_km = dist_m / 1000.0
-    #
-    #     self._dist_az_cache[trace.id] = (dist_km, baz)
-    #     return dist_km, baz
+    @staticmethod
+    def _merge_all_events(per_event_dicts):
+        merged = defaultdict(list)
+
+        for event_dict in per_event_dicts:
+            for key, rows in event_dict.items():
+                merged[key].extend(rows)
+
+        return dict(merged)
+
+    @staticmethod
+    def _split_into_event_blocks(text: str):
+        lines = text.splitlines()
+        # IMPORTANT: match Event_1, Event 1, EventWhatever
+        event_line = re.compile(r"^\s*event", re.IGNORECASE)
+
+        blocks, cur = [], []
+
+        def flush():
+            nonlocal cur
+            if cur:
+                blocks.append("\n".join(cur))
+                cur = []
+
+        for ln in lines:
+            if event_line.match(ln) or ln.strip() == "":
+                flush()
+                continue
+            cur.append(ln)
+        flush()
+
+        # remove tiny blocks
+        return [b for b in blocks if len([x for x in b.splitlines() if x.strip()]) >= 2]
+
+
+    @staticmethod
+    def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+        # Hourmin vs Hour_min
+        if "Hourmin" in df.columns and "Hour_min" not in df.columns:
+            df = df.rename(columns={"Hourmin": "Hour_min"})
+
+        # Fix the GAU shift issue
+        df = MseedUtil._fix_gau_shift(df)
+        return df
+
+
+    @staticmethod
+    def _to_utc(t: Optional[TimeLike]) -> Optional[UTCDateTime]:
+        if t is None:
+            return None
+        return t if isinstance(t, UTCDateTime) else UTCDateTime(t)
+
+    @staticmethod
+    def _normalize_date_string(d: Any) -> str:
+        """
+        Accepts strings like '20250109' or '2025-01-09' and returns 'YYYY-MM-DD'.
+        If already 'YYYY-MM-DD', it’s returned unchanged.
+        """
+        s = str(d)
+        if "-" in s:
+            return s  # assume ISO date already
+        if len(s) == 8 and s.isdigit():
+            return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+        # fallback: let UTCDateTime parse it and reformat
+        return UTCDateTime(s).strftime("%Y-%m-%d")
+
+    @staticmethod
+    def _centroid_utc(times: List[UTCDateTime]) -> UTCDateTime:
+        """
+        Centroid (mean) time in epoch seconds; returns UTCDateTime.
+        """
+        if not times:
+            raise ValueError("Cannot compute centroid of empty times list.")
+        mean_epoch = sum(t.timestamp for t in times) / float(len(times))
+        return UTCDateTime(mean_epoch)
+
+    @staticmethod
+    def _hmm_to_h_m(hour_min: Any) -> Tuple[int, int]:
+        """
+        Converts HHMM (e.g., 934 -> 09:34) to (hour, minute).
+        Robust to strings/ints.
+        """
+        x = int(hour_min)
+        h, m = divmod(x, 100)
+        return h, m
+
+
+    @classmethod
+    def get_NLL_phase_picks_multi_event(
+        cls,
+        input_file: str,
+        delimiter: str = r"\s+",
+        starttime: Optional[TimeLike] = None,
+        endtime: Optional[TimeLike] = None,
+        centroid_mode: str = "P",  # "P" or "ALL"
+    ) -> Tuple[Dict[str, list], List[UTCDateTime]]:
+
+        """
+        Returns:
+          - list of per-event pick dicts (your original structure)
+          - list of centroid UTCDateTime for each event block
+
+        centroid_mode:
+          - "P": centroid from P picks only (fallback to ALL if no P)
+          - "ALL": centroid from all picks
+        """
+
+
+
+        if not input_file:
+            raise ValueError("An input file must be provided.")
+        if not os.path.isfile(input_file):
+            raise FileNotFoundError(f"The file {input_file} does not exist.")
+
+        st = cls._to_utc(starttime)
+        et = cls._to_utc(endtime)
+
+        with open(input_file, "r", encoding="utf-8", errors="ignore") as f:
+            text = f.read()
+
+        blocks = cls._split_into_event_blocks(text)
+        if not blocks:
+            return [], []
+
+        required = [
+            "Station_name", "Component",
+            "P_phase_descriptor", "First_Motion",
+            "Date", "Hour_min", "Seconds",
+            "Err", "ErrMag", "Coda_duration", "Amplitude", "Period",
+        ]
+
+        per_event_dicts: List[Dict[str, list]] = []
+        per_event_centroids: List[UTCDateTime] = []
+
+        for block in blocks:
+            df = pd.read_csv(io.StringIO(block), delimiter=delimiter, engine="python")
+            df = cls._standardize_columns(df)
+
+            missing = [c for c in required if c not in df.columns]
+            if missing:
+                raise ValueError(f"Event block is missing required columns: {missing}")
+
+            # build _utc
+            dates = [cls._normalize_date_string(v) for v in df["Date"].tolist()]
+            hm = [cls._hmm_to_h_m(v) for v in df["Hour_min"].tolist()]
+            hours = [h for h, _ in hm]
+            minutes = [m for _, m in hm]
+            seconds = df["Seconds"].astype(float).tolist()
+
+            tt = [
+                f"{d}T{h:02d}:{m:02d}:{s:06.3f}"
+                for d, h, m, s in zip(dates, hours, minutes, seconds)
+            ]
+            df["_utc"] = [UTCDateTime(x) for x in tt]
+
+            # optional inclusive filtering
+            if st is not None:
+                df = df[df["_utc"] >= st]
+            if et is not None:
+                df = df[df["_utc"] <= et]
+            if df.empty:
+                continue
+
+            # centroid
+            if centroid_mode.upper() == "ALL":
+                times_for_centroid = df["_utc"].tolist()
+            else:
+                p_df = df[df["P_phase_descriptor"].astype(str).str.upper().str.startswith("P")]
+                times_for_centroid = p_df["_utc"].tolist() or df["_utc"].tolist()
+
+            per_event_centroids.append(cls._centroid_utc(times_for_centroid))
+
+            # build your original output dict
+            df["_id"] = df["Station_name"].astype(str) + "." + df["Component"].astype(str)
+
+            want_cols = [
+                "P_phase_descriptor", "_utc", "Component", "First_Motion",
+                "Err", "ErrMag", "Coda_duration", "Amplitude", "Period"
+            ]
+            sub = df[["_id"] + want_cols]
+
+            out: Dict[str, list] = {}
+            for gid, g in sub.groupby("_id", sort=False):
+                out[gid] = g[want_cols].values.tolist()
+
+            per_event_dicts.append(out)
+
+        per_event_dicts = cls._merge_all_events(per_event_dicts)
+
+        return per_event_dicts, per_event_centroids
 
 class Filters(Enum):
 

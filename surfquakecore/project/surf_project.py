@@ -429,6 +429,11 @@ class SurfProject:
         .	any single character                        *	any number of characters
         .+	one or more characters                      ?	exactly one character
         .?	zero or one character
+
+        Examples
+        filter_project_keys(net="W*", station="AR*", channel="HH?")
+        filter_project_keys(station="ARNO|UCM|EMAL",channel="HH.")
+        filter_project_keys(net="W*",station="AR*",channel="HH.")
         """
 
 
