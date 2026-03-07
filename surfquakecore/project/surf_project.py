@@ -477,8 +477,14 @@ class SurfProject:
             pattern = "*"
 
         # backward compatibility
-        if pattern in [".", ".+", ".*"]:
-            pattern = "*"
+        if pattern == ".":
+            pattern = "?"  # exactly one character
+
+        elif pattern == ".+":
+            pattern = "*"  # one or more characters → closest glob equivalent
+
+        elif pattern == ".*":
+            pattern = "*"  # zero or more characters
 
         # Decide glob vs regex:
         # If the user uses glob wildcards, interpret as glob; otherwise regex.
@@ -635,10 +641,10 @@ class SurfProject:
 
         return result
 
-    def get_now_files(self, date, stations_list, channel_list, only_datafiles_list=False):
+    def get_now_files(self, date, stations_list, channel_list, network_list="*", only_datafiles_list=False):
         date = UTCDateTime(date)
 
-        selection = [".", stations_list, channel_list]
+        selection = [network_list, stations_list, channel_list]
 
         self.filter_project_keys(net=selection[0], station=selection[1],
                                  channel=selection[2], only_datafiles_list=only_datafiles_list)
