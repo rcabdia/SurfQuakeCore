@@ -123,7 +123,7 @@ class TraceSpectrogramResult:
         self.stats = trace.stats
         self.spectrogram = spectrogram  # tuple: (times, freqs, power_matrix)
 
-    def compute_spectrogram(self, win=5.0, overlap_percent=50.0, linf=0, lsup=None):
+    def compute_spectrogram(self, win=5.0, overlap_percent=50.0, linf=0, lsup=None, method="multitaper", nw=None):
 
         if lsup is None:
             lsup = int(self.trace.stats.sampling_rate // 2)
@@ -131,7 +131,8 @@ class TraceSpectrogramResult:
         step_percentage = (100 - overlap_percent) * 1E-2
         self.spectrogram, self.num_steps, self.time, self.freq = \
             SpectrumTool.compute_spectrogram(self.trace.data, int(win * self.trace.stats.sampling_rate),
-                                             self.trace.stats.delta, linf, lsup, step_percentage)
+                                             self.trace.stats.delta, linf, lsup, step_percentage,
+                                             method, nw)
 
     def plot_spectrogram(self, save_path: str = None, clip: float = None):
 

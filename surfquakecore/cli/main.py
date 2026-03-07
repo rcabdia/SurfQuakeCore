@@ -90,7 +90,7 @@ def _create_actions():
         ),
         "csv2xml": _CliActions(
             name="csv2xml", run=_csv2xml,
-            description="Convert station CSV to StationXML."
+            description="Convert station CSV and RESP files to StationXML."
         ),
         "buildcatalog": _CliActions(
             name="buildcatalog", run=_buildcatalog,

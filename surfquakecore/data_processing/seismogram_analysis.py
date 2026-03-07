@@ -208,8 +208,18 @@ class SeismogramData:
                     else:
                         overlap = 50
 
+                    if "method" in _config.keys():
+                        method = _config["method"]
+                    else:
+                        method = "multitaper"
+
+                    if "nw" in _config.keys():
+                        nw = _config["nw"]
+                    else:
+                        nw = None
+
                     spec = TraceSpectrogramResult(tr)
-                    spec.compute_spectrogram(win=_config["win"], overlap_percent=overlap)
+                    spec.compute_spectrogram(win=_config["win"], overlap_percent=overlap, method=method, nw=nw)
                     spec.to_pickle(folder_path=_config['output_path'])
 
                 if _config['name'] == 'cwt':

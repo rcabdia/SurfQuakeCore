@@ -77,8 +77,8 @@ class SpectrumTool:
         step_percentage : float, optional
             Step size as a fraction of window length (0<step<=1).
         method : str, optional
-            'multitaper' (using nitime) or 'rfft' (simple FFT-based PSD).
-        nw: time-bandwidth
+            'multitaper' (using nitime) or 'fft' (simple FFT-based PSD).
+        nw: time-bandwidth, when set to None it will be optimized (recommended: nw < 4.0)
 
         Returns
         -------
