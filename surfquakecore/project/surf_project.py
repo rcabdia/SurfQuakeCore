@@ -476,6 +476,10 @@ class SurfProject:
         if pattern is None or pattern == "":
             pattern = "*"
 
+        # backward compatibility
+        if pattern in [".", ".+", ".*"]:
+            pattern = "*"
+
         # Decide glob vs regex:
         # If the user uses glob wildcards, interpret as glob; otherwise regex.
         is_glob = any(ch in pattern for ch in ["*", "?"])
