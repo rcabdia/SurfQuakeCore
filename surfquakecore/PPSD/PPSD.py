@@ -20,7 +20,7 @@ from surfquakecore.project.surf_project import SurfProject
 class PPSDSurf:
 
     def __init__(self, files_path: Union[str, SurfProject], metadata: Union[str, Inventory],
-                 length = 3600, overlap = 50, smoothing = 1.0, period = 0.125, **kwargs):
+                 length=3600, overlap=50, smoothing=1.0, period=0.125):
 
         """
         PPSDs utils for Surfquake.
@@ -294,8 +294,8 @@ class PPSDSurf:
         return nested_dictionary
 
     @staticmethod
-    def save_PPSDs(ppsds_dictionary, dir_path, name):
-        with open(os.path.join(dir_path, name), "wb") as f:
+    def save_PPSDs(ppsds_dictionary, file_name):
+        with open(file_name, "wb") as f:
             pickle.dump(ppsds_dictionary, f)
 
     @staticmethod
@@ -344,7 +344,7 @@ class PPSDSurf:
 if __name__ == "__main__":
     project = "path_to_project"
     metadata = "path_to_metadata.xml"
-    output_path = "output_path"
+
     name = "test_ppsds.pkl"
 
     sp = SurfProject.load_project(project)
@@ -352,4 +352,4 @@ if __name__ == "__main__":
     ppsds = PPSDSurf(files_path=sp, metadata=metadata, length=3600)
     ini_dict, size = ppsds.create_dict(net_list="*", sta_list="OBS5", chn_list="CH?")
     db = ppsds.get_all_values(ini_dict)
-    ppsds.save_PPSDs(db, dir_path = output_path, name = name)
+    ppsds.save_PPSDs(db, file_name=name)

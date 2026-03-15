@@ -128,6 +128,9 @@ def _create_actions():
             name="explore", run=_explore,
             description="Plot data availability."
         ),
+        "ppsdDB": _CliActions(
+            name="ppsdDB", run=_ppsdDB,
+            description="Create DB of Probabilit Density Functions."),
     }
     return _actions
 
@@ -158,6 +161,101 @@ def main(argv: Optional[str] = None):
         sys.exit(1)
 
 
+
+def _ppsdDB():
+
+    """
+    Command-line interface for creating a DB of Power Density functions
+    """
+
+    from surfquakecore.project.surf_project import SurfProject
+    from surfquakecore.PPSD.PPSD import PPSDSurf
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} ppsdDB",
+        description="Create a DB of Power Spectral Density Functions",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+
+        Overview:
+            This command creates a file-based database that stores Probability Power Spectral Density Functions (PPSD) 
+            in a pickle file. The file is basically a dictionary with keys net, station channel and the 
+            ObsPy object with the PPSD.
+
+            - Peterson, J. (1993), Observations and Modeling of Seismic Background Noise, U.S. Geological Survey 
+              open-file report 93-322, Albuquerque, N.M.
+            
+            - McNamara, D. E. and Buland, R. P. (2004), Ambient Noise Levels in the Continental United States,
+              Bulletin of the Seismological Society of America, 94 (4), 1517-1527.
+
+        Key Arguments:
+            -p,  --project_file        [REQUIRED] Path to waveform data directory (or file pattern)
+            -i,  --inventory_file      [REQUIRED] Path to stations metadata (XML or RESP)
+            -s,  --save_file           [REQUIRED] Path to save the data base
+            -le, --length              [OPTIONAL] Length of data segments passed to psd in seconds (default 3600)
+            -ov, --overlap             [OPTIONAL] Overlap in percentage of segments passed to psd (default 50)
+            -sm, --smoothing           [OPTIONAL] PSDs are averaged over a octave at each central freq (default 1)
+            -n,  --net                 [OPTIONAL] project net filter (Default: *, Example WM)
+            -s,  --station             [OPTIONAL] project station filter (Default: *, Example ARNO)
+            -ch, --channel             [OPTIONAL] project channel filter (Default: *, Example BH?)
+       
+        Documentation:
+            https://projectisp.github.io/surfquaketutorial.github.io/
+        """
+    )
+
+    arg_parse.add_argument("-p", "--project_file", help="Path to waveform data directory", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-i", "--inventory_file", help="Path to the stations metadata", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-s", "--save_file", help="Path to file where PPSD DB will be saved", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-le", "--length", help="Time window length for processing", type=float,
+                           required=False, default=3600.0)
+
+    arg_parse.add_argument("-sm", "--smoothing", help="Smoothing", type=float, required=False,
+                           default=1.0)
+
+    arg_parse.add_argument("-ov", "--overlap", help="Overlap", type=float, required=False,
+                           default=50.0)
+
+    arg_parse.add_argument("-pr", "--period", help="Period", type=float, required=False,
+                           default=0.125)
+
+    arg_parse.add_argument("-nt", "--net", help="Net Selection", type=str, required=False,
+                           default="*")
+
+    arg_parse.add_argument("-st", "--station", help="Station Selection", type=str, required=False,
+                           default="*")
+
+    arg_parse.add_argument("-ch", "--channel", help="Channel Selection", type=str, required=False,
+                           default="*")
+
+    parsed_args = arg_parse.parse_args()
+    print("Input Arguments")
+    print(parsed_args)
+
+    project_file = make_abs(parsed_args.project_file)
+    save_file = make_abs(parsed_args.save_file)
+    inventory_file = make_abs(parsed_args.inventory_file)
+    print(f"Creating DB from {project_file} saving to {save_file}")
+
+    sp = SurfProject.load_project(project_file)
+    print(sp)
+
+    ppsds = PPSDSurf(files_path=sp, metadata=inventory_file, length=parsed_args.length,
+                     smoothing=parsed_args.smoothing, period=parsed_args.period, overlap=parsed_args.overlap)
+
+    ini_dict, size = ppsds.create_dict(net_list=parsed_args.net, sta_list=parsed_args.station,
+                                       chn_list=parsed_args.channel)
+
+    db = ppsds.get_all_values(ini_dict)
+    ppsds.save_PPSDs(db, file_name=save_file)
+
+
 def _project():
     """
     Command-line interface for creating a seismic project.
@@ -178,13 +276,13 @@ def _project():
             -d ./data_directory \\
             -s ./projects \\
             -n my_project \\
-            --verbose
+            -v, --verbose
 
     Key Arguments:
         -d, --data           Path to waveform data directory (or file pattern)
         -s, --save_path      Directory to save the project file
         -n, --name           Name of the project (e.g., "my_experiment")
-        --verbose            Print detailed file discovery and indexing logs
+        -v, --verbose        Print detailed file discovery and indexing logs
 
     Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/
