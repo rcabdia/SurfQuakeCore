@@ -130,7 +130,12 @@ def _create_actions():
         ),
         "ppsdDB": _CliActions(
             name="ppsdDB", run=_ppsdDB,
-            description="Create DB of Probabilit Density Functions."),
+            description="Create DB of Probabilit Density Functions (PPSD)"),
+
+        "ppsdPlot": _CliActions(
+            name="ppsdPlot", run=_ppsdPlot,
+            description="Plotting tool for PPSD DB"),
+
     }
     return _actions
 
@@ -178,6 +183,7 @@ def _ppsdDB():
         epilog="""
 
         Overview:
+        
             This command creates a file-based database that stores Probability Power Spectral Density Functions (PPSD) 
             in a pickle file. The file is basically a dictionary with keys net, station channel and the 
             ObsPy object with the PPSD.
@@ -201,6 +207,10 @@ def _ppsdDB():
        
         Documentation:
             https://projectisp.github.io/surfquaketutorial.github.io/
+            
+        Usage Example:
+        
+        surfquake ppsdDB -p "./ppsd_test" -i "./meta/metadata.xml" -s "./output/test.pkl"
         """
     )
 
@@ -241,19 +251,318 @@ def _ppsdDB():
     project_file = make_abs(parsed_args.project_file)
     save_file = make_abs(parsed_args.save_file)
     inventory_file = make_abs(parsed_args.inventory_file)
-    print(f"Creating DB from {project_file} saving to {save_file}")
+
+    print(f"\nCreating PPSD DB")
+    print(f"  Project  : {project_file}")
+    print(f"  Inventory: {inventory_file}")
+    print(f"  Output   : {save_file}")
 
     sp = SurfProject.load_project(project_file)
     print(sp)
 
-    ppsds = PPSDSurf(files_path=sp, metadata=inventory_file, length=parsed_args.length,
-                     smoothing=parsed_args.smoothing, period=parsed_args.period, overlap=parsed_args.overlap)
+    ppsds = PPSDSurf(files_path=sp, metadata=inventory_file, length=parsed_args.length, smoothing=parsed_args.smoothing,
+        period=parsed_args.period, overlap=parsed_args.overlap)
 
     ini_dict, size = ppsds.create_dict(net_list=parsed_args.net, sta_list=parsed_args.station,
                                        chn_list=parsed_args.channel)
+    print(f"  Found {size} channel file(s) to process.")
 
     db = ppsds.get_all_values(ini_dict)
     ppsds.save_PPSDs(db, file_name=save_file)
+    print(f"\nDone. Database saved to {save_file}")
+
+
+def _ppsdPlot():
+    """
+    Command-line interface for plotting a PPSD pickle database.
+
+    Supports three plot modes selected via --mode:
+        heatmap    – probability density heatmaps, paginated by station groups
+        variation  – diurnal or seasonal noise variation heatmaps
+        comparison – overlay mean/median/mode curves across stations/channels
+    """
+
+    from surfquakecore.PPSD.plotPPS import plot_ppsds_from_pickle, plot_all_pages, plot_comparison
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} ppsdPlot",
+        description="Plot a PPSD pickle database",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+        Reads a PPSD pickle database produced by  ppsdDB  and generates
+        publication-quality figures.  Three plot modes are available:
+
+        heatmap    Probability density colormaps (classic PPSD view).
+                   One figure per group of --spp stations.  Use --all to
+                   iterate automatically over every station group.
+
+        variation  Diurnal or seasonal noise variation shown as a contour
+                   plot (mode amplitude vs hour-of-day or month).
+
+        comparison Overlay mean / median / mode curves for a wildcard
+                   selection of stations and channels on shared axes.
+                   One panel per component (Z, N, E …) or a single panel.
+
+    Key Arguments:
+        -d,  --db_file         [REQUIRED] Path to the PPSD pickle database
+        -m,  --mode            [REQUIRED] Plot mode: heatmap | variation | comparison
+        -sd, --save_dir        [OPTIONAL] Directory to save figures (one per page)
+        -sp, --save_path       [OPTIONAL] Single output file path (heatmap p.0 or comparison)
+        -sf, --save_format     [OPTIONAL] Figure format: png | pdf | svg          (png)
+        -nt, --net             [OPTIONAL] Network wildcard filter                    (*)
+        -st, --station         [OPTIONAL] Station wildcard filter                    (*)
+        -ch, --channel         [OPTIONAL] Channel wildcard filter, e.g. BH?         (*)
+        -t0, --starttime       [OPTIONAL] Start of time window, ISO format
+        -t1, --endtime         [OPTIONAL] End of time window, ISO format
+
+      heatmap / variation only:
+        --spp                  [OPTIONAL] Stations per page                          (3)
+        --page                 [OPTIONAL] Page index (0-based); ignored with --all   (0)
+        --all                  [OPTIONAL] Iterate over all station groups
+        --variation            [OPTIONAL] Variation type: Diurnal | Seasonal  (Diurnal)
+        --mean                 [OPTIONAL] Overlay mean curve
+        --mode                 [OPTIONAL] Overlay mode curve
+        --nhnm                 [OPTIONAL] Overlay NHNM reference
+        --nlnm                 [OPTIONAL] Overlay NLNM reference
+        --earthquakes          [OPTIONAL] Overlay earthquake model lines
+        --min_mag              [OPTIONAL] Minimum magnitude for eq. models          (0.0)
+        --max_mag              [OPTIONAL] Maximum magnitude for eq. models         (10.0)
+        --min_dist             [OPTIONAL] Minimum distance for eq. models (km)      (0.0)
+        --max_dist             [OPTIONAL] Maximum distance for eq. models (km)   (10000)
+
+      comparison only:
+        --stats                [OPTIONAL] Comma-separated list: mean,median,mode   (mean)
+        --layout               [OPTIONAL] by_component | single          (by_component)
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+        
+    Usage examples:
+        surfquake ppsdPlot -d "./output/test.pkl" --spp 1 --all -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
+        surfquake ppsdPlot -d "./output/test.pkl" -st "OBS01,OBS02" -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
+        surfquake ppsdPlot -d "./output/test.pkl" comparison --mean --nhnm --nlnm
+            """
+    )
+
+    # ---- required -----------------------------------------------------------
+    arg_parse.add_argument(
+        "-d", "--db_file",
+        help="Path to the PPSD pickle database (.pkl)",
+        type=str, required=True,
+    )
+    arg_parse.add_argument(
+        "-m", "--mode",
+        help="Plot mode: heatmap | variation | comparison",
+        type=str, required=True,
+        choices=["heatmap", "variation", "comparison"],
+    )
+
+    # ---- output -------------------------------------------------------------
+    arg_parse.add_argument(
+        "-sd", "--save_dir",
+        help="Directory to save figures (one file per page; auto-created)",
+        type=str, required=False, default=None,
+    )
+    arg_parse.add_argument(
+        "-sp", "--save_path",
+        help="Single output file path (used for page 0 or comparison)",
+        type=str, required=False, default=None,
+    )
+    arg_parse.add_argument(
+        "-sf", "--save_format",
+        help="Figure format when saving to a directory: png | pdf | svg (default: png)",
+        type=str, required=False, default="png",
+        choices=["png", "pdf", "svg", "jpg"],
+    )
+    arg_parse.add_argument(
+        "--prefix",
+        help="Filename prefix when saving multiple pages (default: ppsd_page)",
+        type=str, required=False, default="ppsd_page",
+    )
+
+    # ---- station / channel filters ------------------------------------------
+    arg_parse.add_argument(
+        "-nt", "--net",
+        help="Network wildcard filter, comma-separated (default: *)",
+        type=str, required=False, default="*",
+    )
+    arg_parse.add_argument(
+        "-st", "--station",
+        help="Station wildcard filter, comma-separated (default: *)",
+        type=str, required=False, default="*",
+    )
+    arg_parse.add_argument(
+        "-ch", "--channel",
+        help="Channel wildcard filter, e.g. BH? or HHZ,BHZ (default: *)",
+        type=str, required=False, default="*",
+    )
+
+    # ---- time window --------------------------------------------------------
+    arg_parse.add_argument(
+        "-t0", "--starttime",
+        help="Start of time window (ISO 8601, e.g. 2023-01-01T00:00:00)",
+        type=str, required=False, default=None,
+    )
+    arg_parse.add_argument(
+        "-t1", "--endtime",
+        help="End of time window (ISO 8601, e.g. 2023-03-31T23:59:59)",
+        type=str, required=False, default=None,
+    )
+
+    # ---- heatmap / variation options ----------------------------------------
+    arg_parse.add_argument(
+        "--spp",
+        help="Stations per page for heatmap/variation mode (default: 3)",
+        type=int, required=False, default=3,
+        dest="stations_per_page",
+    )
+    arg_parse.add_argument(
+        "--page",
+        help="Zero-based page index (default: 0); ignored when --all is set",
+        type=int, required=False, default=0,
+    )
+    arg_parse.add_argument(
+        "--all",
+        help="Iterate over all station pages (heatmap/variation only)",
+        action="store_true", default=False,
+        dest="all_pages",
+    )
+    arg_parse.add_argument(
+        "--variation",
+        help="Variation type for variation mode: Diurnal | Seasonal (default: Diurnal)",
+        type=str, required=False, default="Diurnal",
+        choices=["Diurnal", "Seasonal"],
+    )
+
+    # ---- statistics overlays ------------------------------------------------
+    arg_parse.add_argument(
+        "--mean", help="Overlay mean curve on heatmap panels",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--show_mode", help="Overlay mode curve on heatmap panels",
+        action="store_true", default=False, dest="show_mode",
+    )
+    arg_parse.add_argument(
+        "--nhnm", help="Overlay NHNM reference curve",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--nlnm", help="Overlay NLNM reference curve",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--earthquakes", help="Overlay earthquake model lines",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--min_mag", help="Minimum magnitude for earthquake models (default: 0.0)",
+        type=float, required=False, default=0.0,
+    )
+    arg_parse.add_argument(
+        "--max_mag", help="Maximum magnitude for earthquake models (default: 10.0)",
+        type=float, required=False, default=10.0,
+    )
+    arg_parse.add_argument(
+        "--min_dist", help="Minimum distance (km) for earthquake models (default: 0.0)",
+        type=float, required=False, default=0.0,
+    )
+    arg_parse.add_argument(
+        "--max_dist", help="Maximum distance (km) for earthquake models (default: 10000)",
+        type=float, required=False, default=10000.0,
+    )
+
+    # ---- comparison-only options --------------------------------------------
+    arg_parse.add_argument(
+        "--stats",
+        help="Statistics for comparison mode, comma-separated: mean,median,mode "
+             "(default: mean)",
+        type=str, required=False, default="mean",
+    )
+    arg_parse.add_argument(
+        "--layout",
+        help="Panel layout for comparison mode: by_component | single "
+             "(default: by_component)",
+        type=str, required=False, default="by_component",
+        choices=["by_component", "single"],
+    )
+
+    parsed_args = arg_parse.parse_args()
+    print("Input Arguments")
+    print(parsed_args)
+
+    db_file = make_abs(parsed_args.db_file)
+
+    # ---- build station/channel selection dict for heatmap/variation ---------
+    # For heatmap and variation we reuse the existing selection=None path
+    # (everything) and rely on net/sta/chn filters only for comparison.
+    # If the user specified filters for heatmap we warn them to use comparison.
+
+    mode = parsed_args.mode
+
+    # =========================================================================
+    if mode in ("heatmap", "variation"):
+
+        plot_mode = "pdf" if mode == "heatmap" else "variation"
+
+        common_kwargs = dict(
+            pickle_path=db_file,
+            stations_per_page=parsed_args.stations_per_page,
+            plot_mode=plot_mode,
+            variation=parsed_args.variation,
+            starttime=parsed_args.starttime,
+            endtime=parsed_args.endtime,
+            net_pattern=parsed_args.net,
+            sta_pattern=parsed_args.station,
+            chn_pattern=parsed_args.channel,
+            show_mean=parsed_args.mean,
+            show_mode=parsed_args.show_mode,
+            show_nhnm=parsed_args.nhnm,
+            show_nlnm=parsed_args.nlnm,
+            show_earthquakes=parsed_args.earthquakes,
+            min_mag=parsed_args.min_mag,
+            max_mag=parsed_args.max_mag,
+            min_dist=parsed_args.min_dist,
+            max_dist=parsed_args.max_dist,
+            show=parsed_args.save_dir is None and parsed_args.save_path is None,
+        )
+
+        if parsed_args.all_pages:
+            plot_all_pages(
+                **common_kwargs,
+                save_dir=make_abs(parsed_args.save_dir) if parsed_args.save_dir else None,
+                save_prefix=parsed_args.prefix,
+                save_format=parsed_args.save_format,
+            )
+        else:
+            save_path = make_abs(parsed_args.save_path) if parsed_args.save_path else None
+            plot_ppsds_from_pickle(
+                **common_kwargs,
+                page=parsed_args.page,
+                save_path=save_path,
+            )
+
+    # =========================================================================
+    elif mode == "comparison":
+
+        stats_list = [s.strip() for s in parsed_args.stats.split(",") if s.strip()]
+        save_path = make_abs(parsed_args.save_path) if parsed_args.save_path else None
+
+        plot_comparison(
+            pickle_path=db_file,
+            sta_pattern=parsed_args.station,
+            chn_pattern=parsed_args.channel,
+            net_pattern=parsed_args.net,
+            stats=tuple(stats_list),
+            starttime=parsed_args.starttime,
+            endtime=parsed_args.endtime,
+            show_nhnm=parsed_args.nhnm,
+            show_nlnm=parsed_args.nlnm,
+            layout=parsed_args.layout,
+            show=save_path is None,
+            save_path=save_path,
+        )
 
 
 def _project():

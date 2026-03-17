@@ -108,8 +108,16 @@ def plot_statistics(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _load_and_build_query(pickle_path, selection=None):
-    """Load pickle and return (ppsd_db, db_query, selected_stations)."""
+def _load_and_build_query(pickle_path, selection=None,
+                          net_pattern="*", sta_pattern="*", chn_pattern="*"):
+    """
+    Load pickle and return (ppsd_db, db_query, selected_stations).
+
+    If *selection* is provided it is used as-is (explicit dict, legacy path).
+    Otherwise the wildcard patterns net_pattern / sta_pattern / chn_pattern
+    are applied to every entry in the database, so CLI filters like -ch SHZ
+    or -st OBS* are honoured by all three plot functions.
+    """
     with open(pickle_path, "rb") as f:
         ppsd_db = pickle.load(f)
 
@@ -119,14 +127,26 @@ def _load_and_build_query(pickle_path, selection=None):
         db_query = {}
         nets = ppsd_db.get("nets", {})
         for ntwk, st_dict in nets.items():
+            if not _wildcard_filter([ntwk], net_pattern):
+                continue
             for stnm, ch_dict in st_dict.items():
+                if not _wildcard_filter([stnm], sta_pattern):
+                    continue
+                channels = _wildcard_filter(list(ch_dict.keys()), chn_pattern)
+                if not channels:
+                    continue
                 db_query.setdefault(stnm, {"network": ntwk, "channels": []})
-                for chnm in ch_dict.keys():
-                    db_query[stnm]["channels"].append(chnm)
+                db_query[stnm]["channels"].extend(
+                    c for c in channels
+                    if c not in db_query[stnm]["channels"]
+                )
 
     selected_stations = sorted(db_query.keys())
     if not selected_stations:
-        raise ValueError("No stations found / selected.")
+        raise ValueError(
+            f"No stations found after filtering "
+            f"net='{net_pattern}' sta='{sta_pattern}' chn='{chn_pattern}'."
+        )
 
     return ppsd_db, db_query, selected_stations
 
@@ -169,6 +189,9 @@ def plot_ppsds_from_pickle(
     starttime=None,
     endtime=None,
     selection=None,           # {stnm: {"network": ntwk, "channels": [...]}, ...}
+    net_pattern="*",          # wildcard filter for networks
+    sta_pattern="*",          # wildcard filter for stations
+    chn_pattern="*",          # wildcard filter for channels
     # ---- statistics options ----
     show_mean=False,
     show_mode=False,
@@ -221,7 +244,8 @@ def plot_ppsds_from_pickle(
     """
 
     ppsd_db, db_query, selected_stations = _load_and_build_query(
-        pickle_path, selection)
+        pickle_path, selection,
+        net_pattern=net_pattern, sta_pattern=sta_pattern, chn_pattern=chn_pattern)
     starttime, endtime = _normalise_times(starttime, endtime)
 
     # Clamp stations_per_page
@@ -386,6 +410,9 @@ def plot_all_pages(
     starttime=None,
     endtime=None,
     selection=None,
+    net_pattern="*",
+    sta_pattern="*",
+    chn_pattern="*",
     # statistics
     show_mean=False,
     show_mode=False,
@@ -420,6 +447,8 @@ def plot_all_pages(
         Time window passed to ppsd.calculate_histogram().
     selection : dict | None
         Restrict to a subset of stations/channels.
+    net_pattern, sta_pattern, chn_pattern : str
+        Wildcard filters applied when selection=None.
     show_mean, show_mode, show_nhnm, show_nlnm, show_earthquakes : bool
         Statistical overlays forwarded to each panel.
     min_mag, max_mag, min_dist, max_dist : float
@@ -441,7 +470,8 @@ def plot_all_pages(
 
     # Determine total number of pages
     _ppsd_db, _db_query, selected_stations = _load_and_build_query(
-        pickle_path, selection)
+        pickle_path, selection,
+        net_pattern=net_pattern, sta_pattern=sta_pattern, chn_pattern=chn_pattern)
     stations_per_page = min(stations_per_page, len(selected_stations))
     n_pages = max(1, math.ceil(len(selected_stations) / stations_per_page))
 
@@ -474,6 +504,9 @@ def plot_all_pages(
             starttime=starttime,
             endtime=endtime,
             selection=selection,
+            net_pattern=net_pattern,
+            sta_pattern=sta_pattern,
+            chn_pattern=chn_pattern,
             show_mean=show_mean,
             show_mode=show_mode,
             show_nhnm=show_nhnm,
@@ -854,7 +887,7 @@ if __name__ == "__main__":
     # Example 2 – compare two specific stations across all BH? channels
     fig, axes = plot_comparison(
         pickle_path="/Volumes/LaCie/datosOBS/surfquake_test/output/test.pkl",
-        sta_pattern="OBS01,OBS02, OBS05",      # exact list
+        sta_pattern="OBS01,OBS02,OBS05",      # exact list
         chn_pattern="SH?",            # BHZ, BHN, BHE
         stats=("median",),
         layout="by_component",        # panels: Z | N | E
