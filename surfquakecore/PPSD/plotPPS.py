@@ -307,6 +307,7 @@ def plot_ppsds_from_pickle(
                 ax.set_xscale("log")
                 ax.set_xlabel("Period (s)", fontsize=8)
                 ax.set_ylabel("Amplitude [$m^2/s^4/Hz$] [dB]", fontsize=8)
+                ax.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
                 ax.set_xlim(0.02, 120)
 
                 plot_statistics(
@@ -347,8 +348,9 @@ def plot_ppsds_from_pickle(
                 }
 
                 for i, time in enumerate(ppsd.times_processed):
-                    if starttime != time:
-                        if not (starttime < time < endtime):
+                    no_filter = (starttime == endtime)  # True when user passed no -t0/-t1
+                    if not no_filter:
+                        if not (starttime <= time <= endtime):
                             continue
                     key = time_key_fn(time)
                     inds = ppsd._binned_psds[i]
@@ -376,7 +378,8 @@ def plot_ppsds_from_pickle(
                     cbar = fig.colorbar(contour, ax=ax,
                                         orientation="vertical",
                                         fraction=0.05, pad=0.05)
-                    cbar.set_label("Amplitude [dB]", fontsize=8)
+                    #cbar.set_label("Amplitude [dB]", fontsize=8)
+                    cbar.set_label("Amplitude [$m^2/s^4/Hz$] [dB]", fontsize=8)
 
             # ---- titles ----------------------------------------------------
             ax.set_title(chnm, fontsize=9, fontweight="medium")

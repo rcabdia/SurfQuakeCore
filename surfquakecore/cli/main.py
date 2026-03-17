@@ -290,6 +290,7 @@ def _ppsdPlot():
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
     Overview:
+        
         Reads a PPSD pickle database produced by  ppsdDB  and generates
         publication-quality figures.  Three plot modes are available:
 
@@ -341,6 +342,7 @@ def _ppsdPlot():
     Usage examples:
         surfquake ppsdPlot -d "./output/test.pkl" --spp 1 --all -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
         surfquake ppsdPlot -d "./output/test.pkl" -st "OBS01,OBS02" -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
+        surfquake ppsdPlot -d "./output/test.pkl"  -m variation --variation Diurnal
         surfquake ppsdPlot -d "./output/test.pkl" comparison --mean --nhnm --nlnm
             """
     )
