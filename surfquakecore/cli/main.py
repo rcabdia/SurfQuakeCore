@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------
-# Filename: metadata_manager.py
+# Filename: main.py
 # Program: surfQuake & ISP
-# Date: January 2024
+# Date: March 2026
 # Purpose: Command Line Interface Core
 # Author: Roberto Cabieces & Thiago C. Junqueira
 #  Email: rcabdia@roa.es
@@ -45,6 +45,27 @@ def _print_main_help(actions: dict):
 
     print("\nRun `surfquake <command> -h` for command-specific help.")
 
+def resolve_path(path: Optional[str]) -> Optional[str]:
+    if path is None:
+        return None
+    if os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(os.getcwd(), path))
+
+
+def make_abs(path: Optional[str]) -> Optional[str]:
+    return os.path.abspath(path) if path else None
+
+def parse_datetime(dt_str: str):
+    # try with microseconds, fall back if not present
+    from datetime import datetime
+
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(dt_str, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Date string not in expected format: {dt_str}")
 
 def _create_actions():
     _actions = {
@@ -54,7 +75,7 @@ def _create_actions():
         ),
         "pick": _CliActions(
             name="pick", run=_pick,
-            description="Run PhaseNet to pick P/S arrivals."
+            description="Run PhaseNet to pick P/S wave arrivals."
         ),
         "associate": _CliActions(
             name="associate", run=_associate,
@@ -62,7 +83,7 @@ def _create_actions():
         ),
         "trigg": _CliActions(
             name="trigg", run=_trigg,
-            description="Detect events in continuous data (coincidence trigger)."
+            description="Detect events in continuous data (coincidence trigger STA/LTA or Kurtosis)."
         ),
         "locate": _CliActions(
             name="locate", run=_locate,
@@ -74,7 +95,7 @@ def _create_actions():
         ),
         "polarity": _CliActions(
             name="polarity", run=_polarity,
-            description="Determine first-motion polarities."
+            description="Determine automatically first-motion polarities."
         ),
         "focmec": _CliActions(
             name="focmec", run=_focmec,
@@ -130,7 +151,7 @@ def _create_actions():
         ),
         "ppsdDB": _CliActions(
             name="ppsdDB", run=_ppsdDB,
-            description="Create DB of Probabilit Density Functions (PPSD)"),
+            description="Create DB of Probability Power Density Functions (PPSD)"),
 
         "ppsdPlot": _CliActions(
             name="ppsdPlot", run=_ppsdPlot,
@@ -166,407 +187,6 @@ def main(argv: Optional[str] = None):
         sys.exit(1)
 
 
-
-def _ppsdDB():
-
-    """
-    Command-line interface for creating a DB of Power Density functions
-    """
-
-    from surfquakecore.project.surf_project import SurfProject
-    from surfquakecore.PPSD.PPSD import PPSDSurf
-
-    arg_parse = ArgumentParser(
-        prog=f"{__entry_point_name} ppsdDB",
-        description="Create a DB of Power Spectral Density Functions",
-        formatter_class=RawDescriptionHelpFormatter,
-        epilog="""
-
-        Overview:
-        
-            This command creates a file-based database that stores Probability Power Spectral Density Functions (PPSD) 
-            in a pickle file. The file is basically a dictionary with keys net, station channel and the 
-            ObsPy object with the PPSD.
-
-            - Peterson, J. (1993), Observations and Modeling of Seismic Background Noise, U.S. Geological Survey 
-              open-file report 93-322, Albuquerque, N.M.
-            
-            - McNamara, D. E. and Buland, R. P. (2004), Ambient Noise Levels in the Continental United States,
-              Bulletin of the Seismological Society of America, 94 (4), 1517-1527.
-
-        Key Arguments:
-            -p,  --project_file        [REQUIRED] Path to waveform data directory (or file pattern)
-            -i,  --inventory_file      [REQUIRED] Path to stations metadata (XML or RESP)
-            -s,  --save_file           [REQUIRED] Path to save the data base
-            -le, --length              [OPTIONAL] Length of data segments passed to psd in seconds (default 3600)
-            -ov, --overlap             [OPTIONAL] Overlap in percentage of segments passed to psd (default 50)
-            -sm, --smoothing           [OPTIONAL] PSDs are averaged over a octave at each central freq (default 1)
-            -n,  --net                 [OPTIONAL] project net filter (Default: *, Example WM)
-            -s,  --station             [OPTIONAL] project station filter (Default: *, Example ARNO)
-            -ch, --channel             [OPTIONAL] project channel filter (Default: *, Example BH?)
-       
-        Documentation:
-            https://projectisp.github.io/surfquaketutorial.github.io/
-            
-        Usage Example:
-        
-        surfquake ppsdDB -p "./ppsd_test" -i "./meta/metadata.xml" -s "./output/test.pkl"
-        """
-    )
-
-    arg_parse.add_argument("-p", "--project_file", help="Path to waveform data directory", type=str,
-                           required=True)
-
-    arg_parse.add_argument("-i", "--inventory_file", help="Path to the stations metadata", type=str,
-                           required=True)
-
-    arg_parse.add_argument("-s", "--save_file", help="Path to file where PPSD DB will be saved", type=str,
-                           required=True)
-
-    arg_parse.add_argument("-le", "--length", help="Time window length for processing", type=float,
-                           required=False, default=3600.0)
-
-    arg_parse.add_argument("-sm", "--smoothing", help="Smoothing", type=float, required=False,
-                           default=1.0)
-
-    arg_parse.add_argument("-ov", "--overlap", help="Overlap", type=float, required=False,
-                           default=50.0)
-
-    arg_parse.add_argument("-pr", "--period", help="Period", type=float, required=False,
-                           default=0.125)
-
-    arg_parse.add_argument("-nt", "--net", help="Net Selection", type=str, required=False,
-                           default="*")
-
-    arg_parse.add_argument("-st", "--station", help="Station Selection", type=str, required=False,
-                           default="*")
-
-    arg_parse.add_argument("-ch", "--channel", help="Channel Selection", type=str, required=False,
-                           default="*")
-
-    parsed_args = arg_parse.parse_args()
-    print("Input Arguments")
-    print(parsed_args)
-
-    project_file = make_abs(parsed_args.project_file)
-    save_file = make_abs(parsed_args.save_file)
-    inventory_file = make_abs(parsed_args.inventory_file)
-
-    print(f"\nCreating PPSD DB")
-    print(f"  Project  : {project_file}")
-    print(f"  Inventory: {inventory_file}")
-    print(f"  Output   : {save_file}")
-
-    sp = SurfProject.load_project(project_file)
-    print(sp)
-
-    ppsds = PPSDSurf(files_path=sp, metadata=inventory_file, length=parsed_args.length, smoothing=parsed_args.smoothing,
-        period=parsed_args.period, overlap=parsed_args.overlap)
-
-    ini_dict, size = ppsds.create_dict(net_list=parsed_args.net, sta_list=parsed_args.station,
-                                       chn_list=parsed_args.channel)
-    print(f"  Found {size} channel file(s) to process.")
-
-    db = ppsds.get_all_values(ini_dict)
-    ppsds.save_PPSDs(db, file_name=save_file)
-    print(f"\nDone. Database saved to {save_file}")
-
-
-def _ppsdPlot():
-    """
-    Command-line interface for plotting a PPSD pickle database.
-
-    Supports three plot modes selected via --mode:
-        heatmap    – probability density heatmaps, paginated by station groups
-        variation  – diurnal or seasonal noise variation heatmaps
-        comparison – overlay mean/median/mode curves across stations/channels
-    """
-
-    from surfquakecore.PPSD.plotPPS import plot_ppsds_from_pickle, plot_all_pages, plot_comparison
-
-    arg_parse = ArgumentParser(
-        prog=f"{__entry_point_name} ppsdPlot",
-        description="Plot a PPSD pickle database",
-        formatter_class=RawDescriptionHelpFormatter,
-        epilog="""
-    Overview:
-        
-        Reads a PPSD pickle database produced by  ppsdDB  and generates
-        publication-quality figures.  Three plot modes are available:
-
-        heatmap    Probability density colormaps (classic PPSD view).
-                   One figure per group of --spp stations.  Use --all to
-                   iterate automatically over every station group.
-
-        variation  Diurnal or seasonal noise variation shown as a contour
-                   plot (mode amplitude vs hour-of-day or month).
-
-        comparison Overlay mean / median / mode curves for a wildcard
-                   selection of stations and channels on shared axes.
-                   One panel per component (Z, N, E …) or a single panel.
-
-    Key Arguments:
-        -d,  --db_file         [REQUIRED] Path to the PPSD pickle database
-        -m,  --mode            [REQUIRED] Plot mode: heatmap | variation | comparison
-        -sd, --save_dir        [OPTIONAL] Directory to save figures (one per page)
-        -sp, --save_path       [OPTIONAL] Single output file path (heatmap p.0 or comparison)
-        -sf, --save_format     [OPTIONAL] Figure format: png | pdf | svg          (png)
-        -nt, --net             [OPTIONAL] Network wildcard filter                    (*)
-        -st, --station         [OPTIONAL] Station wildcard filter                    (*)
-        -ch, --channel         [OPTIONAL] Channel wildcard filter, e.g. BH?         (*)
-        -t0, --starttime       [OPTIONAL] Start of time window, ISO format
-        -t1, --endtime         [OPTIONAL] End of time window, ISO format
-
-      heatmap / variation only:
-        --spp                  [OPTIONAL] Stations per page                          (3)
-        --page                 [OPTIONAL] Page index (0-based); ignored with --all   (0)
-        --all                  [OPTIONAL] Iterate over all station groups
-        --variation            [OPTIONAL] Variation type: Diurnal | Seasonal  (Diurnal)
-        --mean                 [OPTIONAL] Overlay mean curve
-        --mode                 [OPTIONAL] Overlay mode curve
-        --nhnm                 [OPTIONAL] Overlay NHNM reference
-        --nlnm                 [OPTIONAL] Overlay NLNM reference
-        --earthquakes          [OPTIONAL] Overlay earthquake model lines
-        --min_mag              [OPTIONAL] Minimum magnitude for eq. models          (0.0)
-        --max_mag              [OPTIONAL] Maximum magnitude for eq. models         (10.0)
-        --min_dist             [OPTIONAL] Minimum distance for eq. models (km)      (0.0)
-        --max_dist             [OPTIONAL] Maximum distance for eq. models (km)   (10000)
-
-      comparison only:
-        --stats                [OPTIONAL] Comma-separated list: mean,median,mode   (mean)
-        --layout               [OPTIONAL] by_component | single          (by_component)
-
-    Documentation:
-        https://projectisp.github.io/surfquaketutorial.github.io/
-        
-    Usage examples:
-        surfquake ppsdPlot -d "./output/test.pkl" --spp 1 --all -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
-        surfquake ppsdPlot -d "./output/test.pkl" -st "OBS01,OBS02" -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
-        surfquake ppsdPlot -d "./output/test.pkl"  -m variation --variation Diurnal
-        surfquake ppsdPlot -d "./output/test.pkl" comparison --mean --nhnm --nlnm
-            """
-    )
-
-    # ---- required -----------------------------------------------------------
-    arg_parse.add_argument(
-        "-d", "--db_file",
-        help="Path to the PPSD pickle database (.pkl)",
-        type=str, required=True,
-    )
-    arg_parse.add_argument(
-        "-m", "--mode",
-        help="Plot mode: heatmap | variation | comparison",
-        type=str, required=True,
-        choices=["heatmap", "variation", "comparison"],
-    )
-
-    # ---- output -------------------------------------------------------------
-    arg_parse.add_argument(
-        "-sd", "--save_dir",
-        help="Directory to save figures (one file per page; auto-created)",
-        type=str, required=False, default=None,
-    )
-    arg_parse.add_argument(
-        "-sp", "--save_path",
-        help="Single output file path (used for page 0 or comparison)",
-        type=str, required=False, default=None,
-    )
-    arg_parse.add_argument(
-        "-sf", "--save_format",
-        help="Figure format when saving to a directory: png | pdf | svg (default: png)",
-        type=str, required=False, default="png",
-        choices=["png", "pdf", "svg", "jpg"],
-    )
-    arg_parse.add_argument(
-        "--prefix",
-        help="Filename prefix when saving multiple pages (default: ppsd_page)",
-        type=str, required=False, default="ppsd_page",
-    )
-
-    # ---- station / channel filters ------------------------------------------
-    arg_parse.add_argument(
-        "-nt", "--net",
-        help="Network wildcard filter, comma-separated (default: *)",
-        type=str, required=False, default="*",
-    )
-    arg_parse.add_argument(
-        "-st", "--station",
-        help="Station wildcard filter, comma-separated (default: *)",
-        type=str, required=False, default="*",
-    )
-    arg_parse.add_argument(
-        "-ch", "--channel",
-        help="Channel wildcard filter, e.g. BH? or HHZ,BHZ (default: *)",
-        type=str, required=False, default="*",
-    )
-
-    # ---- time window --------------------------------------------------------
-    arg_parse.add_argument(
-        "-t0", "--starttime",
-        help="Start of time window (ISO 8601, e.g. 2023-01-01T00:00:00)",
-        type=str, required=False, default=None,
-    )
-    arg_parse.add_argument(
-        "-t1", "--endtime",
-        help="End of time window (ISO 8601, e.g. 2023-03-31T23:59:59)",
-        type=str, required=False, default=None,
-    )
-
-    # ---- heatmap / variation options ----------------------------------------
-    arg_parse.add_argument(
-        "--spp",
-        help="Stations per page for heatmap/variation mode (default: 3)",
-        type=int, required=False, default=3,
-        dest="stations_per_page",
-    )
-    arg_parse.add_argument(
-        "--page",
-        help="Zero-based page index (default: 0); ignored when --all is set",
-        type=int, required=False, default=0,
-    )
-    arg_parse.add_argument(
-        "--all",
-        help="Iterate over all station pages (heatmap/variation only)",
-        action="store_true", default=False,
-        dest="all_pages",
-    )
-    arg_parse.add_argument(
-        "--variation",
-        help="Variation type for variation mode: Diurnal | Seasonal (default: Diurnal)",
-        type=str, required=False, default="Diurnal",
-        choices=["Diurnal", "Seasonal"],
-    )
-
-    # ---- statistics overlays ------------------------------------------------
-    arg_parse.add_argument(
-        "--mean", help="Overlay mean curve on heatmap panels",
-        action="store_true", default=False,
-    )
-    arg_parse.add_argument(
-        "--show_mode", help="Overlay mode curve on heatmap panels",
-        action="store_true", default=False, dest="show_mode",
-    )
-    arg_parse.add_argument(
-        "--nhnm", help="Overlay NHNM reference curve",
-        action="store_true", default=False,
-    )
-    arg_parse.add_argument(
-        "--nlnm", help="Overlay NLNM reference curve",
-        action="store_true", default=False,
-    )
-    arg_parse.add_argument(
-        "--earthquakes", help="Overlay earthquake model lines",
-        action="store_true", default=False,
-    )
-    arg_parse.add_argument(
-        "--min_mag", help="Minimum magnitude for earthquake models (default: 0.0)",
-        type=float, required=False, default=0.0,
-    )
-    arg_parse.add_argument(
-        "--max_mag", help="Maximum magnitude for earthquake models (default: 10.0)",
-        type=float, required=False, default=10.0,
-    )
-    arg_parse.add_argument(
-        "--min_dist", help="Minimum distance (km) for earthquake models (default: 0.0)",
-        type=float, required=False, default=0.0,
-    )
-    arg_parse.add_argument(
-        "--max_dist", help="Maximum distance (km) for earthquake models (default: 10000)",
-        type=float, required=False, default=10000.0,
-    )
-
-    # ---- comparison-only options --------------------------------------------
-    arg_parse.add_argument(
-        "--stats",
-        help="Statistics for comparison mode, comma-separated: mean,median,mode "
-             "(default: mean)",
-        type=str, required=False, default="mean",
-    )
-    arg_parse.add_argument(
-        "--layout",
-        help="Panel layout for comparison mode: by_component | single "
-             "(default: by_component)",
-        type=str, required=False, default="by_component",
-        choices=["by_component", "single"],
-    )
-
-    parsed_args = arg_parse.parse_args()
-    print("Input Arguments")
-    print(parsed_args)
-
-    db_file = make_abs(parsed_args.db_file)
-
-    # ---- build station/channel selection dict for heatmap/variation ---------
-    # For heatmap and variation we reuse the existing selection=None path
-    # (everything) and rely on net/sta/chn filters only for comparison.
-    # If the user specified filters for heatmap we warn them to use comparison.
-
-    mode = parsed_args.mode
-
-    # =========================================================================
-    if mode in ("heatmap", "variation"):
-
-        plot_mode = "pdf" if mode == "heatmap" else "variation"
-
-        common_kwargs = dict(
-            pickle_path=db_file,
-            stations_per_page=parsed_args.stations_per_page,
-            plot_mode=plot_mode,
-            variation=parsed_args.variation,
-            starttime=parsed_args.starttime,
-            endtime=parsed_args.endtime,
-            net_pattern=parsed_args.net,
-            sta_pattern=parsed_args.station,
-            chn_pattern=parsed_args.channel,
-            show_mean=parsed_args.mean,
-            show_mode=parsed_args.show_mode,
-            show_nhnm=parsed_args.nhnm,
-            show_nlnm=parsed_args.nlnm,
-            show_earthquakes=parsed_args.earthquakes,
-            min_mag=parsed_args.min_mag,
-            max_mag=parsed_args.max_mag,
-            min_dist=parsed_args.min_dist,
-            max_dist=parsed_args.max_dist,
-            show=parsed_args.save_dir is None and parsed_args.save_path is None,
-        )
-
-        if parsed_args.all_pages:
-            plot_all_pages(
-                **common_kwargs,
-                save_dir=make_abs(parsed_args.save_dir) if parsed_args.save_dir else None,
-                save_prefix=parsed_args.prefix,
-                save_format=parsed_args.save_format,
-            )
-        else:
-            save_path = make_abs(parsed_args.save_path) if parsed_args.save_path else None
-            plot_ppsds_from_pickle(
-                **common_kwargs,
-                page=parsed_args.page,
-                save_path=save_path,
-            )
-
-    # =========================================================================
-    elif mode == "comparison":
-
-        stats_list = [s.strip() for s in parsed_args.stats.split(",") if s.strip()]
-        save_path = make_abs(parsed_args.save_path) if parsed_args.save_path else None
-
-        plot_comparison(
-            pickle_path=db_file,
-            sta_pattern=parsed_args.station,
-            chn_pattern=parsed_args.channel,
-            net_pattern=parsed_args.net,
-            stats=tuple(stats_list),
-            starttime=parsed_args.starttime,
-            endtime=parsed_args.endtime,
-            show_nhnm=parsed_args.nhnm,
-            show_nlnm=parsed_args.nlnm,
-            layout=parsed_args.layout,
-            show=save_path is None,
-            save_path=save_path,
-        )
-
-
 def _project():
     """
     Command-line interface for creating a seismic project.
@@ -583,17 +203,13 @@ def _project():
         to waveform files and their associated metadata. Projects simplify later processing.
 
     Usage Example:
-        surfquake project \\
-            -d ./data_directory \\
-            -s ./projects \\
-            -n my_project \\
-            -v, --verbose
+        > surfquake project -d ./data_directory -s ./projects -n my_project -v
 
     Key Arguments:
-        -d, --data           Path to waveform data directory (or file pattern)
-        -s, --save_path      Directory to save the project file
-        -n, --name           Name of the project (e.g., "my_experiment")
-        -v, --verbose        Print detailed file discovery and indexing logs
+        -d, --data           [REQUIRED]         Path to waveform data directory (or file pattern)
+        -s, --save_path      [REQUIRED]         Directory to save the project file
+        -n, --name           [REQUIRED]         Name of the project (e.g., "my_experiment")
+        -v, --verbose        [OPTIONAL]         Print detailed file discovery and indexing logs
 
     Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/
@@ -638,24 +254,19 @@ def _pick():
         Picks are automatically generated from your project traces and saved to the specified directory.
 
     Usage Example:
-        surfquake pick \\
-            -f ./my_project.json \\
-            -d ./picks_output \\
-            -p 0.3 \\
-            -s 0.3 \\
-            --verbose
+        > surfquake pick -f ./my_project.json -d ./picks_output -p 0.3 -s 0.3 --verbose
 
     Key Arguments:
-        -f, --project_file        Path to your seismic project file
-        -d, --output_dir          Directory to save pick results
-        -pt, --p_thresh            [OPTIONAL] Threshold for P-wave probability (0–1) (default: 0.3)
-        -st, --s_thresh            [OPTIONAL] Threshold for S-wave probability (0–1) (default: 0.3)
-        -n, --net                 [OPTIONAL] Network code filter
-        -s, --station             [OPTIONAL] Station code filter
-        -ch, --channel            [OPTIONAL] Channel filter
-        --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
-        --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
-        --verbose                 Enable detailed logging
+        -f, --project_file        [REQUIRED]    Path to your seismic project file
+        -d, --output_dir          [REQUIRED]    Directory to save pick results
+        -pt, --p_thresh           [OPTIONAL]    Threshold for P-wave probability (0–1) (default: 0.3)
+        -st, --s_thresh           [OPTIONAL]    Threshold for S-wave probability (0–1) (default: 0.3)
+        -n, --net                 [OPTIONAL]    Network code filter (default: *)
+        -s, --station             [OPTIONAL]    Station code filter (default: *, e.g. SFS|ARNO)
+        -ch, --channel            [OPTIONAL]    Channel filter (default: *, e.g. BH?)
+        --min_date                [OPTIONAL]    Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
+        --max_date                [OPTIONAL]    Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
+        -v, --verbose             [OPTIONAL]    Enable detailed logging
 
     Reference:
         Zhu & Beroza (2019). PhaseNet: A Deep-Neural-Network-Based Seismic Arrival-Time Picking Method,
@@ -746,14 +357,14 @@ def _polarity():
         epilog="""
         
         Overview:
-        Automatic P-wave first motion polarity determination. The inputs are the project and the picking file in 
-        nonlinloc pick format (i.e., might be generated using command pick). 
-        Output is an edited pick file with polarities.
+            Automatic P-wave first motion polarity determination. The inputs are the project and the picking file in 
+            nonlinloc pick format (i.e., might be generated using command pick). 
+            Output is an edited pick file with polarities.
         
         Reference:
-        Chakraborty, M., Cartaya, C. Q., Li, W., Faber, J., Rümpker, G., Stoecker, H., & Srivastava, N. (2022). 
-        PolarCAP–A deep learning approach for first motion polarity classification of earthquake waveforms. 
-        Artificial Intelligence in Geosciences, 3, 46-52.
+            Chakraborty, M., Cartaya, C. Q., Li, W., Faber, J., Rümpker, G., Stoecker, H., & Srivastava, N. (2022). 
+            PolarCAP–A deep learning approach for first motion polarity classification of earthquake waveforms. 
+            Artificial Intelligence in Geosciences, 3, 46-52.
         
         Key Arguments:
         -p, --project_file_path     [REQUIRED] Path to a surfquake project
@@ -857,7 +468,7 @@ def _plotmec():
         
         
         Key Arguments:
-        -f, --focmec_file           [OPTIONAL] Path to a specific *.lst file
+        -f, --focmec_file           [OPTIONAL] Path to a specific *.lst file (focmec output)
         -d, --focmec_folder_path    [OPTIONAL] Path to folder with all *.lst files (focmec output)
         -o, --output_folder         [REQUIRED] Path to the output folder
         -a, --all_solutions         [OPTIONAL] If set, all searching fault planes will be plot
@@ -866,13 +477,13 @@ def _plotmec():
         
         Example usage:
 
-        surfquake plotmec -d ./focmec_folder_path -o ./output_folder
-        surfquake plotmec -f ./focmec_file_path.lst -o ./output_folder -p -a -m pdf
+        > surfquake plotmec -d ./focmec_folder_path -o ./output_folder
+        > surfquake plotmec -f ./focmec_file_path.lst -o ./output_folder -p -a -m pdf
             
         if output is not provided the beachball of the focal mechanism will be shown on screen, 
         but if user provide output folder, the beach ball plot will be saved in the folder
         
-            """
+        """
     )
     from surfquakecore.first_polarity.first_polarity import FirstPolarity
     parser.add_argument("-f", "--focmec_file", required=False, help="file with focmec.lst solution", type=str)
@@ -960,21 +571,15 @@ def _associate():
         Picks should be organized per station/channel in standard format.
 
     Usage Example:
-        surfquake associator \\
-            -i inventory.xml \\
-            -p ./picks_folder \\
-            -c real_config.ini \\
-            -w ./working_dir \\
-            -s ./associated_output \\
-            --verbose
+        > surfquake associate -i inventory.xml -p ./picks_folder -c real_config.ini -w ./working_dir -s ./associated_output -v
 
     Key Arguments:
-        -i, --inventory_file     Path to station metadata (XML or RESP)
-        -p, --picks_folder       Folder containing station pick files
-        -c, --config_file        Path to REAL .ini configuration file
-        -w, --work_dir           Working directory for REAL intermediate output
-        -s, --save_dir           Output directory for associated pick results
-        --verbose                Enable detailed logging
+        -i, --inventory_file     [REQUIRED] Path to station metadata (XML or RESP)
+        -p, --picks_folder       [REQUIRED] Folder containing station pick files
+        -c, --config_file        [REQUIRED] Path to REAL .ini configuration file
+        -w, --work_dir           [REQUIRED] Working directory for REAL intermediate output
+        -s, --save_dir           [REQUIRED] Output directory for associated pick results
+        -v, --verbose            [OPTIONAL] Enable detailed logging
 
     Reference:
         Zhang et al. (2019), Rapid Earthquake Association and Location,
@@ -1039,27 +644,19 @@ def _locate():
         For details on input formats, visit: http://alomax.free.fr/nlloc/
 
     Usage Example:
-        surfquake locate \\
-            -i inventory.xml \\
-            -c locate_config.ini \\
-            -o ./output_locations \\
-            -g \\
-            -s \\
-            -n 10
+        > surfquake locate -i inventory.xml -c locate_config.ini -o ./output_locations -g -s -n 10
 
     Key Arguments:
-        -i, --inventory_file      Station metadata (XML, RESP)
-        -c, --config_file         Path to NonLinLoc .ini configuration
-        -o, --output_dir          Directory where location results will be saved
-        -g, --generate_tt         Generate travel time files before location
-        -s, --apply_station_corr  Apply station corrections (if configured)
-        -n, --iterations          Number of global search iterations (int)
+        -i, --inventory_file      [REQUIRED] Station metadata (XML, RESP)
+        -c, --config_file         [REQUIRED] Path to NonLinLoc .ini configuration
+        -o, --output_dir          [REQUIRED] Directory where location results will be saved
+        -g, --generate_tt         [REQUIRED] Generate travel time files before location
+        -s, --apply_station_corr  [OPTIONAL] Apply station corrections
+        -n, --iterations          [OPTIONAL] Number of global search iterations (int, number of iterations if stations corrections is set)
 
     Reference:
-        Lomax, A., Michelini, A., Curtis, A. (2009).
-        Earthquake Location: Direct, Global-Search Methods.
-        Encyclopedia of Complexity and System Science, Springer.
-        DOI: https://doi.org/10.1007/978-0-387-30440-3
+        Lomax, A., Michelini, A., Curtis, A. (2009). Earthquake Location: Direct, Global-Search Methods.
+        Encyclopedia of Complexity and System Science, Springer. DOI: https://doi.org/10.1007/978-0-387-30440-3
 
     Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/
@@ -1080,12 +677,11 @@ def _locate():
                            action="store_true")
 
     arg_parse.add_argument("-s", "--stations_corrections", help="If you want to iterate to include "
-                                                                "stations corrections, default iterations 10",
+                                                                "stations corrections, default iterations 5",
                            action="store_true")
 
     arg_parse.add_argument('-n', '--number_iterations', type=int, metavar='N', help='an integer for the '
-                                                                                    'number of iterations',
-                           required=False)
+                            'number of iterations', required=False)
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
@@ -1133,7 +729,7 @@ def _source():
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
     Overview:
-        surfQuake estimates source parameters such as:
+        surfQuake estimates source parameters:
             • Stress Drop
             • Attenuation (Q)
             • Source radius
@@ -1143,23 +739,19 @@ def _source():
         It uses spectral fitting of P- and/or S-wave displacement spectra, following SourceSpec methodology.
 
     Usage Example:
-        surfquake source \\
-            -i inventory.xml \\
-            -p my_project.json \\
-            -c source_config.yaml \\
-            -l ./nlloc_outputs \\
-            -o ./source_results
+        > surfquake source -i inventory.xml -p my_project.json -c source_config.yaml -l ./nlloc_outputs -o ./source_results
 
     Key Arguments:
-        -i, --inventory_file     Path to station metadata (XML, RESP)
-        -p, --project_file       Path to project file containing waveform picks
-        -c, --config_file        YAML configuration for SourceSpec
-        -l, --hypocenter_dir     Directory containing NonLinLoc .hyp files
-        -o, --output_folder      Output folder for source parameter results
+        -i, --inventory_file     [REQUIRED] Path to station metadata (XML, RESP)
+        -p, --project_file       [REQUIRED] Path to project file
+        -c, --config_file        [REQUIRED] YAML configuration for SourceSpec
+        -l, --hypocenter_dir     [REQUIRED] Directory containing NonLinLoc *.hyp files
+        -o, --output_folder      [REQUIRED] Output folder for source parameter results
+        -t, --large_scale        [OPTIONAL] Automatic long cut of teleseism event waveforms
 
     Reference:
-        Satriano, C. (2023). SourceSpec – Earthquake source parameters from
-        P- or S-wave displacement spectra. DOI: https://doi.org/10.5281/ZENODO.3688587
+        Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave displacement spectra. 
+        DOI: https://doi.org/10.5281/ZENODO.3688587
 
     Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/
@@ -1179,12 +771,12 @@ def _source():
     arg_parse.add_argument("-l", "--loc_files_path", help="Path to nll_hyp_files", type=str,
                            required=True)
 
+    arg_parse.add_argument("-o", "--output_dir_path", help="Path to output_directory ", type=str,
+                           required=True)
+
     arg_parse.add_argument("-t", "--large_scale",
                            help="If you want a long cut of signals for teleseism events (optional)",
                            action="store_true")
-
-    arg_parse.add_argument("-o", "--output_dir_path", help="Path to output_directory ", type=str,
-                           required=True)
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
@@ -1227,19 +819,14 @@ def _mti():
         using a Bayesian inversion approach, based on the Bayesian ISOLA method.
 
     Usage Example:
-        surfquake mti \\
-            -i inventory.xml \\
-            -p my_project.json \\
-            -c mti_config.ini \\
-            -o ./mti_output \\
-            -s
+        surfquake mti -i inventory.xml -p my_project.json -c mti_config.ini -o ./mti_output -s
 
     Key Arguments:
-        -i, --inventory_file     Path to station metadata (XML, RESP)
-        -p, --project_file       Path to the project file with waveforms and event metadata
-        -c, --config_file        INI configuration file for inversion settings
-        -o, --output_dir         Output directory for inversion results
-        -s, --save_plots         If set, saves plots of MT solutions and fits
+        -i, --inventory_file    [REQUIRED] Path to station metadata file (XML, RESP)
+        -p, --project_file      [REQUIRED] Path to the project file with waveforms and event metadata
+        -c, --config_file       [REQUIRED] INI configuration file for inversion settings
+        -o, --output_dir        [REQUIRED] Output directory for inversion results
+        -s, --save_plots        [OPTIONAL] If set, saves plots of MT solutions and fits
 
     Reference:
         Vackář et al. (2017). Bayesian ISOLA: New Tool for Automated Centroid Moment Tensor Inversion,
@@ -1295,6 +882,7 @@ def _csv2xml():
         description="Convert a CSV file of station metadata to a StationXML file.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
+    
     Overview:
         Convert a CSV station table to StationXML format.
 
@@ -1304,27 +892,36 @@ def _csv2xml():
         Date format must follow: '%Y-%m-%d %H:%M:%S'
 
     Usage Example:
-        surfquake csv2xml \\
-            -c ./stations.csv \\
-            -r ./resp_files/ \\
-            -o ./output_dir \\
-            -n my_stations.xml
+        surfquake csv2xml -c ./stations.csv -r ./resp_files -o ./output_dir -n my_stations.xml
 
     Key Arguments:
-        -c, --csv_file         Path to input CSV file containing station metadata
-        -r, --resp_dir         Path to RESP files for each station (optional if included in CSV)
-        -o, --output_dir       Directory where the StationXML will be saved
-        -n, --output_name      Desired filename for the output StationXML
+        -c, --csv_file_path          [REQUIRED] Path to input CSV file containing station metadata
+        -r, --resp_files_path        [OPTIONAL] Path to RESP files for each station (optional if included in CSV)
+        -o, --output_dir             [REQUIRED] Directory where the StationXML will be saved
+        -n, --stations_xml_name      [REQUIRED] Desired filename for the output StationXML
 
+    Input file header and first rows:
+    
+    Minimal Example:
+    
+    Net Station Lat Lon elevation start_date starttime end_date endtime
+    WM ARNO 37.0988 -6.7322 117.0 2007-01-01 00:00:00 2050-12-31 23:59:59
+    WM AVE 33.2981 -7.4133 230.0 2007-01-01 00:00:00 2050-12-31 23:59:59
+    
+    Full example:
+    Net Station site_name Lat Lon elevation start_date starttime end_date endtime channel location_code sample_rate azimuth dip depth clock_drift
+    WM ARNO ARNO_OBS_01 37.0988 -6.7322 117.0 2007-01-01 00:00:00 2050-12-31 23:59:59 HHZ 00 100.0 0.0 -90.0 0.0 1.2e-7
+    WM ARNO ARNO_OBS_01 37.0988 -6.7322 117.0 2007-01-01 00:00:00 2050-12-31 23:59:59 HHN 00 100.0 0.0 0.0 0.0 1.2e-7
+    
     Documentation:
-        https://projectisp.github.io/surfquaketutorial.github.io/
+        https://projectisp.github.io/surfquaketutorial.github.io/create_metadata/
     """
     )
 
     arg_parse.add_argument("-c", "--csv_file_path", help="file containing Net Station Lat Lon elevation "
         "start_date starttime end_date endtime, single spacing", type=str, required=True)
 
-    arg_parse.add_argument("-r", "--resp_files_path", help="Path to the folder containing the response file",
+    arg_parse.add_argument("-r", "--resp_files_path", help="Path to the folder containing the response files",
                            type=str, required=False)
 
     arg_parse.add_argument("-o", "--output_path", help="Path to output xml file)", type=str, required=True)
@@ -1374,7 +971,7 @@ def _buildcatalog():
     Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/utils/
         ObsPy catalog format info:
-        https://docs.obspy.org/packages/autogen/obspy.core.event.Catalog.write.html
+        https://projectisp.github.io/surfquaketutorial.github.io/manage_catalog/
     """
     )
 
@@ -1421,7 +1018,7 @@ def _buildcatalog():
 
 
 def _buildmticonfig():
-    from surfquakecore.moment_tensor.mti_parse import WriteMTI, BuildMTIConfigs
+    from surfquakecore.moment_tensor.mti_parse import BuildMTIConfigs
 
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} Create mti_config.ini from catalog and template",
@@ -1438,16 +1035,9 @@ def _buildmticonfig():
         This is useful to prepare inversion configs for multiple events in batch.
 
     Usage Example:
-        surfquake buildmticonfig \\
-            -c ./catalog.xml \\
-            -t ./mti_template.ini \\
-            -o ./generated_configs \\
-            -s "01/01/2024, 00:00:00.000" \\
-            -e "01/02/2024, 00:00:00.000" \\
-            -l 34.0 -a 36.0 \\
-            -d -118.0 -k -116.0 \\
-            -w 0 -f 20 \\
-            -g 2.5 -p 6.0
+        surfquake buildmticonfig -c ./catalog.xml -t ./mti_template.ini -o ./generated_configs \\
+            -s "01/01/2024, 00:00:00.000" -e "01/02/2024, 00:00:00.000" -l 34.0 -a 36.0 \\
+            -d -118.0 -k -116.0 -w 0 -f 20 -g 2.5 -p 6.0
 
     Key Arguments:
         -c, --catalog_file       Path to input event catalog file (QuakeML or ObsPy)
@@ -1776,15 +1366,8 @@ def _trigg():
         205(3), 1548-1573, doi:10.1093/gji/ggw071.
 
         Usage Example:
-            surfquake trigg \\
-                -c config.yaml \\
-                -o ./output_folder \\
-                -ch "HHZ"
-                --min_date "2024-01-01 00:00:00" \\
-                --max_date "2024-01-04 00:00:00" \\
-                --span_seconds  86400\\
-                --picking_file ./pick.txt
-                --plot
+            surfquake trigg -c config.yaml -o ./output_folder -ch "HHZ" --min_date "2024-01-01 00:00:00" \\
+            --max_date "2024-01-04 00:00:00" --span_seconds  86400 --picking_file ./pick.txt --plot
                 
         Key Arguments:
             -p, --project_file        [REQUIRED] Path to a saved project files
@@ -1898,16 +1481,9 @@ def _processing_daily():
             • after  : apply script after plotting (e.g., to act on manual picks)
 
     Usage Example:
-        surfquake processing_daily \\
-            -i inventory.xml \\
-            -c config.yaml \\
-            -o ./output_folder \\
-            --min_date "2024-01-01 00:00:00" \\
-            --max_date "2024-01-02 00:00:00" \\
-            --span_seconds  86400\\
-            --plot_config plot_settings.yaml \\
-            --post_script my_custom.py \\
-            --post_script_stage after
+        surfquake processing_daily -i inventory.xml -c config.yaml -o ./output_folder \\
+            --min_date "2024-01-01 00:00:00" --max_date "2024-01-02 00:00:00" --span_seconds  86400 \\
+            --plot_config plot_settings.yaml --post_script my_custom.py --post_script_stage after
 
     Key Arguments:
         -p, --project_file        [REQUIRED] Path to a saved project files
@@ -2067,12 +1643,7 @@ def _quickproc():
 
         Examples:
             Process waveform files with a config and plot interactively:
-                surfquake quick \\
-                    -w "./data/*.mseed" \\
-                    -c ./config.yaml \\
-                    -i ./inventory.xml \\
-                    -o ./out \\
-                    --plot_config plot.yaml
+                surfquake quick -w "./data/*.mseed" -c ./config.yaml -i ./inventory.xml -o ./out --plot_config plot.yaml
 
         Key Arguments:
             -w, --wave_files         [REQUIRED] Glob pattern or path to waveform files
@@ -2149,16 +1720,26 @@ def _specplot():
         description="Plot serialized spectral analysis (spectrum, spectrogram or cwt)",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-    Plot a saved spectrum:
-        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp
-
-    Plot a saved spectrogram:
-        surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0
-
-    Save plot to a file:
-        surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec --save_path output.png
-"""
+        
+        Overview:
+        Plot spectrograms from saved binary files after processing waveforms
+        
+        Key Arguments:
+            -f, --file         [REQUIRED] Path to waveform files (.sp, .spec or .cwt)
+            -c, --clip         [OPTIONAL] Clipping level in dB for plotting the time-Frequency plane (default -120)
+                --save_path    [OPTIONAL] Output file path to automatically save the figure
+                
+        Examples:
+            Plot a saved spectrum:
+                surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp
+        
+            Plot a saved spectrogram:
+                surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0
+        
+            Save plot to a file:
+                surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec --save_path output.png
+        
+        """
     )
 
     parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
@@ -2197,22 +1778,31 @@ def _beamplot():
         description="Plot serialized beamforming result and optionally extract peaks",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  Plot a saved FK beam:
-      surfquake beamplot --file ./output/2024.123.beam
-
-  Detect peaks with regional phase constraints:
-      surfquake beamplot --file event.beam --find_solutions regional --write_path solutions.txt
-
-  Use custom slowness constraints:
-      surfquake beamplot --file beam.beam --find_solutions '{"Pn": [0.05, 0.08], "Lg": [0.18, 0.30]}'
-
-  Apply azimuth filtering:
-      surfquake beamplot -f beam.beam --find_solutions regional --baz_range 100 150
-
-  Control minimum power threshold:
-      surfquake beamplot -f beam.beam --find_solutions teleseismic --min_power 0.2
-"""
+        
+        Key Arguments:
+            -f, --file              [REQUIRED] Path to waveform files (.sp, .spec or .cwt)
+                --save_path         [OPTIONAL] Output file path to automatically save the figure
+                --find_solutions    [OPTIONAL] Automatically find peaks in tn relative power of the beamforming
+                --write_path        [OPTIONAL] Path to te output txt file with the automatic solutions
+                --baz_range         [OPTIONAL] Filter the automatic search for range of azimuth
+                --min_power         [OPTIONAL] Relative Power threshold for searching automatic solutions (default 0.6)
+        
+        Examples:
+          Plot a saved FK beam:
+              surfquake beamplot --file ./output/2024.123.beam
+        
+          Detect peaks with regional phase constraints:
+              surfquake beamplot --file event.beam --find_solutions regional --write_path solutions.txt
+        
+          Use custom slowness constraints:
+              surfquake beamplot --file file_path --find_solutions '{"Pn": [0.05, 0.08], "Lg": [0.18, 0.30]}'
+        
+          Apply azimuth filtering:
+              surfquake beamplot -f file_path --find_solutions regional --baz_range 100 150
+        
+          Control minimum power threshold:
+              surfquake beamplot -f file_path --find_solutions teleseismic --min_power 0.75
+        """
     )
 
     parser.add_argument("--file", "-f", required=True, help="Path to the .beam file (gzip-pickled TraceBeamResult)")
@@ -2221,7 +1811,7 @@ Examples:
     parser.add_argument("--baz_range", nargs=2, type=float, metavar=('MIN', 'MAX'),
                         help="Backazimuth range filter in degrees (e.g., 90 140)")
     parser.add_argument("--min_power", type=float, default=0.6,
-                        help="Minimum relative power required to accept a peak (default: 0.1)")
+                        help="Minimum relative power required to accept a peak (default: 0.6)")
     parser.add_argument("--write_path", help="Append detected peaks to specified TXT file")
 
     args = parser.parse_args()
@@ -2242,7 +1832,7 @@ Examples:
                 bazimuth_range=baz_range
             )
 
-            if len(results)>0:
+            if len(results) > 0:
                 total_peaks = sum(len(peaks) for peaks in results.values())
                 print(f"[INFO] Found {total_peaks} beam peaks:")
                 for phase, peaks in results.items():
@@ -2275,10 +1865,10 @@ def _info():
 
         Example usage:
 
-    surfquake info -w './data/*.mseed' -c 3
-    surfquake info -w 'trace1.mseed,trace2.mseed' --columns 5
+        > surfquake info -w './data/*.mseed' -c 3
+        > surfquake info -w 'trace1.mseed,trace2.mseed' --columns 5
 
-    Supports standard and SurfQuake-extended headers such as picks, references, and geodetic attributes.
+        Supports standard and SurfQuake-extended headers such as picks, references, and geodetic attributes.
 
     """
     )
@@ -2325,7 +1915,9 @@ def _explore():
             -ch, --channel            [OPTIONAL] Channel filter (if -p selected)
             --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project (if -p selected)
             --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project (if -p selected)
-            
+    
+    * Either -w or -p must be set     
+    
     Example usage:
 
     surfquake explore -w './data/*.mseed'
@@ -2391,27 +1983,404 @@ def _explore():
     PlotExplore.data_availability_new(data_files)
 
 
-def resolve_path(path: Optional[str]) -> Optional[str]:
-    if path is None:
-        return None
-    if os.path.isabs(path):
-        return path
-    return os.path.normpath(os.path.join(os.getcwd(), path))
+def _ppsdDB():
+    """
+    Command-line interface for creating a DB of Power Density functions
+    """
+
+    from surfquakecore.project.surf_project import SurfProject
+    from surfquakecore.PPSD.PPSD import PPSDSurf
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} ppsdDB",
+        description="Create a DB of Power Spectral Density Functions",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+
+        Overview:
+
+            This command creates a file-based database that stores Probability Power Spectral Density Functions (PPSD) 
+            in a pickle file. The file is basically a dictionary with keys net, station channel and the 
+            ObsPy object with the PPSD.
+
+            - Peterson, J. (1993), Observations and Modeling of Seismic Background Noise, U.S. Geological Survey 
+              open-file report 93-322, Albuquerque, N.M.
+
+            - McNamara, D. E. and Buland, R. P. (2004), Ambient Noise Levels in the Continental United States,
+              Bulletin of the Seismological Society of America, 94 (4), 1517-1527.
+
+        Key Arguments:
+            -p,  --project_file        [REQUIRED] Path to waveform data directory (or file pattern)
+            -i,  --inventory_file      [REQUIRED] Path to stations metadata (XML or RESP)
+            -s,  --save_file           [REQUIRED] Path to save the data base
+            -le, --length              [OPTIONAL] Length of data segments passed to psd in seconds (default 3600)
+            -ov, --overlap             [OPTIONAL] Overlap in percentage of segments passed to psd (default 50)
+            -sm, --smoothing           [OPTIONAL] PSDs are averaged over a octave at each central freq (default 1)
+            -n,  --net                 [OPTIONAL] project net filter (Default: *, Example WM)
+            -s,  --station             [OPTIONAL] project station filter (Default: *, Example ARNO)
+            -ch, --channel             [OPTIONAL] project channel filter (Default: *, Example BH?)
+
+        Documentation:
+            https://projectisp.github.io/surfquaketutorial.github.io/
+
+        Usage Example:
+
+        surfquake ppsdDB -p "./ppsd_test" -i "./meta/metadata.xml" -s "./output/test.pkl"
+        """
+    )
+
+    arg_parse.add_argument("-p", "--project_file", help="Path to waveform data directory", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-i", "--inventory_file", help="Path to the stations metadata", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-s", "--save_file", help="Path to file where PPSD DB will be saved", type=str,
+                           required=True)
+
+    arg_parse.add_argument("-le", "--length", help="Time window length for processing", type=float,
+                           required=False, default=3600.0)
+
+    arg_parse.add_argument("-sm", "--smoothing", help="Smoothing", type=float, required=False,
+                           default=1.0)
+
+    arg_parse.add_argument("-ov", "--overlap", help="Overlap", type=float, required=False,
+                           default=50.0)
+
+    arg_parse.add_argument("-pr", "--period", help="Period", type=float, required=False,
+                           default=0.125)
+
+    arg_parse.add_argument("-nt", "--net", help="Net Selection", type=str, required=False,
+                           default="*")
+
+    arg_parse.add_argument("-st", "--station", help="Station Selection", type=str, required=False,
+                           default="*")
+
+    arg_parse.add_argument("-ch", "--channel", help="Channel Selection", type=str, required=False,
+                           default="*")
+
+    parsed_args = arg_parse.parse_args()
+    print("Input Arguments")
+    print(parsed_args)
+
+    project_file = make_abs(parsed_args.project_file)
+    save_file = make_abs(parsed_args.save_file)
+    inventory_file = make_abs(parsed_args.inventory_file)
+
+    print(f"\nCreating PPSD DB")
+    print(f"  Project  : {project_file}")
+    print(f"  Inventory: {inventory_file}")
+    print(f"  Output   : {save_file}")
+
+    sp = SurfProject.load_project(project_file)
+    print(sp)
+
+    ppsds = PPSDSurf(files_path=sp, metadata=inventory_file, length=parsed_args.length, smoothing=parsed_args.smoothing,
+                     period=parsed_args.period, overlap=parsed_args.overlap)
+
+    ini_dict, size = ppsds.create_dict(net_list=parsed_args.net, sta_list=parsed_args.station,
+                                       chn_list=parsed_args.channel)
+    print(f"  Found {size} channel file(s) to process.")
+
+    db = ppsds.get_all_values(ini_dict)
+    ppsds.save_PPSDs(db, file_name=save_file)
+    print(f"\nDone. Database saved to {save_file}")
 
 
-def make_abs(path: Optional[str]) -> Optional[str]:
-    return os.path.abspath(path) if path else None
+def _ppsdPlot():
+    """
+    Command-line interface for plotting a PPSD pickle database.
 
-def parse_datetime(dt_str: str):
-    # try with microseconds, fall back if not present
-    from datetime import datetime
+    Supports three plot modes selected via --mode:
+        heatmap    – probability density heatmaps, paginated by station groups
+        variation  – diurnal or seasonal noise variation heatmaps
+        comparison – overlay mean/median/mode curves across stations/channels
+    """
 
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
-        try:
-            return datetime.strptime(dt_str, fmt)
-        except ValueError:
-            continue
-    raise ValueError(f"Date string not in expected format: {dt_str}")
+    from surfquakecore.PPSD.plotPPS import plot_ppsds_from_pickle, plot_all_pages, plot_comparison
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} ppsdPlot",
+        description="Plot a PPSD pickle database",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+    Overview:
+
+        Reads a PPSD pickle database produced by  ppsdDB  and generates
+        publication-quality figures.  Three plot modes are available:
+
+        heatmap    Probability density colormaps (classic PPSD view).
+                   One figure per group of --spp stations.  Use --all to
+                   iterate automatically over every station group.
+
+        variation  Diurnal or seasonal noise variation shown as a contour
+                   plot (mode amplitude vs hour-of-day or month).
+
+        comparison Overlay mean / median / mode curves for a wildcard
+                   selection of stations and channels on shared axes.
+                   One panel per component (Z, N, E …) or a single panel.
+
+    Key Arguments:
+        -d,  --db_file         [REQUIRED] Path to the PPSD pickle database
+        -m,  --mode            [REQUIRED] Plot mode: heatmap | variation | comparison
+        -sd, --save_dir        [OPTIONAL] Directory to save figures (one per page)
+        -sp, --save_path       [OPTIONAL] Single output file path (heatmap p.0 or comparison)
+        -sf, --save_format     [OPTIONAL] Figure format: png | pdf | svg          (png)
+        -nt, --net             [OPTIONAL] Network wildcard filter                  (*)
+        -st, --station         [OPTIONAL] Station wildcard filter                  (*)
+        -ch, --channel         [OPTIONAL] Channel wildcard filter, e.g. BH?        (*)
+        -t0, --starttime       [OPTIONAL] Start of time window, ISO format
+        -t1, --endtime         [OPTIONAL] End of time window, ISO format
+
+      heatmap / variation only:
+        --spp                  [OPTIONAL] Stations per page                          (3)
+        --page                 [OPTIONAL] Page index (0-based); ignored with --all   (0)
+        --all                  [OPTIONAL] Iterate over all station groups
+        --variation            [OPTIONAL] Variation type: Diurnal | Seasonal  (Diurnal)
+        --mean                 [OPTIONAL] Overlay mean curve
+        --mode                 [OPTIONAL] Overlay mode curve
+        --nhnm                 [OPTIONAL] Overlay NHNM reference
+        --nlnm                 [OPTIONAL] Overlay NLNM reference
+        --earthquakes          [OPTIONAL] Overlay earthquake model lines
+        --min_mag              [OPTIONAL] Minimum magnitude for eq. models          (0.0)
+        --max_mag              [OPTIONAL] Maximum magnitude for eq. models         (10.0)
+        --min_dist             [OPTIONAL] Minimum distance for eq. models (km)      (0.0)
+        --max_dist             [OPTIONAL] Maximum distance for eq. models (km)   (10000)
+
+      comparison only:
+        --stats                [OPTIONAL] Comma-separated list: mean,median,mode   (mean)
+        --layout               [OPTIONAL] by_component | single          (by_component)
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+
+    Usage examples:
+        surfquake ppsdPlot -d "./output/test.pkl" --spp 1 --all -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
+        surfquake ppsdPlot -d "./output/test.pkl" -st "OBS01,OBS02" -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
+        surfquake ppsdPlot -d "./output/test.pkl"  -m variation --variation Diurnal
+        surfquake ppsdPlot -d "./output/test.pkl" comparison --mean --nhnm --nlnm
+        """
+    )
+
+    # ---- required -----------------------------------------------------------
+    arg_parse.add_argument(
+        "-d", "--db_file",
+        help="Path to the PPSD pickle database (.pkl)",
+        type=str, required=True,
+    )
+    arg_parse.add_argument(
+        "-m", "--mode",
+        help="Plot mode: heatmap | variation | comparison",
+        type=str, required=True,
+        choices=["heatmap", "variation", "comparison"],
+    )
+
+    # ---- output -------------------------------------------------------------
+    arg_parse.add_argument(
+        "-sd", "--save_dir",
+        help="Directory to save figures (one file per page; auto-created)",
+        type=str, required=False, default=None,
+    )
+    arg_parse.add_argument(
+        "-sp", "--save_path",
+        help="Single output file path (used for page 0 or comparison)",
+        type=str, required=False, default=None,
+    )
+    arg_parse.add_argument(
+        "-sf", "--save_format",
+        help="Figure format when saving to a directory: png | pdf | svg (default: png)",
+        type=str, required=False, default="png",
+        choices=["png", "pdf", "svg", "jpg"],
+    )
+    arg_parse.add_argument(
+        "--prefix",
+        help="Filename prefix when saving multiple pages (default: ppsd_page)",
+        type=str, required=False, default="ppsd_page",
+    )
+
+    # ---- station / channel filters ------------------------------------------
+    arg_parse.add_argument(
+        "-nt", "--net",
+        help="Network wildcard filter, comma-separated (default: *)",
+        type=str, required=False, default="*",
+    )
+    arg_parse.add_argument(
+        "-st", "--station",
+        help="Station wildcard filter, comma-separated (default: *)",
+        type=str, required=False, default="*",
+    )
+    arg_parse.add_argument(
+        "-ch", "--channel",
+        help="Channel wildcard filter, e.g. BH? or HHZ,BHZ (default: *)",
+        type=str, required=False, default="*",
+    )
+
+    # ---- time window --------------------------------------------------------
+    arg_parse.add_argument(
+        "-t0", "--starttime",
+        help="Start of time window (ISO 8601, e.g. 2023-01-01T00:00:00)",
+        type=str, required=False, default=None,
+    )
+    arg_parse.add_argument(
+        "-t1", "--endtime",
+        help="End of time window (ISO 8601, e.g. 2023-03-31T23:59:59)",
+        type=str, required=False, default=None,
+    )
+
+    # ---- heatmap / variation options ----------------------------------------
+    arg_parse.add_argument(
+        "--spp",
+        help="Stations per page for heatmap/variation mode (default: 3)",
+        type=int, required=False, default=3,
+        dest="stations_per_page",
+    )
+    arg_parse.add_argument(
+        "--page",
+        help="Zero-based page index (default: 0); ignored when --all is set",
+        type=int, required=False, default=0,
+    )
+    arg_parse.add_argument(
+        "--all",
+        help="Iterate over all station pages (heatmap/variation only)",
+        action="store_true", default=False,
+        dest="all_pages",
+    )
+    arg_parse.add_argument(
+        "--variation",
+        help="Variation type for variation mode: Diurnal | Seasonal (default: Diurnal)",
+        type=str, required=False, default="Diurnal",
+        choices=["Diurnal", "Seasonal"],
+    )
+
+    # ---- statistics overlays ------------------------------------------------
+    arg_parse.add_argument(
+        "--mean", help="Overlay mean curve on heatmap panels",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--show_mode", help="Overlay mode curve on heatmap panels",
+        action="store_true", default=False, dest="show_mode",
+    )
+    arg_parse.add_argument(
+        "--nhnm", help="Overlay NHNM reference curve",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--nlnm", help="Overlay NLNM reference curve",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--earthquakes", help="Overlay earthquake model lines",
+        action="store_true", default=False,
+    )
+    arg_parse.add_argument(
+        "--min_mag", help="Minimum magnitude for earthquake models (default: 0.0)",
+        type=float, required=False, default=0.0,
+    )
+    arg_parse.add_argument(
+        "--max_mag", help="Maximum magnitude for earthquake models (default: 10.0)",
+        type=float, required=False, default=10.0,
+    )
+    arg_parse.add_argument(
+        "--min_dist", help="Minimum distance (km) for earthquake models (default: 0.0)",
+        type=float, required=False, default=0.0,
+    )
+    arg_parse.add_argument(
+        "--max_dist", help="Maximum distance (km) for earthquake models (default: 10000)",
+        type=float, required=False, default=10000.0,
+    )
+
+    # ---- comparison-only options --------------------------------------------
+    arg_parse.add_argument(
+        "--stats",
+        help="Statistics for comparison mode, comma-separated: mean,median,mode "
+             "(default: mean)",
+        type=str, required=False, default="mean",
+    )
+    arg_parse.add_argument(
+        "--layout",
+        help="Panel layout for comparison mode: by_component | single "
+             "(default: by_component)",
+        type=str, required=False, default="by_component",
+        choices=["by_component", "single"],
+    )
+
+    parsed_args = arg_parse.parse_args()
+    print("Input Arguments")
+    print(parsed_args)
+
+    db_file = make_abs(parsed_args.db_file)
+
+    # ---- build station/channel selection dict for heatmap/variation ---------
+    # For heatmap and variation we reuse the existing selection=None path
+    # (everything) and rely on net/sta/chn filters only for comparison.
+    # If the user specified filters for heatmap we warn them to use comparison.
+
+    mode = parsed_args.mode
+
+    # =========================================================================
+    if mode in ("heatmap", "variation"):
+
+        plot_mode = "pdf" if mode == "heatmap" else "variation"
+
+        common_kwargs = dict(
+            pickle_path=db_file,
+            stations_per_page=parsed_args.stations_per_page,
+            plot_mode=plot_mode,
+            variation=parsed_args.variation,
+            starttime=parsed_args.starttime,
+            endtime=parsed_args.endtime,
+            net_pattern=parsed_args.net,
+            sta_pattern=parsed_args.station,
+            chn_pattern=parsed_args.channel,
+            show_mean=parsed_args.mean,
+            show_mode=parsed_args.show_mode,
+            show_nhnm=parsed_args.nhnm,
+            show_nlnm=parsed_args.nlnm,
+            show_earthquakes=parsed_args.earthquakes,
+            min_mag=parsed_args.min_mag,
+            max_mag=parsed_args.max_mag,
+            min_dist=parsed_args.min_dist,
+            max_dist=parsed_args.max_dist,
+            show=parsed_args.save_dir is None and parsed_args.save_path is None,
+        )
+
+        if parsed_args.all_pages:
+            plot_all_pages(
+                **common_kwargs,
+                save_dir=make_abs(parsed_args.save_dir) if parsed_args.save_dir else None,
+                save_prefix=parsed_args.prefix,
+                save_format=parsed_args.save_format,
+            )
+        else:
+            save_path = make_abs(parsed_args.save_path) if parsed_args.save_path else None
+            plot_ppsds_from_pickle(
+                **common_kwargs,
+                page=parsed_args.page,
+                save_path=save_path,
+            )
+
+    # =========================================================================
+    elif mode == "comparison":
+
+        stats_list = [s.strip() for s in parsed_args.stats.split(",") if s.strip()]
+        save_path = make_abs(parsed_args.save_path) if parsed_args.save_path else None
+
+        plot_comparison(
+            pickle_path=db_file,
+            sta_pattern=parsed_args.station,
+            chn_pattern=parsed_args.channel,
+            net_pattern=parsed_args.net,
+            stats=tuple(stats_list),
+            starttime=parsed_args.starttime,
+            endtime=parsed_args.endtime,
+            show_nhnm=parsed_args.nhnm,
+            show_nlnm=parsed_args.nlnm,
+            layout=parsed_args.layout,
+            show=save_path is None,
+            save_path=save_path,
+        )
+
 
 if __name__ == "__main__":
     freeze_support()
