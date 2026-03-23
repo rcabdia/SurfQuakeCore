@@ -50,7 +50,7 @@ class PlotExplore:
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         else:
-            mplt.use("Qt5Agg")
+            mplt.use("TkAgg")
 
         fig, hax = plt.subplots(1, 1, figsize=(12, 6))
 

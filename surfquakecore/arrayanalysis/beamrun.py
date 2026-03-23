@@ -74,7 +74,7 @@ class TraceBeamResult:
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         else:
-            mplt.use("Qt5Agg")
+            mplt.use("TkAgg")
 
         # --- Create grid layout with reserved space for colorbar ---
         self.fig_fk = plt.figure(figsize=(9, 6))

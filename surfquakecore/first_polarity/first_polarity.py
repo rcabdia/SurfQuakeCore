@@ -608,7 +608,7 @@ class FirstPolarity:
         if platform.system() == 'Darwin':
             mplt.use("MacOSX")
         else:
-            mplt.use("Qt5Agg")
+            mplt.use("TkAgg")
 
         azims_pos = []
         incis_pos = []
