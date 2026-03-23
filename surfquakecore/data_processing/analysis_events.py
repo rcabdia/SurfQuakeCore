@@ -327,7 +327,7 @@ class AnalysisEvents:
                     # Prompt only in interactive mode
                     if plot:
                         user_choice = input(
-                            f"\n[Prompt] Finished subproject {i}. Type 'n' to continue, "
+                            f"\n[Prompt] Finished subproject {i}. Type 'c' to continue, "
                             f"'r' to reprocess this event, or 'exit': "
                         ).strip().lower()
 
@@ -505,6 +505,7 @@ class AnalysisEvents:
 
         try:
             while True:
+                # 1. Station processing — always runs, serial only if post_script_func exists (pickle constraint)
                 if self.post_script_func:
 
                     results = [self._process_station_analysis(task) for task in tasks]
@@ -512,24 +513,26 @@ class AnalysisEvents:
                     with Pool(processes=min(cpu_count(), len(tasks))) as pool:
                         results = pool.map(self._process_station_analysis, tasks)
 
+                # 2. Clean & assemble stream — always runs
                 all_traces = [tr for group in results for tr in group if tr is not None]
                 full_stream = self._clean_traces(all_traces)
-
                 del all_traces, results
                 gc.collect()
 
+                # 3. StreamProcessing — always runs, unconditionally
                 sp = StreamProcessing(full_stream, self.config, self.inventory)
                 full_stream = sp.run_stream_processing()
 
                 print(f"[INFO] Fast mode: {len(full_stream)} traces processed")
 
+                # 4. Post-script BEFORE plotting — user injection point (trace or stream level)
                 if self.post_script_func and self.post_script_stage == "before":
                     try:
                         full_stream = self.post_script_func(full_stream, inventory=self.inventory)
                     except Exception as e:
                         print(f"[WARNING] Post-script (before plotting) failed: {e}")
 
-
+                # 5. Plot — optional
                 if full_stream and plot:
                     plotter = PlotProj(full_stream, plot_config=self.plot_config, inventory=self.inventory,
                                        interactive=interactive, data_files=data_files)
@@ -539,6 +542,7 @@ class AnalysisEvents:
                         if hasattr(tr.stats, "picks"):
                             print(f"Picks found for {tr.id}: {tr.stats.picks}")
 
+                # 6. Post-script AFTER plotting — user injection point (trace or stream level)
                 if self.post_script_func and self.post_script_stage == "after":
                     try:
                         full_stream = self.post_script_func(full_stream, inventory=self.inventory)
