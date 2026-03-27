@@ -10,6 +10,7 @@
 
 import warnings
 import os
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore")
 import sys
@@ -157,6 +158,19 @@ def _create_actions():
             name="ppsdPlot", run=_ppsdPlot,
             description="Plotting tool for PPSD DB"),
 
+        "ant_create_dict": _CliActions(
+            name="ant_create_dict", run=_ant_create_dict,
+            description="Create ANT Project"),
+
+
+        "ant_process_matrix": _CliActions(
+            name="ant_process_matrix", run=_ant_process_matrix,
+            description="Create Frequency Domain Noise matrix"),
+
+        "ant_cross_stack": _CliActions(
+            name="ant_cross_stack", run=_ant_process_matrix,
+            description="Cross Correlate and Stack Noise matrix"),
+
     }
     return _actions
 
@@ -186,6 +200,510 @@ def main(argv: Optional[str] = None):
         _print_main_help(actions)
         sys.exit(1)
 
+
+def _ant_create_dict():
+    """
+    Command-line interface for creating the ANT data dictionary from MiniSEED files.
+    """
+
+    import pickle
+    from argparse import ArgumentParser, RawDescriptionHelpFormatter
+    from obspy import read_inventory
+    from surfquakecore.ant.dbstorage import NoiseOrganize
+
+    def make_abs(path):
+        return os.path.abspath(os.path.expanduser(path))
+
+    arg_parse = ArgumentParser(
+        prog="ant create_dict",
+        description="Scan a MiniSEED archive and build the station/channel data dictionary",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Overview:
+
+            Walks a directory tree of MiniSEED files recursively, reads each file header
+            in parallel, and organises the paths into a nested dictionary structured as:
+
+                data_map['nets'][net][sta][chn] = [[net, sta, chn], path1, path2, ...]
+
+            An auxiliary info dictionary is also produced, keyed by net+sta+chn, containing
+            the time range, ObsPy inventory selection, and list of individual start times.
+            Both objects are serialised together into a single pickle file for consumption
+            by the next processing stage (ant process_matrix).
+
+            Wildcard patterns are supported for network, station and channel filters
+            using standard Unix shell syntax: *, ?, [ABC].
+
+        Key Arguments:
+            -d,  --data_path       [REQUIRED] Root directory of MiniSEED files (searched recursively)
+            -i,  --inventory_file  [REQUIRED] Path to StationXML inventory file
+            -s,  --save_file       [REQUIRED] Path where the output pickle will be saved
+            -nt, --net             [OPTIONAL] Network filter, wildcards allowed (default: * = all)
+            -st, --station         [OPTIONAL] Station filter, wildcards allowed (default: * = all)
+            -ch, --channel         [OPTIONAL] Channel filter, wildcards allowed (default: * = all)
+            -w,  --workers         [OPTIONAL] Number of parallel header-reading workers (default: cpu_count - 1)
+
+        Documentation:
+            https://projectisp.github.io/surfquaketutorial.github.io/
+
+        Usage Examples:
+
+            # All stations and channels
+            ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl
+
+            # Only broadband verticals on network II
+            ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
+                -nt II -ch BHZ
+
+            # Wildcard channel filter, multiple networks
+            ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
+                -nt "II" "IU" -ch "BH*" "HH?" -w 8
+        """
+    )
+
+    arg_parse.add_argument("-d", "--data_path",
+                           help="Root directory of MiniSEED files (searched recursively)",
+                           type=str, required=True)
+
+    arg_parse.add_argument("-i", "--inventory_file",
+                           help="Path to StationXML inventory file",
+                           type=str, required=True)
+
+    arg_parse.add_argument("-s", "--save_file",
+                           help="Path where the output pickle (data_map + info) will be saved",
+                           type=str, required=True)
+
+    arg_parse.add_argument("-nt", "--net",
+                           help="Network filter, wildcards allowed (default: * = all)",
+                           type=str, nargs="*", default=[])
+
+    arg_parse.add_argument("-st", "--station",
+                           help="Station filter, wildcards allowed (default: * = all)",
+                           type=str, nargs="*", default=[])
+
+    arg_parse.add_argument("-ch", "--channel",
+                           help="Channel filter, wildcards allowed (default: * = all)",
+                           type=str, nargs="*", default=[])
+
+    arg_parse.add_argument("-w", "--workers",
+                           help="Number of parallel header-reading workers (default: cpu_count - 1)",
+                           type=int, required=False, default=None)
+
+    parsed_args = arg_parse.parse_args()
+    print("Input Arguments")
+    print(parsed_args)
+
+    data_path = make_abs(parsed_args.data_path)
+    inventory_file = make_abs(parsed_args.inventory_file)
+    save_file = make_abs(parsed_args.save_file)
+
+    print(f"\nCreating ANT data dictionary")
+    print(f"  Data path : {data_path}")
+    print(f"  Inventory : {inventory_file}")
+    print(f"  Output    : {save_file}")
+    print(f"  Net filter: {parsed_args.net or '* (all)'}")
+    print(f"  Sta filter: {parsed_args.station or '* (all)'}")
+    print(f"  Chn filter: {parsed_args.channel or '* (all)'}")
+
+    inventory = read_inventory(inventory_file)
+
+    cpu_count = parsed_args.workers or max(1, os.cpu_count() - 1)
+    organizer = NoiseOrganize(data_path, inventory, max_workers=cpu_count)
+
+    data_map, size, info = organizer.create_dict(
+        net_list=parsed_args.net,
+        sta_list=parsed_args.station,
+        chn_list=parsed_args.channel,
+    )
+
+    print(f"  Found {size} file(s) mapped across {len(data_map['nets'])} network(s).")
+
+    os.makedirs(os.path.dirname(save_file) or ".", exist_ok=True)
+    with open(save_file, "wb") as fh:
+        pickle.dump({"data_map": data_map, "info": info}, fh)
+
+    print(f"\nDone. Dictionary saved to {save_file}")
+
+
+def _ant_process_matrix():
+    """
+    Command-line interface for building frequency-domain matrices from the ANT data dictionary.
+    """
+
+    import json
+    import pickle
+    from argparse import ArgumentParser, RawDescriptionHelpFormatter
+    from obspy import read_inventory
+    from surfquakecore.ant.process_ant import process_ant
+
+    def make_abs(path):
+        return os.path.abspath(os.path.expanduser(path))
+
+    # ------------------------------------------------------------------ #
+    # Default config — also used as the template written by --generate    #
+    # ------------------------------------------------------------------ #
+    DEFAULT_CONFIG = {
+        "project_file": "/path/to/output/data_dict.pkl",
+        "inventory_file": "/path/to/inventory.xml",
+        "output_path": "/path/to/output/matrices",
+        "processing_window": 900,
+        "f1": 0.005,
+        "f2": 0.008,
+        "f3": 0.4,
+        "f4": 0.45,
+        "remove_response": False,
+        "units": "VEL",
+        "waterlevel": 60.0,
+        "decimate": False,
+        "factor": 5.0,
+        "time_norm": False,
+        "method": "running avarage",
+        "timewindow": 25.0,
+        "whiten": False,
+        "freqbandwidth": 0.02,
+        "prefilter": False,
+        "filter_freqmin": 0.01,
+        "filter_freqmax": 0.4,
+        "filter_corners": 4
+    }
+
+    arg_parse = ArgumentParser(
+        prog="ant process_matrix",
+        description="Build frequency-domain spectral matrices from a MiniSEED archive",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Overview:
+
+            Reads the data dictionary produced by 'ant create_dict' and processes each
+            station/channel entry into a frequency-domain spectral matrix ready for
+            cross-correlation. For each net+sta+chn, the daily MiniSEED files are:
+
+                1. Gap-checked and merged
+                2. Instrument response removed (optional)
+                3. Decimated to a target sampling rate (optional)
+                4. Split into time windows of length processing_window seconds
+                5. Time-normalised: running average, 1-bit, or PCC (optional)
+                6. Spectrally whitened (optional)
+                7. Transformed to the frequency domain via rFFT or FFT (PCC)
+
+            Results are saved as pickle files (one per net+sta+chn) in output_path.
+            Vertical (Z/H) and horizontal (N/E and equivalents) components are handled
+            separately and automatically routed to the correct processing pipeline.
+
+            All processing parameters are supplied through a JSON configuration file.
+            Run with --generate to create a pre-filled template.
+
+        JSON config keys:
+            project_file       [REQUIRED] Path to the pickle produced by 'ant create_dict'
+            inventory_file     [REQUIRED] Path to StationXML inventory file
+            output_path        [REQUIRED] Directory where spectral matrix pickles will be saved
+            processing_window  [OPTIONAL] Time window length in seconds (default: 900)
+            f1                 [OPTIONAL] Response removal pre-filter corner 1 in Hz (default: 0.005)
+            f2                 [OPTIONAL] Response removal pre-filter corner 2 in Hz (default: 0.008)
+            f3                 [OPTIONAL] Response removal pre-filter corner 3 in Hz (default: 0.4)
+            f4                 [OPTIONAL] Response removal pre-filter corner 4 in Hz (default: 0.45)
+            remove_response    [OPTIONAL] Remove instrument response, true/false (default: false)
+            units              [OPTIONAL] Output units: VEL, DISP, ACC (default: VEL)
+            waterlevel         [OPTIONAL] Water level for response removal in dB (default: 60)
+            decimate           [OPTIONAL] Decimate to target sampling rate, true/false (default: false)
+            factor             [OPTIONAL] Target sampling rate in Hz after decimation (default: 5)
+            time_norm          [OPTIONAL] Apply time normalisation, true/false (default: false)
+            method             [OPTIONAL] Normalisation method: running avarage, 1 bit, PCC (default: running avarage)
+            timewindow         [OPTIONAL] Running-average normalisation window in seconds (default: 128)
+            whiten             [OPTIONAL] Apply spectral whitening, true/false (default: false)
+            freqbandwidth      [OPTIONAL] Whitening bandwidth in Hz (default: 0.02)
+            prefilter          [OPTIONAL] Apply bandpass pre-filter before FFT, true/false (default: false)
+            filter_freqmin     [OPTIONAL] Pre-filter minimum frequency in Hz (default: 0.01)
+            filter_freqmax     [OPTIONAL] Pre-filter maximum frequency in Hz (default: 0.4)
+            filter_corners     [OPTIONAL] Pre-filter number of corners (default: 4)
+
+        Documentation:
+            https://projectisp.github.io/surfquaketutorial.github.io/
+
+        Usage Examples:
+
+            # Generate a template config file to fill in
+            ant process_matrix --generate config_process_matrix.json
+
+            # Run with a filled config
+            ant process_matrix -c config_process_matrix.json
+        """
+    )
+
+    arg_parse.add_argument("-c", "--config",
+                           help="Path to the JSON configuration file",
+                           type=str, required=False, default=None)
+
+    arg_parse.add_argument("--generate",
+                           help="Write a template JSON config to the given path and exit",
+                           type=str, required=False, default=None, metavar="OUTPUT_JSON")
+
+    parsed_args = arg_parse.parse_args()
+
+    # --- Template generation mode ---
+    if parsed_args.generate:
+        out = make_abs(parsed_args.generate)
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        with open(out, "w") as fh:
+            json.dump(DEFAULT_CONFIG, fh, indent=4)
+        print(f"Template config written to {out}")
+        return
+
+    if not parsed_args.config:
+        arg_parse.error("argument -c/--config is required (or use --generate to create a template)")
+
+    # --- Load and validate config ---
+    config_path = make_abs(parsed_args.config)
+    with open(config_path) as fh:
+        cfg = json.load(fh)
+
+    for key in ("project_file", "inventory_file", "output_path"):
+        if key not in cfg:
+            raise KeyError(f"Required key '{key}' missing from config {config_path}")
+
+    print("Input Configuration")
+    print(json.dumps(cfg, indent=4))
+
+    project_file = make_abs(cfg["project_file"])
+    inventory_file = make_abs(cfg["inventory_file"])
+    output_path = make_abs(cfg["output_path"])
+
+    print(f"\nProcessing ANT spectral matrices")
+    print(f"  Project   : {project_file}")
+    print(f"  Inventory : {inventory_file}")
+    print(f"  Output    : {output_path}")
+    print(f"  Window    : {cfg.get('processing_window', 900)} s")
+    print(f"  Resp. rem.: {cfg.get('remove_response', False)}"
+          + (f"  ({cfg.get('units', 'VEL')}, WL={cfg.get('waterlevel', 60)})"
+             if cfg.get("remove_response") else ""))
+    print(f"  Decimation: {cfg.get('decimate', False)}"
+          + (f"  (target {cfg.get('factor', 5)} Hz)" if cfg.get("decimate") else ""))
+    print(f"  Time norm : {cfg.get('time_norm', False)}"
+          + (f"  ({cfg.get('method', 'running avarage')})" if cfg.get("time_norm") else ""))
+    print(f"  Whitening : {cfg.get('whiten', False)}")
+    print(f"  Pre-filter: {cfg.get('prefilter', False)}"
+          + (f"  ({cfg.get('filter_freqmin', 0.01)}–{cfg.get('filter_freqmax', 0.4)} Hz)"
+             if cfg.get("prefilter") else ""))
+
+    # --- Load project pickle produced by ant create_dict ---
+    with open(project_file, "rb") as fh:
+        project = pickle.load(fh)
+    data_map = project["data_map"]
+    info = project["info"]
+
+    # --- Load inventory ---
+    inventory = read_inventory(inventory_file)
+
+    # --- Build param_dict directly from config, applying defaults for missing keys ---
+    param_dict = {
+        "processing_window": cfg.get("processing_window", 900),
+        "f1": cfg.get("f1", 0.005),
+        "f2": cfg.get("f2", 0.008),
+        "f3": cfg.get("f3", 0.4),
+        "f4": cfg.get("f4", 0.45),
+        "waterlevel": cfg.get("waterlevel", 60.0),
+        "units": cfg.get("units", "VEL"),
+        "factor": cfg.get("factor", 5.0),
+        "method": cfg.get("method", "running avarage"),
+        "timewindow": cfg.get("timewindow", 25.0),
+        "freqbandwidth": cfg.get("freqbandwidth", 0.02),
+        "remove_responseCB": cfg.get("remove_response", False),
+        "decimationCB": cfg.get("decimate", False),
+        "time_normalizationCB": cfg.get("time_norm", False),
+        "whitheningCB": cfg.get("whiten", False),
+        "prefilter": cfg.get("prefilter", False),
+        "filter_freqmin": cfg.get("filter_freqmin", 0.01),
+        "filter_freqmax": cfg.get("filter_freqmax", 0.4),
+        "filter_corners": cfg.get("filter_corners", 4),
+    }
+
+    # --- Flatten nested data_map into list_raw and run ---
+    os.makedirs(output_path, exist_ok=True)
+    processor = process_ant(output_path, param_dict, inventory)
+    list_raw = processor.get_all_values(data_map["nets"])
+
+    print(f"  Found {len(list_raw)} channel(s) to process.")
+
+    processor.create_all_dict_matrix(list_raw, info)
+
+    print(f"\nDone. Spectral matrices saved to {output_path}")
+
+
+def _ant_cross_stack():
+    """
+    Command-line interface for cross-correlating and stacking ANT spectral matrices.
+    """
+
+    import json
+    from argparse import ArgumentParser, RawDescriptionHelpFormatter
+    from surfquakecore.ant.crossstack import noisestack
+
+    def make_abs(path):
+        return os.path.abspath(os.path.expanduser(path))
+
+    # ------------------------------------------------------------------ #
+    # Default config — also used as the template written by --generate    #
+    # ------------------------------------------------------------------ #
+    DEFAULT_CONFIG = {
+        "input_path": "/path/to/output/matrices",
+        "output_path": "/path/to/output/stacks",
+        "channels": ["Z"],
+        "stations": [],
+        "stack": "Linear",
+        "power": 2.0,
+        "autocorr": False,
+        "min_distance": 1000.0,
+        "daily_stacks": False,
+        "overlap": 75.0,
+        "workers": None,
+        "rotate": False,
+        "rotate_daily": False
+    }
+
+    arg_parse = ArgumentParser(
+        prog="ant cross_stack",
+        description="Cross-correlate and stack frequency-domain matrices for ANT",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+        Overview:
+
+            Reads the spectral matrix pickle files produced by 'ant process_matrix'
+            and computes cross-correlations for all station pairs, then stacks them.
+            For each pair (i, j):
+
+                1. Common days between the two stations are identified
+                2. Duplicate days are removed
+                3. Frequency-domain matrices are multiplied element-wise (conjugate)
+                4. The result is inverse-transformed to the time domain
+                5. Windows are stacked: Linear, n-root (nrooth) or Phase-Weighted (PWS)
+                6. The stacked cross-correlation is saved as an HDF5 file
+
+            Output subdirectories are created automatically inside output_path:
+                stack/          Full stacked cross-correlations (one file per pair)
+                stack_daily/    Per-day stacks (only if daily_stacks: true)
+                stack_rotated/  ZNE-rotated horizontals (only if rotate: true)
+
+            Note: input_path must point to the directory containing the matrix
+            pickle files (the output_path of 'ant process_matrix'). The stack/,
+            stack_daily/ and stack_rotated/ subdirectories are created inside
+            that same directory.
+
+            All parameters are supplied through a JSON configuration file.
+            Run with --generate to create a pre-filled template.
+
+        JSON config keys:
+            input_path     [REQUIRED] Directory containing the spectral matrix pickles
+            output_path    [REQUIRED] Directory where stack outputs will be written
+            channels       [REQUIRED] List of channel suffix(es) to process (e.g. ["Z"] or ["N","E"])
+            stations       [OPTIONAL] Station whitelist — empty list [] means all stations
+            stack          [OPTIONAL] Stacking method: Linear, PWS, nrooth (default: Linear)
+            power          [OPTIONAL] Exponent for PWS or nrooth stacking (default: 2.0)
+            autocorr       [OPTIONAL] Include autocorrelations i==j, true/false (default: false)
+            min_distance   [OPTIONAL] Maximum inter-station distance in km to include (default: 1000)
+            daily_stacks   [OPTIONAL] Save per-day stacks in addition to full stack (default: false)
+            overlap        [OPTIONAL] Overlap percentage for daily partial stacks (default: 75)
+            workers        [OPTIONAL] Number of parallel worker processes (default: null = cpu_count - 1)
+            rotate         [OPTIONAL] Run ZNE rotation after stacking (default: false)
+            rotate_daily   [OPTIONAL] Run ZNE rotation on daily stacks after stacking (default: false)
+
+        Documentation:
+            https://projectisp.github.io/surfquaketutorial.github.io/
+
+        Usage Examples:
+
+            # Generate a template config file to fill in
+            ant cross_stack --generate config_cross_stack.json
+
+            # Run with a filled config
+            ant cross_stack -c config_cross_stack.json
+        """
+    )
+
+    arg_parse.add_argument("-c", "--config",
+                           help="Path to the JSON configuration file",
+                           type=str, required=False, default=None)
+
+    arg_parse.add_argument("--generate",
+                           help="Write a template JSON config to the given path and exit",
+                           type=str, required=False, default=None, metavar="OUTPUT_JSON")
+
+    parsed_args = arg_parse.parse_args()
+
+    # --- Template generation mode ---
+    if parsed_args.generate:
+        out = make_abs(parsed_args.generate)
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        with open(out, "w") as fh:
+            json.dump(DEFAULT_CONFIG, fh, indent=4)
+        print(f"Template config written to {out}")
+        return
+
+    if not parsed_args.config:
+        arg_parse.error("argument -c/--config is required (or use --generate to create a template)")
+
+    # --- Load and validate config ---
+    config_path = make_abs(parsed_args.config)
+    with open(config_path) as fh:
+        cfg = json.load(fh)
+
+    for key in ("input_path", "output_path", "channels"):
+        if key not in cfg:
+            raise KeyError(f"Required key '{key}' missing from config {config_path}")
+
+    print("Input Configuration")
+    print(json.dumps(cfg, indent=4))
+
+    input_path = make_abs(cfg["input_path"])
+    output_path = make_abs(cfg["output_path"])
+    channels = cfg["channels"]
+    stations = cfg.get("stations", [])
+    stack = cfg.get("stack", "Linear")
+    power = cfg.get("power", 2.0)
+    autocorr = cfg.get("autocorr", False)
+    min_dist = cfg.get("min_distance", 1000.0)
+    daily_stacks = cfg.get("daily_stacks", False)
+    overlap = cfg.get("overlap", 75.0)
+    workers = cfg.get("workers", None)
+    rotate = cfg.get("rotate", False)
+    rotate_daily = cfg.get("rotate_daily", False)
+
+    print(f"\nCross-correlating and stacking ANT matrices")
+    print(f"  Input     : {input_path}")
+    print(f"  Output    : {output_path}")
+    print(f"  Channels  : {channels}")
+    print(f"  Stations  : {stations or '(all)'}")
+    print(f"  Stack     : {stack}"
+          + (f"  (power={power})" if stack in ("PWS", "nrooth") else ""))
+    print(f"  Autocorr  : {autocorr}")
+    print(f"  Max dist  : {min_dist} km")
+    print(f"  Daily stacks: {daily_stacks}"
+          + (f"  (overlap={overlap}%)" if daily_stacks else ""))
+    print(f"  Rotate    : {rotate}  |  Rotate daily: {rotate_daily}")
+
+    stacker = noisestack(
+        output_files_path=input_path,
+        stations=stations,
+        channels=channels,
+        stack=stack,
+        power=power,
+        autocorr=autocorr,
+        min_distance=min_dist,
+        dailyStacks=daily_stacks,
+        overlap=overlap,
+        cpu_count=workers,
+    )
+
+    stacker.run_cross_stack()
+
+    if rotate:
+        print("\nRunning horizontal rotation...")
+        stacker.rotate_horizontals()
+
+    if rotate_daily:
+        print("\nRunning daily horizontal rotation...")
+        stacker.rotate_specific_daily()
+
+    print(f"\nDone. Results written under: {input_path}")
 
 def _project():
     """
