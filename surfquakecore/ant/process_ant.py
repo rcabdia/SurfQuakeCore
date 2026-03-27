@@ -9,7 +9,7 @@ from surfquakecore.ant.signal_processing_tools import noise_processing, noise_pr
 from surfquakecore.arrayanalysis.array_analysis import array
 from datetime import datetime
 from scipy.signal import hilbert
-
+import pickle
 
 class process_ant:
 
@@ -1098,106 +1098,3 @@ class clock_process:
             j = j + 1
 
         return days
-
-if __name__ == "__main__":
-    import argparse
-    import pickle
-    from obspy import read_inventory
-    from surfquakecore.ant.dbstorage import NoiseOrganize
-
-    parser = argparse.ArgumentParser(
-        description="Build frequency-domain matrix for ANT cross-correlation."
-    )
-
-    # --- Paths ---
-    parser.add_argument("data_path",       help="Root directory of MiniSEED files")
-    parser.add_argument("metadata",        help="StationXML inventory file (.xml)")
-    parser.add_argument("output_path",     help="Directory where matrix pickle files will be saved")
-
-    # --- Processing window ---
-    parser.add_argument("--processing-window", type=int,   default=900,
-                        help="Window length in seconds (default: 900 = 15 min)")
-
-    # --- Pre-filter corners ---
-    parser.add_argument("--f1", type=float, default=0.005)
-    parser.add_argument("--f2", type=float, default=0.008)
-    parser.add_argument("--f3", type=float, default=0.4)
-    parser.add_argument("--f4", type=float, default=0.45)
-
-    # --- Response removal ---
-    parser.add_argument("--remove-response", action="store_true", default=False)
-    parser.add_argument("--units",           default="VEL",
-                        choices=["VEL", "DISP", "ACC"])
-    parser.add_argument("--waterlevel",      type=float, default=60.0)
-
-    # --- Decimation ---
-    parser.add_argument("--decimate",        action="store_true", default=False)
-    parser.add_argument("--factor",          type=float, default=5.0,
-                        help="Target sampling rate after decimation (Hz)")
-
-    # --- Time normalisation ---
-    parser.add_argument("--time-norm",       action="store_true", default=False)
-    parser.add_argument("--method",          default="running avarage",
-                        choices=["running avarage", "1 bit", "PCC"])
-    parser.add_argument("--timewindow",      type=float, default=128.0,
-                        help="Running-average window length (s)")
-
-    # --- Spectral whitening ---
-    parser.add_argument("--whiten",          action="store_true", default=False)
-    parser.add_argument("--freqbandwidth",   type=float, default=0.02)
-
-    # --- Optional bandpass pre-filter ---
-    parser.add_argument("--prefilter",       action="store_true", default=False)
-    parser.add_argument("--filter-freqmin",  type=float, default=0.01)
-    parser.add_argument("--filter-freqmax",  type=float, default=0.4)
-    parser.add_argument("--filter-corners",  type=int,   default=4)
-
-    # --- Station/channel selection (passed to NoiseOrganize) ---
-    parser.add_argument("--net", nargs="*", default=[])
-    parser.add_argument("--sta", nargs="*", default=[])
-    parser.add_argument("--chn", nargs="*", default=[])
-
-    args = parser.parse_args()
-
-    # --- Build param_dict from parsed args ---
-    param_dict = {
-        "processing_window":  args.processing_window,
-        "f1":                 args.f1,
-        "f2":                 args.f2,
-        "f3":                 args.f3,
-        "f4":                 args.f4,
-        "waterlevel":         args.waterlevel,
-        "units":              args.units,
-        "factor":             args.factor,
-        "method":             args.method,
-        "timewindow":         args.timewindow,
-        "freqbandwidth":      args.freqbandwidth,
-        "remove_responseCB":  args.remove_response,
-        "decimationCB":       args.decimate,
-        "time_normalizationCB": args.time_norm,
-        "whitheningCB":       args.whiten,
-        "prefilter":          args.prefilter,
-        "filter_freqmin":     args.filter_freqmin,
-        "filter_freqmax":     args.filter_freqmax,
-        "filter_corners":     args.filter_corners,
-    }
-
-    # --- Load inventory ---
-    inventory = read_inventory(args.metadata)
-
-    # --- Build data_map and info from MiniSEED directory ---
-    organizer = NoiseOrganize(args.data_path, inventory)
-    data_map, size, info = organizer.create_dict(
-        net_list=args.net,
-        sta_list=args.sta,
-        chn_list=args.chn,
-    )
-
-    # --- Flatten nested dict into list_raw for process_ant ---
-    processor = process_ant(args.output_path, param_dict, inventory)
-    list_raw = processor.get_all_values(data_map["nets"])
-
-    # --- Run ---
-    processor.create_all_dict_matrix(list_raw, info)
-
-    print("Done. Output files written to:", args.output_path)
