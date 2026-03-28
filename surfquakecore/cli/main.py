@@ -168,7 +168,7 @@ def _create_actions():
             description="Create Frequency Domain Noise matrix"),
 
         "ant_cross_stack": _CliActions(
-            name="ant_cross_stack", run=_ant_process_matrix,
+            name="ant_cross_stack", run=_ant_cross_stack,
             description="Cross Correlate and Stack Noise matrix"),
 
     }
@@ -423,10 +423,10 @@ def _ant_process_matrix():
         Usage Examples:
 
             # Generate a template config file to fill in
-            ant process_matrix --generate config_process_matrix.json
+            surfquake process_matrix --generate config_process_matrix.json
 
             # Run with a filled config
-            ant process_matrix -c config_process_matrix.json
+            surquake process_matrix -c config_process_matrix.json
         """
     )
 
@@ -474,7 +474,7 @@ def _ant_process_matrix():
     print(f"  Output    : {output_path}")
     print(f"  Window    : {cfg.get('processing_window', 900)} s")
     print(f"  Resp. rem.: {cfg.get('remove_response', False)}"
-          + (f"  ({cfg.get('units', 'VEL')}, WL={cfg.get('waterlevel', 60)})"
+          + (f"  ({cfg.get('units', 'VEL')}, WL={cfg.get('waterlevel', 90)})"
              if cfg.get("remove_response") else ""))
     print(f"  Decimation: {cfg.get('decimate', False)}"
           + (f"  (target {cfg.get('factor', 5)} Hz)" if cfg.get("decimate") else ""))
@@ -612,10 +612,10 @@ def _ant_cross_stack():
         Usage Examples:
 
             # Generate a template config file to fill in
-            ant cross_stack --generate config_cross_stack.json
+            surfquake cross_stack --generate config_cross_stack.json
 
             # Run with a filled config
-            ant cross_stack -c config_cross_stack.json
+            surfquake cross_stack -c config_cross_stack.json
         """
     )
 

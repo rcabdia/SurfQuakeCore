@@ -347,7 +347,7 @@ class CoincidenceTrigger:
 
 class PlotCoincidence:
     import matplotlib as mplt
-    mplt.use("TkAgg")
+    mplt.use("QtAgg")
 
     @staticmethod
     def plot_stream_and_cf_simple(

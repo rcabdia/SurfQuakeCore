@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from obspy import read
 from obspy.geodetics import gps2dist_azimuth
-from process_ant import clock_process
+from surfquakecore.ant.process_ant import clock_process
 import gc
 import re
 
