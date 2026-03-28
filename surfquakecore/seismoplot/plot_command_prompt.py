@@ -17,9 +17,19 @@ class PlotCommandPrompt:
         self.plot_proj = plot_proj
         self.prompt_active = False
         histfile = os.path.expanduser("~/.plot_command_history")
+
         try:
-            readline.read_history_file(histfile)
-        except FileNotFoundError:
+            # Limit history file size before loading
+            readline.set_history_length(200)
+            if os.path.exists(histfile):
+                # Check file size - if suspiciously large, truncate it first
+                size = os.path.getsize(histfile)
+                if size > 50_000:  # > 50KB is abnormal for a command history
+                    print(f"[WARN] History file is large ({size} bytes), truncating...")
+                    open(histfile, 'w').close()  # truncate
+                else:
+                    readline.read_history_file(histfile)
+        except (FileNotFoundError, OSError):
             pass
 
         atexit.register(readline.write_history_file, histfile)
@@ -1350,28 +1360,29 @@ class PlotCommandPrompt:
             return
 
         # General summary
-        print("Available commands:")
-        print(" p                             Return to interactive picking mode")
-        print(" n                             Next set of traces / exit prompt")
-        print(" b                             Previous set of traces")
-        print(" load_picks --file <file_path> Load picks from nlloc pick file")
-        print(" filter <type> <fmin> <fmax>   Filter traces (type: help filter for details)")
-        print(" spectrum|sp <index>|all [type]   Plot amplitude spectrum (loglog, xlog, ylog)")
-        print(" spectrogram|spec <idx> [win overlap]  Plot multitaper-spectrogram of trace, (help spectrogram)")
-        print(" cwt <idx> <wavelet> <param>   Continuous wavelet transform (help cwt)")
-        print(" beam [--fmin --fmax --overlap ....] Beamforming analysis (type: help beam for options)")
-        print(" smap [--method --fmin --fmax ....] Slowness map (type: help smap for options)")
-        print(" stack [all|idxs]              Stack traces  (type: help stack)")
-        print(" xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--trim True|False] (type: help xcorr)")
-        print(" pm                            Run Particle motion analysis, (type: help pm)")
-        print(" plot_type <type>              Change plot mode: standard, record, overlay")
-        print(" concat                        Merge/concatenate traces")
-        print(" shift --phase <name>          Shift by pick (type: help shift for info)")
-        print(" cut --phase <name> ...        Trim traces (type: help cut for usage)")
-        print(" write --folder_path <path>    Export displayed traces to HDF5")
-        print(" info                          Print header information from displayed traces")
-        print(" exit                          Close command line and exit to interactive picking mode")
-        print(" help [command]                Show general or detailed help")
+        print(" Available commands:")
+        print(" p                                               Return to interactive picking mode")
+        print(" n                                               Next set of traces / exit prompt")
+        print(" b                                               Previous set of traces")
+        print(" load_picks --file <file_path>                   Load picks from nlloc pick file")
+        print(" filter <type> <fmin> <fmax>                     Filter traces (type: help filter for details)")
+        print(" spectrum|sp <index>|all [type]                  Plot amplitude spectrum (loglog, xlog, ylog)")
+        print(" spectrogram|spec <idx> [win overlap]            Plot multitaper-spectrogram of trace, (help spectrogram)")
+        print(" cwt <idx> <wavelet> <param>                     Continuous wavelet transform (help cwt)")
+        print(" beam [--fmin --fmax --overlap ....]             Beamforming analysis (type: help beam for options)")
+        print(" smap [--method --fmin --fmax ....]              Slowness map (type: help smap for options)")
+        print(" stack [all|idxs]                                Stack traces  (type: help stack)")
+        print(" xcorr [--ref <index>] [--mode <mode>] \n"
+              "[--normalize <normalize>] [--trim True|False]    (type: help xcorr)")
+        print(" pm                                              Run Particle motion analysis, (type: help pm)")
+        print(" plot_type <type>                                Change plot mode: standard, record, overlay")
+        print(" concat                                          Merge/concatenate traces")
+        print(" shift --phase <name>                            Shift by pick (type: help shift for info)")
+        print(" cut --phase <name> ...                          Trim traces (type: help cut for usage)")
+        print(" write --folder_path <path>                      Export displayed traces to HDF5")
+        print(" info                                            Print header information from displayed traces")
+        print(" exit                                            Close command line and exit to interactive picking mode")
+        print(" help [command]                                  Show general or detailed help")
 
 
 if __name__ == "__main__":

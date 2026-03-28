@@ -554,7 +554,7 @@ def _ant_cross_stack():
         "autocorr": False,
         "min_distance": 1000.0,
         "daily_stacks": False,
-        "overlap": 75.0,
+        "overlap": 50.0,
         "workers": None,
         "rotate": False,
         "rotate_daily": False

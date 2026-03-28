@@ -16,7 +16,6 @@ import os
 import fnmatch
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from obspy import read
-from obspy.io.mseed.core import _is_mseed
 
 # ---------------------------------------------------------------------------
 # Worker function (must be module-level for pickling with multiprocessing)
@@ -214,31 +213,3 @@ class NoiseOrganize:
                     print(f"  Headers read: {i}/{len(obsfiles)}")
         return results
 
-
-# ---------------------------------------------------------------------------
-# CLI entry point (optional quick test)
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import argparse
-    from obspy import read_inventory
-
-    parser = argparse.ArgumentParser(
-        description="Organize MiniSEED files for ambient noise processing."
-    )
-    parser.add_argument("data_path",  help="Root directory of MiniSEED files")
-    parser.add_argument("metadata",   help="StationXML inventory file")
-    parser.add_argument("--net", nargs="*", default=[], help="Network filter (wildcards ok)")
-    parser.add_argument("--sta", nargs="*", default=[], help="Station filter (wildcards ok)")
-    parser.add_argument("--chn", nargs="*", default=[], help="Channel filter (wildcards ok)")
-    parser.add_argument("--workers", type=int, default=4, help="Parallel worker count")
-    args = parser.parse_args()
-
-    inventory = read_inventory(args.metadata)
-    organizer = NoiseOrganize(args.data_path, inventory, max_workers=args.workers)
-    data_map, size, info = organizer.create_dict(
-        net_list=args.net,
-        sta_list=args.sta,
-        chn_list=args.chn,
-    )
-    print(f"\nResult: {size} files, keys in info: {list(info.keys())[:5]} ...")

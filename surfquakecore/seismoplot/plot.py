@@ -604,9 +604,25 @@ class PlotProj:
             return
 
         # Toggle command prompt mode
+        # if key == 'v':
+        #     self.enable_command_prompt = True
+        #     self.plot(page=self.current_page)
+        #     return
+
         if key == 'v':
             self.enable_command_prompt = True
-            self.plot(page=self.current_page)
+            # Don't call self.plot() — just enter the prompt directly
+            plt.show(block=False)
+            self.fig.canvas.draw_idle()
+            plt.pause(0.1)  # reduced from 0.5
+            print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' return to picking mode")
+            prompt = PlotCommandPrompt(self)
+            result = prompt.run()
+            if result == "p":
+                self.enable_command_prompt = False
+                self._register_span_selector()
+            elif result == "exit":
+                plt.close(self.fig)
             return
 
         # Interactive pick with prompt at cursor time
@@ -909,11 +925,13 @@ class PlotProj:
         plt.tight_layout()
         cid = fig.canvas.mpl_connect("key_press_event", self._on_key_press)
         # Poll until the figure is closed
-        plt.show(block=False)
-        while plt.fignum_exists(fig.number) and not self._exit:
-             plt.pause(0.2)
-             time.sleep(0.1)
+        # NO polling loop at all - just show and return immediately
+        def on_close(event):
+            pass  # nothing needed, just let it close
+
+        fig.canvas.mpl_connect("close_event", on_close)
         fig.canvas.mpl_disconnect(cid)
+        plt.show(block=False)  # non-blocking, return immediately to run()
 
     def _plot_all_spectra(self, axis_type):
 
@@ -954,13 +972,12 @@ class PlotProj:
         plt.grid(True, which="both", ls="-", color='grey')
         plt.tight_layout()
         cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
-        plt.show(block=False)
+        def on_close(event):
+            pass  # nothing needed, just let it close
 
-        # Poll until the figure is closed
-        while plt.fignum_exists(self.fig_spec.number) and not self._exit:
-            plt.pause(0.2)
-            time.sleep(0.1)
+        self.fig_spec.canvas.mpl_connect("close_event", on_close)
         self.fig_spec.canvas.mpl_disconnect(cid)
+        plt.show(block=False)  # non-blocking, return immediately to run()
 
 
     def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0, clip=None,
@@ -1025,12 +1042,13 @@ class PlotProj:
         cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
         cbar.set_label("Power [dB]")
         cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
-        plt.show(block=False)
 
-        while plt.fignum_exists(self.fig_spec.number) and not self._exit:
-            plt.pause(0.2)
-            time.sleep(0.1)
+        def on_close(event):
+            pass  # nothing needed, just let it close
+
+        self.fig_spec.canvas.mpl_connect("close_event", on_close)
         self.fig_spec.canvas.mpl_disconnect(cid)
+        plt.show(block=False)  # non-blocking, return immediately to run()
 
     def _plot_wavelet(self, idx, wavelet_type, param, **kwargs):
         self._exit = False
@@ -1111,20 +1129,16 @@ class PlotProj:
         cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
         cbar.set_label("Power [dB]")
         cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
-        plt.show(block=False)
+        def on_close(event):
+            pass  # nothing needed, just let it close
 
-        while plt.fignum_exists(self.fig_spec.number) and not self._exit:
-            plt.pause(0.2)
-            time.sleep(0.1)
+        self.fig_spec.canvas.mpl_connect("close_event", on_close)
         self.fig_spec.canvas.mpl_disconnect(cid)
+        plt.show(block=False)  # non-blocking, return immediately to run()
 
 
     def _plot_stack(self, tr:Trace):
         self._exit = False
-        # try:
-        #     plt.close(self.fig_stack)
-        # except:
-        #     pass
         def _hms_tenths(x, pos=None):
             d = mdt.num2date(x) + timedelta(milliseconds=50)  # round to nearest 0.1 s
             return f"{d:%H:%M:%S}.{d.microsecond // 100000}"
@@ -1148,11 +1162,11 @@ class PlotProj:
 
         cid = self.fig_stack.canvas.mpl_connect("key_press_event", self._on_key_press)
         # Poll until the figure is closed
-        plt.show(block=False)
-        while plt.fignum_exists(self.fig_stack.number) and not self._exit:
-            plt.pause(0.2)
-            time.sleep(0.1)
+        def on_close(event):
+            pass  # nothing needed, just let it close
+        self.fig_stack.canvas.mpl_connect("close_event", on_close)
         self.fig_stack.canvas.mpl_disconnect(cid)
+        plt.show(block=False)  # non-blocking, return immediately to run()
 
     def _slowness_map(self, **kwargs):
 
