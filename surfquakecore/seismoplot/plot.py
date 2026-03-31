@@ -1343,13 +1343,14 @@ class PlotProj:
 
             plt.tight_layout()
             cid = self.fig_fk.canvas.mpl_connect("key_press_event", self._on_key_press)
-            plt.show(block=False)
 
-            # Keep figure open
-            while plt.fignum_exists(self.fig_fk.number) and not self._exit:
-                plt.pause(0.2)
-                time.sleep(0.1)
+            # Poll until the figure is closed
+            def on_close(event):
+                pass  # nothing needed, just let it close
+
+            self.fig_fk.canvas.mpl_connect("close_event", on_close)
             self.fig_fk.canvas.mpl_disconnect(cid)
+            plt.show(block=False)  # non-blocking, return immediately to run()
         except:
             print("Cannot compute fk analysis, please review the inventory and parameter values")
 
@@ -1455,13 +1456,8 @@ class PlotProj:
                 cbar = plt.colorbar(contour, ax=ax_slow)
                 cbar.set_label(clabel)
                 plt.tight_layout()
-                cid = self.fig_slow_map.canvas.mpl_connect("key_press_event", self._on_key_press)
+                #cid = self.fig_slow_map.canvas.mpl_connect("key_press_event", self._on_key_press)
                 plt.show(block=False)
-
-                while plt.fignum_exists(self.fig_slow_map.number) and not self._exit:
-                    plt.pause(0.2)
-                    time.sleep(0.1)
-                self.fig_slow_map.canvas.mpl_disconnect(cid)
             except Exception as e:
                 print(f"[ERROR] Could not compute or plot FK coherence: {e}")
 
@@ -1611,12 +1607,11 @@ class PlotProj:
         axs[1, 1].text(0.05, 0.6, summary, fontsize=10, va="center", ha="left")
 
         plt.tight_layout()
-        plt.show(block=False)
+        def on_close(event):
+            pass  # nothing needed, just let it close
 
-        # Hold open as long as figure exists
-        while plt.fignum_exists(self.fig_part.number):
-            plt.pause(0.2)
-            time.sleep(0.1)
+        self.fig_part.canvas.mpl_connect("close_event", on_close)
+        plt.show(block=False)  # non-blocking, return immediately to run()
 
     def clear_plot(self):
         if self.fig:
