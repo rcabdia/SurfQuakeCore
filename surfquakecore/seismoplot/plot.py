@@ -70,6 +70,7 @@ class PlotProj:
             "show_crosshair": False,
             "backend": "TkAgg"}
 
+        self._print_help_table()
         self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
         # Override defaults with user config if provided
@@ -89,6 +90,36 @@ class PlotProj:
         self._hover = None  # (trace_id, line, label, pick_time) when hovering a pick
         self._hover_tol_px = 8  # pixel tolerance for hover hit testing
 
+    def _print_help_table(self):
+        """Print available keyboard commands in a table format."""
+
+        commands = [
+            ("KEY", "ACTION"),
+            ("---", "------"),
+            ("n", "Next page"),
+            ("b", "Previous page"),
+            ("w", "Add reference time"),
+            ("p", "Remove last reference"),
+            ("c", "Clear all picks"),
+            ("e", "Manual pick (interactive input)"),
+            ("1–6", "Quick picks (P/S + polarity)"),
+            ("d / Del", "Delete pick under cursor"),
+            ("v", "Open command prompt"),
+            ("i", "Set start time at cursor"),
+            ("o", "Set end time at cursor"),
+            ("Right-click drag", "Select time window"),
+            ("Double left-click", "Add pick"),
+            ("ESC / Enter", "Exit current mode"),
+        ]
+
+        print("\n" + "=" * 55)
+        print("Plot Interaction Help")
+        print("=" * 55)
+
+        for key, desc in commands:
+            print(f"{key:<15} | {desc}")
+
+        print("=" * 55 + "\n")
     def _set_output_target(self, path: str, fmt: str):
         self.plot_config["pick_output_file"] = path
         self.plot_config["pick_output_format"] = fmt  # "NLLOC_OBS" or "ISP_TABLE"
@@ -625,6 +656,34 @@ class PlotProj:
                 plt.close(self.fig)
             return
 
+        # --- Set start time with key 'i' ---
+        if key == 'i':
+            if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
+                print("[WARNING] Move the mouse over a trace before pressing 'i'.")
+                return
+
+            start_time = UTCDateTime(mdt.num2date(event.xdata))
+            self.utc_start = start_time
+
+            print(f"[INFO] Start time set to: {start_time.isoformat()}")
+
+            self._draw_time_window()
+            return
+
+        # --- Set end time with key 'o' ---
+        if key == 'o':
+            if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
+                print("[WARNING] Move the mouse over a trace before pressing 'o'.")
+                return
+
+            end_time = UTCDateTime(mdt.num2date(event.xdata))
+            self.utc_end = end_time
+
+            print(f"[INFO] End time set to: {end_time.isoformat()}")
+
+            self._draw_time_window()
+            return
+
         # Interactive pick with prompt at cursor time
         if key == 'e' and self.plot_config["backend"] != "Qt5Agg":
             if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
@@ -774,6 +833,57 @@ class PlotProj:
             print(f"[INFO] Pick added: {trace.id} at {pick_time.strftime('%H:%M:%S')}, phase ({phase},{polarity}), "
                   f" amplitude {amplitude}")
             return
+
+    def _draw_time_window(self):
+        """Draw start/end time window on all axes."""
+
+        if self.axs is None:
+            return
+
+        # Remove previous blue lines + labels
+        for ax in self.axs:
+            lines_to_remove = [
+                line for line in ax.lines
+                if line.get_linestyle() == '--' and line.get_color() == 'blue'
+            ]
+            for line in lines_to_remove:
+                line.remove()
+
+            texts_to_remove = [
+                txt for txt in ax.texts
+                if txt.get_text() in ('Start', 'End')
+            ]
+            for txt in texts_to_remove:
+                txt.remove()
+
+        # Draw new ones if defined
+        for ax in self.axs:
+            if self.utc_start:
+                xmin = mdt.date2num(self.utc_start.datetime)
+                ax.axvline(x=xmin, color='blue', linestyle='--', alpha=0.5)
+
+            if self.utc_end:
+                xmax = mdt.date2num(self.utc_end.datetime)
+                ax.axvline(x=xmax, color='blue', linestyle='--', alpha=0.5)
+
+        # Labels only on first axis
+        if self.axs is not None and len(self.axs) > 0:
+            ax0 = self.axs[0]
+            ylim = ax0.get_ylim()
+
+            if self.utc_start:
+                xmin = mdt.date2num(self.utc_start.datetime)
+                ax0.text(xmin, ylim[1] * 0.95, 'Start',
+                         color='blue', fontsize=8,
+                         ha='left', va='top',
+                         bbox=dict(fc='white', alpha=0.6))
+
+            if self.utc_end:
+                xmax = mdt.date2num(self.utc_end.datetime)
+                ax0.text(xmax, ylim[1] * 0.95, 'End',
+                         color='blue', fontsize=8,
+                         ha='right', va='top',
+                         bbox=dict(fc='white', alpha=0.6))
 
     def _redraw_picks(self):
         """Redraw all pick lines only on their corresponding axes."""
