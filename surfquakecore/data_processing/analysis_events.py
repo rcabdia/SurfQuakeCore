@@ -498,10 +498,8 @@ class AnalysisEvents:
                 print(f"[WARNING] Failed to read file {file_path}: {e}")
                 continue
 
-        tasks = [
-            (file_group, None, None, 0, 0, self.inventory, self._set_header)
-            for file_group in station_files.values()
-        ]
+        tasks = [(file_group, None, None, 0, 0, self.inventory, self._set_header)
+                 for file_group in station_files.values()]
 
         try:
             while True:

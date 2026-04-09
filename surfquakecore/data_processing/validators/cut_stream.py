@@ -1,15 +1,8 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-"""
-cut individual traces
-"""
 from datetime import datetime
-
-from surfquakecore.data_processing.validators.utils import require_keys, require_type
 from surfquakecore.data_processing.validators.constants import CUT_TYPES
+from surfquakecore.data_processing.validators.utils import require_keys, require_type
 
-def validate_cut(config):
+def validate_cut_stream(config):
     require_keys(config, ['method'])
 
     method = config['method']

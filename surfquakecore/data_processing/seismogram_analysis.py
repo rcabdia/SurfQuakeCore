@@ -193,8 +193,9 @@ class SeismogramData:
                     else:
                         tr = trace_envelope(tr, method=_config['method'])
 
-                if _config['name'] == 'cut':
-                    tr = trim_trace(tr, _config['mode'], _config['t1'], _config['t2'])
+                # if _config['name'] == 'cut':
+                #      # TODO This entry point really needs a full review
+                #      tr = trim_trace(tr, _config['method'], _config['start'], _config['end'])
 
                 if _config['name'] == 'spectrum':
                     spec = TraceSpectrumResult(tr)
@@ -270,7 +271,7 @@ class StreamProcessing:
     """
 
     STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis"}
+                      "kurtosis", "cut_stream"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -313,13 +314,13 @@ class StreamProcessing:
                     self.apply_pm(step)
                 elif method_name == "kurtosis":
                     self.apply_kurtosis(step)
-                elif method_name == "cut":
+                elif method_name == "cut_stream":
                     self.apply_cut(step)
 
             return self.stream
 
 
-    def _cmd_cut(self, step_config):
+    def apply_cut(self, step_config):
 
         from datetime import datetime
         from obspy import UTCDateTime
@@ -336,26 +337,25 @@ class StreamProcessing:
         new_traces = []
 
         method = step_config.get("method")
+
         # Case 1: Absolute time cut
         if method == "absolute":
             try:
                 start_str = step_config["start"]
                 end_str = step_config["end"]
-                t1 = UTCDateTime(datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S"))
-                t2 = UTCDateTime(datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S"))
+                t1 = UTCDateTime(start_str)
+                t2 = UTCDateTime(end_str)
             except Exception as e:
                 print(f"[ERROR] Invalid date format: {e}")
                 return
 
             for tr in self.stream:
                 try:
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
+                    tr.trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
 
-            return Stream(traces=[new_traces])
-
+        # Case 2: Cut around a phase pick
         elif method == "phase":
             try:
                 phase_name = step_config["phase_name"]
@@ -390,11 +390,9 @@ class StreamProcessing:
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
 
-            return Stream(traces=[new_traces])
-
 
         # Case 3: Reference-based cut
-        elif method == "--reference":
+        elif method == "reference":
             try:
                 t_before = float(step_config["t_before"])
                 t_after = float(step_config["t_after"])
@@ -428,7 +426,10 @@ class StreamProcessing:
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
 
-            return Stream(traces=[new_traces])
+        # if len(new_traces) > 0:
+        #     self.stream = Stream(traces=[new_traces])
+
+        return self.stream
 
     def apply_stack(self, step_config):
 

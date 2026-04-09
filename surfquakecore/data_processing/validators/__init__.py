@@ -1,6 +1,7 @@
 from .beam import validate_beam
 from .concat import validate_concat
 from .cut import validate_cut
+from .cut_stream import validate_cut_stream
 from .cwt import validate_cwt
 from .entropy import validate_entropy
 from .particle import validate_particle
@@ -58,6 +59,7 @@ CHECK_DISPATCH = {
     'synch': validate_synch,
     'envelope': validate_envelope,
     'cut': validate_cut,
+    'cut_stream': validate_cut_stream,
     'spectrum': validate_spectrum,
     'spectrogram': validate_spectrogram,
     'cwt': validate_cwt,
