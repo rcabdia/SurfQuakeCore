@@ -313,8 +313,122 @@ class StreamProcessing:
                     self.apply_pm(step)
                 elif method_name == "kurtosis":
                     self.apply_kurtosis(step)
+                elif method_name == "cut":
+                    self.apply_cut(step)
 
             return self.stream
+
+
+    def _cmd_cut(self, step_config):
+
+        from datetime import datetime
+        from obspy import UTCDateTime
+
+        """
+        Cut traces based on a phase, reference, or absolute UTC start/end.
+
+        Usage:
+            cut phase <phase_name> <t_before> <t_after>
+            cut reference <t_before> <t_after>
+            cut absolute <start: "YYYY-MM-DD HH:MM:SS"> <end: "YYYY-MM-DD HH:MM:SS">
+        """
+
+        new_traces = []
+
+        method = step_config.get("method")
+        # Case 1: Absolute time cut
+        if method == "absolute":
+            try:
+                start_str = step_config["start"]
+                end_str = step_config["end"]
+                t1 = UTCDateTime(datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S"))
+                t2 = UTCDateTime(datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S"))
+            except Exception as e:
+                print(f"[ERROR] Invalid date format: {e}")
+                return
+
+            for tr in self.stream:
+                try:
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+
+            return Stream(traces=[new_traces])
+
+        elif method == "phase":
+            try:
+                phase_name = step_config["phase_name"]
+                t_before = float(step_config["t_before"])
+                t_after = float(step_config["t_after"])
+            except (IndexError, ValueError):
+                print("[ERROR] Usage: cut --phase <name> <t_before> <t_after>")
+                return
+
+            for tr in self.stream:
+                phase_time = None
+
+                if hasattr(tr.stats, "picks"):
+                    matching_picks = [
+                        pick for pick in tr.stats.picks
+                        if pick.get("phase", "").lower() == phase_name.lower()
+                    ]
+                    if matching_picks:
+                        # Take the last one
+                        phase_time = UTCDateTime(float(matching_picks[-1]["time"]))
+
+                if phase_time is None:
+                    print(f"[WARN] Trace {tr.id} missing phase '{phase_name}' — skipped.")
+                    continue
+
+                try:
+                    phase_time = UTCDateTime(phase_time)
+                    t1 = phase_time - t_before
+                    t2 = phase_time + t_after
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+
+            return Stream(traces=[new_traces])
+
+
+        # Case 3: Reference-based cut
+        elif method == "--reference":
+            try:
+                t_before = float(step_config["t_before"])
+                t_after = float(step_config["t_after"])
+            except (IndexError, ValueError):
+                print("[ERROR] Usage: cut --reference <t_before> <t_after>")
+                return
+
+            # get reference times
+            ref_time = None
+            for tr in self.stream:
+                if hasattr(tr.stats, "references"):
+                    ref_time = tr.stats.references[-1]
+                    if isinstance(ref_time, (float, int)):
+                       ref_time = UTCDateTime(ref_time)
+
+            if not ref_time:
+                print("[ERROR] No reference time found. Cannot cut.")
+                return
+
+            try:
+                t1 = ref_time - t_before
+                t2 = ref_time + t_after
+            except Exception as e:
+                print(f"[ERROR] Invalid reference time: {e}")
+                return
+
+            for tr in self.stream:
+                try:
+                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+                    new_traces.append(tr_cut)
+                except Exception as e:
+                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+
+            return Stream(traces=[new_traces])
 
     def apply_stack(self, step_config):
 
