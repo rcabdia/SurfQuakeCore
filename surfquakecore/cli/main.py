@@ -252,11 +252,11 @@ def _ant_create_dict():
             ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl
 
             # Only broadband verticals on network II
-            ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
+            surfquake ant_create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
                 -nt II -ch BHZ
 
             # Wildcard channel filter, multiple networks
-            ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
+            surfquake ant_create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
                 -nt "II" "IU" -ch "BH*" "HH?" -w 8
         """
     )
@@ -423,10 +423,10 @@ def _ant_process_matrix():
         Usage Examples:
 
             # Generate a template config file to fill in
-            surfquake process_matrix --generate config_process_matrix.json
+            surfquake ant_process_matrix --generate config_process_matrix.json
 
             # Run with a filled config
-            surquake process_matrix -c config_process_matrix.json
+            surfquake ant_process_matrix -c config_process_matrix.json
         """
     )
 
@@ -612,10 +612,10 @@ def _ant_cross_stack():
         Usage Examples:
 
             # Generate a template config file to fill in
-            surfquake cross_stack --generate config_cross_stack.json
+            surfquake ant_cross_stack --generate config_cross_stack.json
 
             # Run with a filled config
-            surfquake cross_stack -c config_cross_stack.json
+            surfquake ant_cross_stack -c config_cross_stack.json
         """
     )
 

@@ -7,6 +7,9 @@ SurfQuake Core Library has been designed to streamline the workflow of estimatin
 parameters (seismic moment, corner frequency, radiated energy, source size,
 static stress drop, apparent stress) from the inversion of P-wave and S-wave and focal mechanism from moment tensor inversion.
 
+# Install
+
+>> (environment) pip install surfquakecore
 
 ## Citation
 
