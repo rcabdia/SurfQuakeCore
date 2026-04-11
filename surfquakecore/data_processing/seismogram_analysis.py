@@ -193,9 +193,8 @@ class SeismogramData:
                     else:
                         tr = trace_envelope(tr, method=_config['method'])
 
-                # if _config['name'] == 'cut':
-                #      # TODO This entry point really needs a full review
-                #      tr = trim_trace(tr, _config['method'], _config['start'], _config['end'])
+                if _config['name'] == 'cut':
+                      tr = trim_trace(tr, _config)
 
                 if _config['name'] == 'spectrum':
                     spec = TraceSpectrumResult(tr)

@@ -717,7 +717,7 @@ def safe_downsample(trace, target_rate, max_factor=10, pre_filter=True, toleranc
 
     return tr
 
-def trim_trace(trace, mode: str, *args):
+def trim_trace(trace, config):
 
     """
     Trim a single trace based on a mode: 'reference', 'phase', or 'absolute'.
@@ -730,11 +730,13 @@ def trim_trace(trace, mode: str, *args):
     mode : str
         One of: 'reference', 'phase', or 'absolute'.
 
-    *args : tuple
-        - If mode == 'reference': (time_before, time_after)
-        - If mode == 'phase': (phase_name, time_before, time_after)
-        - If mode == 'absolute': (start_time_str, end_time_str)
+    config : dict
+          * Depending on the selected config key method
+        - If method == 'reference': (config[time_before], config[time_after])
+        - If method == 'phase': (config[phase_name], config[time_before], config[time_after])
+        - If method == 'absolute': (start_time_str, end_time_str)
     example_usage:
+        # TODO NEW USAGE EXAMPLE IS NEEDED
         trimmed = trim_trace(tr, "reference", 10, 30)
         trimmed = trim_trace(tr, "phase", "P", 5, 20)
         trimmed = trim_trace(tr, "absolute", "2025-06-19 12:00:00", "2025-06-19 12:03:00")
@@ -749,10 +751,9 @@ def trim_trace(trace, mode: str, *args):
     ValueError if mode or arguments are invalid, or trimming cannot be done.
     """
 
-    if mode == "reference":
-        if len(args) != 2:
-            raise ValueError("Expected: trim_trace(trace, 'reference', time_before, time_after)")
-        time_before, time_after = float(args[0]), float(args[1])
+    method = config["method"]
+    if config["method"] == "reference":
+        time_before, time_after = float(config["time_before"]), float(config["time_after"])
         references = getattr(trace.stats, "references", [])
         if not references:
             raise ValueError("No references found in trace.stats.references")
@@ -760,11 +761,10 @@ def trim_trace(trace, mode: str, *args):
         t1 = ref_time - time_before
         t2 = ref_time + time_after
 
-    elif mode == "phase":
-        if len(args) != 3:
-            raise ValueError("Expected: trim_trace(trace, 'phase', phase_name, time_before, time_after)")
-        phase_name = args[0]
-        time_before, time_after = float(args[1]), float(args[2])
+    elif config["method"] == "phase":
+
+        phase_name = config["phase_name"]
+        time_before, time_after = float(config["time_before"]), float(config["time_after"])
         picks = getattr(trace.stats, "picks", [])
         phase_time = next((p["time"] for p in picks if p.get("phase") == phase_name), None)
         if not phase_time:
@@ -772,17 +772,15 @@ def trim_trace(trace, mode: str, *args):
         t1 = phase_time - time_before
         t2 = phase_time + time_after
 
-    elif mode == "absolute":
-        if len(args) != 2:
-            raise ValueError("Expected: trim_trace(trace, 'absolute', start_time_str, end_time_str)")
+    elif config["method"] == "absolute":
         try:
-            t1 = UTCDateTime(args[0])
-            t2 = UTCDateTime(args[1])
+            t1 = UTCDateTime(config["start"])
+            t2 = UTCDateTime(config["end"])
         except Exception as e:
             raise ValueError(f"Invalid datetime format: {e}")
 
     else:
-        raise ValueError(f"Unsupported mode: {mode}")
+        raise ValueError(f"Unsupported method: {method}")
 
     try:
         return trace.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)

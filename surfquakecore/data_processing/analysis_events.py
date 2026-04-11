@@ -328,7 +328,7 @@ class AnalysisEvents:
                     if plot:
                         user_choice = input(
                             f"\n[Prompt] Finished subproject {i}. Type 'c' to continue, "
-                            f"'r' to reprocess this event, or 'exit': "
+                            f"'r' to reprocess this event, or 'e' to exit: "
                         ).strip().lower()
 
                         if user_choice == "c":
@@ -338,7 +338,7 @@ class AnalysisEvents:
                                 print(f"[INFO] Reloading config and reprocessing subproject {i}...")
                                 self.config = self.load_analysis_configuration(self.config_file)
                             continue
-                        elif user_choice == "exit":
+                        elif user_choice == "exit" or user_choice == 'e':
                             print("[INFO] Exiting waveform analysis by user request.")
                             return
                         else:
@@ -448,7 +448,7 @@ class AnalysisEvents:
                         if plot:
                             user_choice = input(
                                 f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
-                                f"'r' to reprocess this event, or 'exit': "
+                                f"'r' to reprocess this event, or 'e' to exit: "
                             ).strip().lower()
 
                             if user_choice == "c":
@@ -460,7 +460,7 @@ class AnalysisEvents:
                                     self.config = self.load_analysis_configuration(self.config_file)
                                 continue  # Rerun same event
 
-                            elif user_choice == "exit":
+                            elif user_choice == "exit" or user_choice == "e":
                                 print("[INFO] Exiting waveform cutting by user request.")
                                 return  # Exit entire `run_waveform_cutting`
 
@@ -554,7 +554,7 @@ class AnalysisEvents:
                 if plot:
                     user_choice = input(
                         f"\n[Prompt] Finished processing. Type 'c' to continue, "
-                        f"'r' to reprocess this event, or 'exit': "
+                        f"'r' to reprocess this event, or 'e' to exit: "
                     ).strip().lower()
 
                     if user_choice == "c":
@@ -566,7 +566,7 @@ class AnalysisEvents:
                             self.config = self.load_analysis_configuration(self.config_file)
                         continue  # Rerun same event
 
-                    elif user_choice == "exit":
+                    elif user_choice == "exit" or user_choice == "e":
                         print("[INFO] Exiting waveform cutting by user request.")
                         return  # Exit entire `run_waveform_cutting`
 
