@@ -1694,7 +1694,7 @@ def _processing():
         -p, --project_file         [OPTIONAL] Path to an existing project file
         -w, --wave_files           [OPTIONAL] Path or glob pattern to waveform files
         -i, --inventory_file       [OPTIONAL] Station metadata file (XML, RESP)
-        -e, --event_file           [OPTIONAL] Event catalog in QuakeML format
+        -e, --event_file           [OPTIONAL] Event catalog in txt format (columns: date;hour;latitude;longitude;depth;magnitude) 
         -c, --config_file          [OPTIONAL] Processing configuration file (YAML)
         -a, --auto                 [OPTIONAL] Run in automatic mode
         -o, --output_folder        [OPTIONAL] Folder where processed files are saved
