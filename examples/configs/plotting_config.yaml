@@ -1,14 +1,16 @@
 plotting:
   traces_per_fig: 3
-  sort_by: distance            # options: 'distance', 'backazimuth', or null
-  vspace: 0.05                  # vertical space between subplots
+  sort_by: distance
+  vspace: 0.05
   show_legend: true
   title_fontsize: 9
-  autosave: false              # option to save plots instead of just showing
-  plot_type: standard       # folder to save figures if autosave is true
+  plot_type: standard
   sharey: False
   show_arrivals: False
   pick_output_file: ./picks.csv
   auto_load_pick_file: False
-  show_info_picks: False # show pick info on screen interactively
-  backend: TkAgg #TkAgg (maximum robustness, default), MacOSX (only for mac), Qt5Agg (fast, picking  & interactive commands raise problems)
+  show_info_picks: False
+  show_crosshair: False
+  backend: TkAgg
+
+#backend: TkAgg (maximum robustness, default), MacOSX (only for mac, fully recommended), Qt5Agg (fast but picking  & interactive commands raise problems)

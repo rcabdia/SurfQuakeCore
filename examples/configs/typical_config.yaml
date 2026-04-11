@@ -9,8 +9,8 @@ Analysis:
   process_3:
     name: 'remove_response'
     water_level: 90
-    units: 'VEL' # [ACC Wood Anderson]
-    pre_filt: [0.005,0.008,45,48] # Hz, incremental frequencies defining the pre-filt
+    units: 'VEL'
+    pre_filt: [0.005,0.008,45,48]
   process_4:
     name: 'filter'
     type: 'bandpass'
