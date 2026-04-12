@@ -68,14 +68,18 @@ class PlotProj:
             "pick_output_file": "./picks.csv",
             "auto_load_pick_file": False,
             "show_crosshair": False,
+            "show_help": True,
             "backend": "TkAgg"}
 
-        self._print_help_table()
+
         self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
         # Override defaults with user config if provided
         if plot_config:
             self.plot_config.update(plot_config)
+
+        if self.plot_config["show_help"]:
+            self._print_help_table()
 
         self.picks = {}
         self.current_pick = None
@@ -105,8 +109,8 @@ class PlotProj:
             ("1–6", "Quick picks (P/S + polarity)"),
             ("d / Del", "Delete pick under cursor"),
             ("v", "Open command prompt"),
-            ("i", "Set start time at cursor"),
-            ("o", "Set end time at cursor"),
+            ("u", "Set start time at cursor"),
+            ("i", "Set end time at cursor"),
             ("Right-click drag", "Select time window"),
             ("Double left-click", "Add pick"),
             ("ESC / Enter", "Exit current mode"),
@@ -114,6 +118,28 @@ class PlotProj:
 
         print("\n" + "=" * 55)
         print("Plot Interaction Help")
+        print("=" * 55)
+
+        for key, desc in commands:
+            print(f"{key:<15} | {desc}")
+
+        print("=" * 55 + "\n")
+
+    def _print_fk_help(self):
+
+        commands = [
+            ("KEY", "ACTION"),
+            ("---", "------"),
+            ("1", "Conventional FK"),
+            ("2", "Capon"),
+            ("3", "Multitaper Coherence"),
+            ("4", "Music for 1 signal"),
+            ("5", "Music for 2 signals"),
+            ("6", "Music for 3 signals"),
+        ]
+
+        print("\n" + "=" * 55)
+        print("Plot Interaction Help, hold mouse over power pannel at any time and press key")
         print("=" * 55)
 
         for key, desc in commands:
@@ -656,8 +682,8 @@ class PlotProj:
                 plt.close(self.fig)
             return
 
-        # --- Set start time with key 'i' ---
-        if key == 'i':
+        # --- Set start time with key 'u' ---
+        if key == 'u':
             if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
                 print("[WARNING] Move the mouse over a trace before pressing 'i'.")
                 return
@@ -670,8 +696,8 @@ class PlotProj:
             self._draw_time_window()
             return
 
-        # --- Set end time with key 'o' ---
-        if key == 'o':
+        # --- Set end time with key 'i' ---
+        if key == 'i':
             if event.inaxes not in getattr(self, "axs", []) or event.xdata is None:
                 print("[WARNING] Move the mouse over a trace before pressing 'o'.")
                 return
@@ -1453,6 +1479,8 @@ class PlotProj:
 
             plt.tight_layout()
             cid = self.fig_fk.canvas.mpl_connect("key_press_event", self._on_key_press)
+
+            self._print_fk_help()
 
             # Poll until the figure is closed
             def on_close(event):

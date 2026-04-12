@@ -366,6 +366,13 @@ class noisestack:
                                                       'cross_channels': file_i[-1] + file_j[-1],
                                                       'coordinates': [lat_i, lon_i, lat_j, lon_j]}
                                     stats['starttime'] = UTCDateTime("2000-01-01T00:00:00.0")
+                                    t1 = stats['starttime']
+                                    stats['geodetic'] = {
+                                        'otime': t1.timestamp,
+                                        'geodetic': [dist, azim, bazim, 0.0],
+                                        'event': [lat_i, lon_i, 0.0],
+                                        'arrivals': None  # ← store arrivals here
+                                    }
                                     # stats['info'] = {'geodetic': [dist, bazim, azim],'cross_channels':file_i[-1]+file_j[-1]}
                                     st = Stream([Trace(data=c_stack, header=stats)])
                                     # Nombre del fichero = XT.STA1_STA2.ZE
@@ -664,7 +671,16 @@ class noisestack:
                                 stats['mseed'] = {'dataquality': 'D', 'geodetic': [dist, bazim, azim],
                                                   'cross_channels': file_i[-1] + file_j[-1],
                                                   'coordinates': [lat_i, lon_i, lat_j, lon_j]}
+
                                 stats['starttime'] = UTCDateTime("2000-01-01T00:00:00.0")
+                                t1 = stats['starttime']
+                                stats['geodetic'] = {
+                                    'otime': t1.timestamp,
+                                    'geodetic': [dist, azim, bazim, 0.0],
+                                    'event': [lat_i, lon_i, 0.0],
+                                    'arrivals': None  # ← store arrivals here
+                                }
+
                                 # stats['info'] = {'geodetic': [dist, bazim, azim],'cross_channels':file_i[-1]+file_j[-1]}
                                 st = Stream([Trace(data=c_stack, header=stats)])
                                 # Nombre del fichero = XT.STA1_STA2.BHZE
@@ -1131,6 +1147,13 @@ class noisestack:
             stats['mseed'] = {'dataquality': 'D', 'geodetic': def_rotated["geodetic"],
                               'cross_channels': def_rotated["station_pair"], 'coordinates': def_rotated['coordinates']}
             stats['starttime'] = UTCDateTime("2000-01-01T00:00:00.0")
+            t1 = stats['starttime']
+            stats['geodetic'] = {
+                'otime': t1.timestamp,
+                'geodetic': [def_rotated["geodetic"][0], def_rotated["geodetic"][2], def_rotated["geodetic"][1], 0.0],
+                'event': [def_rotated['coordinates'][0], def_rotated['coordinates'][1], 0.0],
+                'arrivals': None  # ← store arrivals here
+            }
             # stats['info'] = {'geodetic': [dist, bazim, azim],'cross_channels':file_i[-1]+file_j[-1]}
             st = Stream([Trace(data=def_rotated["rotated_matrix"][:, j, 0], header=stats)])
             # Nombre del fichero = XT.STA1_STA2.BHZE
@@ -1156,7 +1179,13 @@ class noisestack:
             stats['mseed'] = {'dataquality': 'D', 'geodetic': def_rotated["geodetic"],
                               'cross_channels': def_rotated["station_pair"], "coordinates": def_rotated['coordinates']}
             stats['starttime'] = UTCDateTime("2000-01-01T00:00:00.0")
-
+            t1 = stats['starttime']
+            stats['geodetic'] = {
+                'otime': t1.timestamp,
+                'geodetic': [def_rotated["geodetic"][0], def_rotated["geodetic"][2], def_rotated["geodetic"][1], 0.0],
+                'event': [def_rotated['coordinates'][0], def_rotated['coordinates'][1], 0.0],
+                'arrivals': None  # ← store arrivals here
+            }
             for iter in def_rotated["rotated_matrix"]:
                 data = iter[:, i, 0]
                 stack_partial.append(Trace(data=data, header=stats))

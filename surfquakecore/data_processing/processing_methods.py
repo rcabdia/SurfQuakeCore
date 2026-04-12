@@ -735,11 +735,6 @@ def trim_trace(trace, config):
         - If method == 'reference': (config[time_before], config[time_after])
         - If method == 'phase': (config[phase_name], config[time_before], config[time_after])
         - If method == 'absolute': (start_time_str, end_time_str)
-    example_usage:
-        # TODO NEW USAGE EXAMPLE IS NEEDED
-        trimmed = trim_trace(tr, "reference", 10, 30)
-        trimmed = trim_trace(tr, "phase", "P", 5, 20)
-        trimmed = trim_trace(tr, "absolute", "2025-06-19 12:00:00", "2025-06-19 12:03:00")
 
     Returns
     -------
@@ -753,22 +748,25 @@ def trim_trace(trace, config):
 
     method = config["method"]
     if config["method"] == "reference":
-        time_before, time_after = float(config["time_before"]), float(config["time_after"])
+        time_before, time_after = float(config["t_before"]), float(config["t_after"])
         references = getattr(trace.stats, "references", [])
         if not references:
             raise ValueError("No references found in trace.stats.references")
-        ref_time = references[-1]
+        ref_time = UTCDateTime(references[-1])
         t1 = ref_time - time_before
         t2 = ref_time + time_after
 
     elif config["method"] == "phase":
 
         phase_name = config["phase_name"]
-        time_before, time_after = float(config["time_before"]), float(config["time_after"])
+        time_before, time_after = float(config["t_before"]), float(config["t_after"])
         picks = getattr(trace.stats, "picks", [])
+
         phase_time = next((p["time"] for p in picks if p.get("phase") == phase_name), None)
         if not phase_time:
             raise ValueError(f"Phase '{phase_name}' not found in trace.stats.picks")
+
+        phase_time = UTCDateTime(phase_time)
         t1 = phase_time - time_before
         t2 = phase_time + time_after
 
@@ -783,7 +781,7 @@ def trim_trace(trace, config):
         raise ValueError(f"Unsupported method: {method}")
 
     try:
-        return trace.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+        return trace.trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
     except Exception as e:
         raise ValueError(f"Trimming failed: {e}")
 

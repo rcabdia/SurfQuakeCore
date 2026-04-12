@@ -24,11 +24,11 @@ def validate_cut(config):
     elif config['method'] == "phase":
         require_type(config, 'phase_name', str)
         require_type(config, 't_before', float)
-        require_type(config, 't_end', float)
+        require_type(config, 't_after', float)
 
     elif config['method'] == "reference":
         require_type(config, 't_before', float)
-        require_type(config, 't_end', float)
+        require_type(config, 't_after', float)
 
     else:
         print("No valid Config method ", config['method'], "options are: absolute, phase or reference")

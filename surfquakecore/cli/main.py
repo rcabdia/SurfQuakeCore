@@ -215,7 +215,7 @@ def _ant_create_dict():
         return os.path.abspath(os.path.expanduser(path))
 
     arg_parse = ArgumentParser(
-        prog="ant create_dict",
+        prog="ant_create_dict",
         description="Scan a MiniSEED archive and build the station/channel data dictionary",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
@@ -233,6 +233,8 @@ def _ant_create_dict():
 
             Wildcard patterns are supported for network, station and channel filters
             using standard Unix shell syntax: *, ?, [ABC].
+            
+            The project output of this command can be used as input project file fo ant_process_matrix
 
         Key Arguments:
             -d,  --data_path       [REQUIRED] Root directory of MiniSEED files (searched recursively)

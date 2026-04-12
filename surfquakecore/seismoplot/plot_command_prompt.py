@@ -767,9 +767,15 @@ class PlotCommandPrompt:
             return
 
         try:
-            self._write_files(displayed_traces, folder_path)
+            if args[-1].lower() == "--all":
+                self._write_files(self.plot_proj.trace_list, folder_path)
+            else:
+                self._write_files(displayed_traces, folder_path)
+
         except Exception as e:
             print(f"[ERROR] Failed to write displayed traces: {e}")
+
+        #self.plot_proj.trace_list
 
     def _write_files(self, stream, output_folder):
         """
@@ -1377,9 +1383,9 @@ class PlotCommandPrompt:
         print(" pm                                              Run Particle motion analysis, (type: help pm)")
         print(" plot_type <type>                                Change plot mode: standard, record, overlay")
         print(" concat                                          Merge/concatenate traces")
-        print(" shift --phase <name>                            Shift by pick (type: help shift for info)")
+        print(" shift --phase <name>  ...                       Shift by pick (type: help shift for info)")
         print(" cut --phase <name> ...                          Trim traces (type: help cut for usage)")
-        print(" write --folder_path <path>                      Export displayed traces to HDF5")
+        print(" write --folder_path <path> [--all]              Export displayed traces or all traces in memory to HDF5")
         print(" info                                            Print header information from displayed traces")
         print(" exit                                            Close command line and exit to interactive picking mode")
         print(" help [command]                                  Show general or detailed help")
