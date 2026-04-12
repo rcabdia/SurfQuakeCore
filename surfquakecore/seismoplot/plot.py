@@ -667,17 +667,19 @@ class PlotProj:
         #     return
 
         if key == 'v':
-            self.enable_command_prompt = True
-            # Don't call self.plot() — just enter the prompt directly
+            self.enable_command_prompt = False  # ← empieza en False
             plt.show(block=False)
             self.fig.canvas.draw_idle()
-            plt.pause(0.1)  # reduced from 0.5
+            plt.pause(0.1)
             print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' return to picking mode")
             prompt = PlotCommandPrompt(self)
             result = prompt.run()
             if result == "p":
-                self.enable_command_prompt = False
                 self._register_span_selector()
+                plt.show(block=True)
+            elif result == "replot":
+                self.enable_command_prompt = True
+                self.plot(page=self.current_page)
             elif result == "exit":
                 plt.close(self.fig)
             return
@@ -1601,8 +1603,30 @@ class PlotProj:
                 print(f"[ERROR] Could not compute or plot FK coherence: {e}")
 
     def _restore_state(self):
+        self._load_picks_from_headers()
         self._redraw_picks()
         self._redraw_all_reference_lines()
+
+    def _load_picks_from_headers(self):
+        """Load picks from tr.stats.picks inside self.picks."""
+        for tr in self.trace_list:
+            if not hasattr(tr.stats, "picks"):
+                continue
+            for p in tr.stats.picks:
+                ts = p.get("time")
+                phase = p.get("phase", "?")
+                amp = p.get("amplitude", float("nan"))
+                pol = p.get("polarity", "?")
+                if ts is None:
+                    continue
+                pick_time = UTCDateTime(ts).datetime
+                if tr.id not in self.picks:
+                    self.picks[tr.id] = []
+                # Evitar duplicados
+                already = any(abs((pt - pick_time).total_seconds()) < 1e-4
+                              for pt, *_ in self.picks[tr.id])
+                if not already:
+                    self.picks[tr.id].append((pick_time, phase, amp, pol))
 
     def __on_enter_axes(self, event):
         ax = event.inaxes

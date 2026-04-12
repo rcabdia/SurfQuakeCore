@@ -147,10 +147,10 @@ class PlotCommandPrompt:
 
     def _cmd_next(self, args):
         print("[INFO] Advancing to next subplot set...")
-        self.plot_proj.current_page += 1  # advance page
-        self.plot_proj.clear_plot()  # clear figure
-        self.plot_proj.plot(page=self.plot_proj.current_page)  # replot
-        # Do not set prompt_active = False; stay in prompt!
+        self.plot_proj.current_page += 1
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
 
     def _cmd_load_picks(self, args):
 
@@ -419,7 +419,8 @@ class PlotCommandPrompt:
         print(f"[INFO] Filter applied to {filtered_count} traces.")
 
         self.plot_proj.clear_plot()
-        self.plot_proj.plot(page=self.plot_proj.current_page)
+        self.prompt_active = False
+        self._exit_code = "replot"
 
     def _cmd_spectrogram(self, args):
         """
@@ -700,7 +701,8 @@ class PlotCommandPrompt:
             print("[INFO] Returning to previous subplot set...")
             self.plot_proj.current_page -= 1
             self.plot_proj.clear_plot()
-            self.plot_proj.plot(page=self.plot_proj.current_page)
+            self.prompt_active = False
+            self._exit_code = "replot"
         else:
             print("[INFO] Already at the first page.")
 
@@ -723,7 +725,8 @@ class PlotCommandPrompt:
         self.plot_proj.plot_config["plot_type"] = new_mode
         print(f"[INFO] Plot type changed to '{new_mode}'")
         self.plot_proj.clear_plot()
-        self.plot_proj.plot(page=self.plot_proj.current_page)
+        self.prompt_active = False
+        self._exit_code = "replot"
 
     def _cmd_write(self, args):
 
@@ -940,11 +943,20 @@ class PlotCommandPrompt:
             return
 
         # Apply cuts to plot_proj
+        # self.plot_proj.trace_list = new_traces
+        # self.plot_proj.current_page = 0
+        # self.plot_proj.clear_plot()
+        # self.plot_proj.enable_command_prompt = True
+        # self.plot_proj.plot(page=0)
+        # print(f"[INFO] Cutting complete. {len(new_traces)} traces updated and replotted.")
+
+        # Apply cuts to plot_proj
         self.plot_proj.trace_list = new_traces
         self.plot_proj.current_page = 0
         self.plot_proj.clear_plot()
-        self.plot_proj.plot(page=0)
         print(f"[INFO] Cutting complete. {len(new_traces)} traces updated and replotted.")
+        self.prompt_active = False
+        self._exit_code = "replot"  # ← señal nueva
 
     def _cmd_concat(self, args):
         """
@@ -974,7 +986,10 @@ class PlotCommandPrompt:
             # Reset plot
             self.plot_proj.current_page = 0
             self.plot_proj.clear_plot()
-            self.plot_proj.plot(page=0)
+            self.prompt_active = False
+            self._exit_code = "replot"
+
+            print(f"[INFO] Concatenation complete. Now {len(st)} traces after merge.")
 
             print(f"[INFO] Concatenation complete. Now {len(st)} traces after merge.")
 

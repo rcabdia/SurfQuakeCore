@@ -1700,12 +1700,12 @@ def _processing():
         -c, --config_file          [OPTIONAL] Processing configuration file (YAML)
         -a, --auto                 [OPTIONAL] Run in automatic mode
         -o, --output_folder        [OPTIONAL] Folder where processed files are saved
-        -n, --net                  [OPTIONAL] project net filter Example: NET1,NET2,NET3
-        -s, --station              [OPTIONAL] project station filter Example: STA1,STA2,STA3
-        -ch, --channel,            [OPTIONAL]  project channel filter Example: HHZ,BHN
+        -n, --net                  [OPTIONAL] Project net filter Example: NET1,NET2,NET3
+        -s, --station              [OPTIONAL] Project station filter Example: STA1,STA2,STA3
+        -ch, --channel,            [OPTIONAL] Project channel filter Example: HHZ,BHN
         -t, --cut_time             [OPTIONAL] pre & post first arrival in seconds (symmetric)
-        -cs, --cut_start_time      [OPTIONAL] cut pre-first arrival in seconds
-        -ce, --cut_end_time        [OPTIONAL] cut post-first arrival in seconds
+        -cs, --cut_start_time      [OPTIONAL] Cut pre-first arrival in seconds
+        -ce, --cut_end_time        [OPTIONAL] Cut post-first arrival in seconds
         -r, --reference            [OPTIONAL] The pick time for cutting the waveforms is the origin time of the event
         --phases                   [OPTIONAL] Comma-separated list of phases for arrival estimation (e.g., P,S)
         --vel                      [OPTIONAL] Phase speed to estimate the first arrival time (reference for cutting waveform)
@@ -1739,7 +1739,7 @@ def _processing():
 
     arg_parse.add_argument("-r", "--reference", help="The pick time for cutting "
                                                      "the waveforms is the origin time of the event",
-                           type=str, required=False)
+                           action="store_true", default=False)
 
     arg_parse.add_argument("--phases", help="Comma-separated list of phases to use for travel "
                                             "time estimation (e.g., P,S,PcP)", type=str, required=False)
@@ -1778,6 +1778,8 @@ def _processing():
     )
 
     parsed_args = arg_parse.parse_args()
+
+    reference = "ref" if parsed_args.reference else None
 
     # Parse phases if provided
     if parsed_args.phases:
@@ -1847,7 +1849,7 @@ def _processing():
                             make_abs(parsed_args.config_file),
                             sp_sub_projects, post_script=make_abs(parsed_args.post_script),
                             post_script_stage=parsed_args.post_script_stage,
-                            plot_config_file=make_abs(parsed_args.plot_config), reference=parsed_args.reference,
+                            plot_config_file=make_abs(parsed_args.plot_config), reference=reference,
                             phase_list=phase_list, vel=parsed_args.vel)
         sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
@@ -1858,7 +1860,7 @@ def _processing():
                             sp, post_script=make_abs(parsed_args.post_script),
                             post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=make_abs(parsed_args.plot_config),
-                            reference=parsed_args.reference, phase_list=phase_list)
+                            reference=reference, phase_list=phase_list)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
 
