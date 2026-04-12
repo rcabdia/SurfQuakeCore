@@ -1480,7 +1480,8 @@ class PlotProj:
             plt.tight_layout()
             cid = self.fig_fk.canvas.mpl_connect("key_press_event", self._on_key_press)
 
-            self._print_fk_help()
+            if self.plot_config["show_help"]:
+                self._print_fk_help()
 
             # Poll until the figure is closed
             def on_close(event):
