@@ -321,7 +321,6 @@ class StreamProcessing:
 
     def apply_cut(self, step_config):
 
-        from datetime import datetime
         from obspy import UTCDateTime
 
         """
@@ -384,8 +383,7 @@ class StreamProcessing:
                     phase_time = UTCDateTime(phase_time)
                     t1 = phase_time - t_before
                     t2 = phase_time + t_after
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
+                    tr.trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
 
@@ -420,13 +418,9 @@ class StreamProcessing:
 
             for tr in self.stream:
                 try:
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
+                    tr.trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
                 except Exception as e:
                     print(f"[ERROR] Could not cut {tr.id}: {e}")
-
-        # if len(new_traces) > 0:
-        #     self.stream = Stream(traces=[new_traces])
 
         return self.stream
 
