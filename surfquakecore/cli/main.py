@@ -683,7 +683,8 @@ def _ant_cross_stack():
     print(f"  Rotate    : {rotate}  |  Rotate daily: {rotate_daily}")
 
     stacker = noisestack(
-        output_files_path=input_path,
+        input_files_path=input_path,
+        output_files_path=output_path,
         stations=stations,
         channels=channels,
         stack=stack,

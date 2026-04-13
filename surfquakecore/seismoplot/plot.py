@@ -61,7 +61,9 @@ class PlotProj:
             "vspace": 0.05,
             "title_fontsize": 9,
             "show_legend": True,
-            "plot_type": "standard",  # ← NEW: 'record' for record section and overlay for all traces at the same plot
+            "plot_type": "standard",  #'record' for record section and overlay for all traces at the same plot
+            "record_option": "dates",
+            "scale_factor": 1,
             "sharey": False,
             "show_arrivals": False,
             "show_info_picks": False,
@@ -348,61 +350,93 @@ class PlotProj:
         traces = self.trace_list
         phase_curves = defaultdict(list)
         N_traces = len(traces)
-        # Collect arrival times grouped by phase
-        for tr in traces:
-            dist = tr.stats.get("geodetic", {}).get("geodetic", [None])[0]
-            arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
 
-            seen_phases = set()
-            for arr in arrivals:
-                phase = arr.get("phase")
-                arr_time = arr.get("time")
-                if (
-                        phase and phase not in seen_phases
-                        and dist is not None
-                        and isinstance(arr_time, float)
-                ):
+        # record_option: "dates" (default) | "seconds" | "egf"
+        record_option = cfg.get("record_option", "dates")
 
-                    phase_curves[phase].append((mdt.date2num(UTCDateTime(arr_time).datetime), dist))
-                    seen_phases.add(phase)  # only first arrival for this phase
+        # Collect arrival times grouped by phase — solo para modo "dates"
+        if record_option == "dates":
+            for tr in traces:
+                dist = tr.stats.get("geodetic", {}).get("geodetic", [None])[0]
+                arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
+                seen_phases = set()
+                for arr in arrivals:
+                    phase = arr.get("phase")
+                    arr_time = arr.get("time")
+                    if (
+                            phase and phase not in seen_phases
+                            and dist is not None
+                            and isinstance(arr_time, float)
+                    ):
+                        phase_curves[phase].append((mdt.date2num(UTCDateTime(arr_time).datetime), dist))
+                        seen_phases.add(phase)
+
         # Sort by distance
         traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
         distances = [self._get_geodetic_info(tr)[0] for tr in traces]
         scale = cfg.get("scale_factor", 1.0)
 
-        # Compute global start time for alignment
         fig, ax = plt.subplots(figsize=(12, 8))
-        self.fig = fig  # ensure fig is accessible throughout
+        self.fig = fig
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
 
         for tr, dist in zip(traces, distances):
             # Normalize trace to its max amplitude
             norm_data = tr.data / np.max(np.abs(tr.data)) if np.max(np.abs(tr.data)) != 0 else tr.data
-            # Align time axis to earliest start
-            t = tr.times("matplotlib")
+
+            if record_option == "dates":
+                t = tr.times("matplotlib")
+
+            elif record_option == "seconds":
+                # t=0 en el starttime de la traza
+                t = tr.times()  # segundos desde starttime, ya es lo que devuelve obspy por defecto
+
+            elif record_option == "egf":
+                # t=0 en la muestra central de la traza
+                npts = tr.stats.npts
+                dt = tr.stats.delta
+                half = (npts // 2) * dt  # segundos desde inicio hasta la muestra central
+                t = tr.times() - half  # desplaza para que el centro sea 0
 
             if N_traces >= 12:
                 ax.plot(t, norm_data * scale + dist, color="black", alpha=0.75, linewidth=0.6)
             else:
                 ax.plot(t, norm_data * scale + dist, alpha=0.75, linewidth=0.6, label=tr.id)
 
-        # Plot arrival time curves for each phase
-        for phase, points in phase_curves.items():
-            if len(points) < 2:
-                continue  # skip too short
-            points.sort()  # ensure time ordering
-            times, dists = zip(*points)
-            ax.plot(times, dists, linestyle='--', linewidth=1.0, alpha=0.6, label=f"{phase}")
+        # Fases teóricas — solo en modo "dates"
+        if record_option == "dates":
+            for phase, points in phase_curves.items():
+                if len(points) < 2:
+                    continue
+                points.sort()
+                times, dists = zip(*points)
+                ax.plot(times, dists, linestyle='--', linewidth=1.0, alpha=0.6, label=f"{phase}")
 
-        ax.set_xlabel("Time (UTC)")
+        # Línea vertical en t=0 para modo "egf"
+        if record_option == "egf":
+            ax.axvline(x=0, color="red", linestyle="--", linewidth=1.0, alpha=0.8)
+
+        # Configuración del eje X según modo
+        if record_option == "dates":
+            ax.set_xlabel("Time (UTC)")
+            ax.xaxis_date()
+            ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
+            min_time = min(tr.stats.starttime for tr in traces)
+            max_time = max(tr.stats.endtime for tr in traces)
+            ax.set_xlim(mdt.date2num(min_time.datetime), mdt.date2num(max_time.datetime))
+
+        elif record_option == "seconds":
+            ax.set_xlabel("Time (s)")
+            max_dur = max(tr.stats.npts * tr.stats.delta for tr in traces)
+            ax.set_xlim(0, max_dur)
+
+        elif record_option == "egf":
+            ax.set_xlabel("Lag time (s)")
+            max_half = max((tr.stats.npts // 2) * tr.stats.delta for tr in traces)
+            ax.set_xlim(-max_half, max_half)
+
         ax.set_ylabel("Distance (km)")
-        ax.xaxis_date()
-        ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
         ax.set_title("Record Section")
-
-        min_time = min(tr.stats.starttime for tr in traces)
-        max_time = max(tr.stats.endtime for tr in traces)
-        ax.set_xlim(mdt.date2num(min_time.datetime), mdt.date2num(max_time.datetime))
 
         if cfg["show_legend"]:
             ax.legend(fontsize=6)
@@ -411,11 +445,9 @@ class PlotProj:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
             plt.pause(0.5)
-
             print("[INFO] Type 'command parameter', 'help', 'exit' or 'p' to return to picking mode")
             prompt = PlotCommandPrompt(self)
             result = prompt.run()
-
             if result == "p":
                 self.enable_command_prompt = False
                 plt.show(block=True)

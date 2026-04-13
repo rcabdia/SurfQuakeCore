@@ -5,6 +5,8 @@ plotting:
   show_legend: true
   title_fontsize: 9
   plot_type: standard
+  record_option: dates
+  scale_factor: 1
   sharey: False
   show_arrivals: False
   pick_output_file: ./picks.csv

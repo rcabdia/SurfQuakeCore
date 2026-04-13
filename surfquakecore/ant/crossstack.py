@@ -17,7 +17,7 @@ import re
 
 class noisestack:
 
-    def __init__(self, output_files_path, stations, channels, stack, power, autocorr, min_distance,
+    def __init__(self, input_files_path, output_files_path, stations, channels, stack, power, autocorr, min_distance,
                  dailyStacks, overlap, cpu_count=None):
         """
                 Process ANT, Cross + Stack
@@ -27,6 +27,7 @@ class noisestack:
         """
 
         self.__metadata_manager = None
+        self.input_files_path = input_files_path
         self.output_files_path = output_files_path
         self.channel = channels
         self.stations_whitelist = stations
@@ -46,6 +47,7 @@ class noisestack:
 
     def check_path(self):
 
+        # Carpetas de output — se crean en output_files_path
         self.stack_files_path = os.path.join(self.output_files_path, "stack")
         self.stack_rotated_files_path = os.path.join(self.output_files_path, "stack_rotated")
         self.stack_daily_files_path = os.path.join(self.output_files_path, "stack_daily")
@@ -59,14 +61,14 @@ class noisestack:
         if not os.path.exists(self.stack_daily_files_path):
             os.makedirs(self.stack_daily_files_path)
 
-        # Ficheros de datos
-        # self.pickle_files = [pickle_file for pickle_file in os.listdir(self.output_files_path) if self.channel in pickle_file]
+        # Pickles de entrada — se leen desde input_files_path
         self.pickle_files = []
-        for pickle_file in os.listdir(self.output_files_path):
+        for pickle_file in os.listdir(self.input_files_path):  # ← CAMBIO
             for jj in range(len(self.channel)):
                 if self.channel[jj] in pickle_file:
                     self.pickle_files.append(pickle_file)
 
+        # Ficheros ya procesados — se comprueban en stack de output
         self.stack_files_path_done = []
         for pickle_file in os.listdir(self.stack_files_path):
             for jj in range(len(self.channel)):
@@ -133,9 +135,8 @@ class noisestack:
 
                         print("(i=" + str(i) + ",j=" + str(j) + ") -> (" + file_i + "," + file_j + ")")
 
-                        with open(os.path.join(self.output_files_path, file_i), 'rb') as h_i, open(
-                                os.path.join(self.output_files_path, file_j),
-                                'rb') as h_j:
+                        with open(os.path.join(self.input_files_path, file_i), 'rb') as h_i, \
+                                open(os.path.join(self.input_files_path, file_j), 'rb') as h_j:
 
                             # Cada fichero file_i y file_i contiene:
                             # dict_matrix ={ 'data_matrix': [] , 'metadata_list': [], 'date_list': []}
@@ -369,10 +370,10 @@ class noisestack:
                                     t1 = stats['starttime']
                                     stats['geodetic'] = {
                                         'otime': t1.timestamp,
-                                        'geodetic': [dist, azim, bazim, 0.0],
+                                        'geodetic': [dist*1E-3, azim, bazim, 0.0],
                                         'event': [lat_i, lon_i, 0.0],
-                                        'arrivals': None  # ← store arrivals here
-                                    }
+                                        'arrivals': []}
+
                                     # stats['info'] = {'geodetic': [dist, bazim, azim],'cross_channels':file_i[-1]+file_j[-1]}
                                     st = Stream([Trace(data=c_stack, header=stats)])
                                     # Nombre del fichero = XT.STA1_STA2.ZE
@@ -445,9 +446,8 @@ class noisestack:
 
                     print("(i=" + str(i) + ",j=" + str(j) + ") -> (" + file_i + "," + file_j + ")")
 
-                    with open(os.path.join(self.output_files_path, file_i), 'rb') as h_i, open(
-                            os.path.join(self.output_files_path, file_j),
-                            'rb') as h_j:
+                    with open(os.path.join(self.input_files_path, file_i), 'rb') as h_i, \
+                            open(os.path.join(self.input_files_path, file_j), 'rb') as h_j:
 
                         # Cada fichero file_i y file_i contiene:
                         # dict_matrix ={ 'data_matrix': [] , 'metadata_list': [], 'date_list': []}
@@ -676,10 +676,9 @@ class noisestack:
                                 t1 = stats['starttime']
                                 stats['geodetic'] = {
                                     'otime': t1.timestamp,
-                                    'geodetic': [dist, azim, bazim, 0.0],
+                                    'geodetic': [dist*1e-3, azim, bazim, 0.0],
                                     'event': [lat_i, lon_i, 0.0],
-                                    'arrivals': None  # ← store arrivals here
-                                }
+                                    'arrivals': []}
 
                                 # stats['info'] = {'geodetic': [dist, bazim, azim],'cross_channels':file_i[-1]+file_j[-1]}
                                 st = Stream([Trace(data=c_stack, header=stats)])
@@ -1150,10 +1149,10 @@ class noisestack:
             t1 = stats['starttime']
             stats['geodetic'] = {
                 'otime': t1.timestamp,
-                'geodetic': [def_rotated["geodetic"][0], def_rotated["geodetic"][2], def_rotated["geodetic"][1], 0.0],
+                'geodetic': [def_rotated["geodetic"][0]*1e-3, def_rotated["geodetic"][2], def_rotated["geodetic"][1], 0.0],
                 'event': [def_rotated['coordinates'][0], def_rotated['coordinates'][1], 0.0],
-                'arrivals': None  # ← store arrivals here
-            }
+                'arrivals': []}
+
             # stats['info'] = {'geodetic': [dist, bazim, azim],'cross_channels':file_i[-1]+file_j[-1]}
             st = Stream([Trace(data=def_rotated["rotated_matrix"][:, j, 0], header=stats)])
             # Nombre del fichero = XT.STA1_STA2.BHZE
@@ -1182,10 +1181,9 @@ class noisestack:
             t1 = stats['starttime']
             stats['geodetic'] = {
                 'otime': t1.timestamp,
-                'geodetic': [def_rotated["geodetic"][0], def_rotated["geodetic"][2], def_rotated["geodetic"][1], 0.0],
+                'geodetic': [def_rotated["geodetic"][0]*1e-3, def_rotated["geodetic"][2], def_rotated["geodetic"][1], 0.0],
                 'event': [def_rotated['coordinates'][0], def_rotated['coordinates'][1], 0.0],
-                'arrivals': None  # ← store arrivals here
-            }
+                'arrivals': []}
             for iter in def_rotated["rotated_matrix"]:
                 data = iter[:, i, 0]
                 stack_partial.append(Trace(data=data, header=stats))
