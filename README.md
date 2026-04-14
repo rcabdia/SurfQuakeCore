@@ -9,7 +9,8 @@ static stress drop, apparent stress) from the inversion of P-wave and S-wave and
 
 # Install
 
->> (environment) pip install surfquakecore
+Current version 1.1.0
+>> (environment) pip install surfquake
 
 ## Citation
 
