@@ -141,7 +141,8 @@ class PlotProj:
         ]
 
         print("\n" + "=" * 55)
-        print("Plot Interaction Help, hold mouse over power pannel at any time and press key")
+        print("Plot Interaction Help, hold mouse over power pannel at any time.\n Press key '1-6' to select a method, "
+              "then press the key 'e' to run the process")
         print("=" * 55)
 
         for key, desc in commands:
