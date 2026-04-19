@@ -72,6 +72,46 @@ class SeismicUtils:
         return new_stream
 
     @staticmethod
+    def rename_rotated_channels(stream, method):
+        """
+        Rename channel codes after rotation to reflect new components.
+
+        Mapping per method:
+            NE->RT   : N/1/Y → R,  E/2/X → T
+            ->LQT    : Z → L,  N/1/Y → Q,  E/2/X → T
+            ZNE->LQT : Z → L,  N/1/Y → Q,  E/2/X → T
+            ->ZNE    : ObsPy handles renaming internally, no action needed
+
+        Parameters
+        ----------
+        stream : obspy.Stream
+        method : str
+            Rotation method string, e.g. 'NE->RT', '->LQT', 'ZNE->LQT', '->ZNE'
+        """
+        component_map = {
+            "NE->RT": {"N": "R", "1": "R", "Y": "R",
+                       "E": "T", "2": "T", "X": "T"},
+            "->LQT": {"Z": "L",
+                      "N": "Q", "1": "Q", "Y": "Q",
+                      "E": "T", "2": "T", "X": "T"},
+            "ZNE->LQT": {"Z": "L",
+                         "N": "Q", "1": "Q", "Y": "Q",
+                         "E": "T", "2": "T", "X": "T"},
+            "->ZNE": {}  # ObsPy already renames these
+        }
+
+        mapping = component_map.get(method, {})
+        if not mapping:
+            return stream  # nothing to do
+
+        for tr in stream:
+            last = tr.stats.channel[-1].upper()
+            if last in mapping:
+                tr.stats.channel = tr.stats.channel[:-1] + mapping[last]
+
+        return stream
+
+    @staticmethod
     def multichannel(st, resample=False):
         n = len(st)
         rows = int(0.5 * n * (n - 1) + 1)

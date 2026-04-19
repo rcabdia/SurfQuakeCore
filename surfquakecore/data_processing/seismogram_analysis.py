@@ -543,6 +543,10 @@ class StreamProcessing:
 
             self.stream.rotate(method=step_config["type"], back_azimuth=step_config["angle"],
                                inclination=step_config["inclination"])
+
+        # Rename channels to reflect rotated components
+        self.stream = SeismicUtils.rename_rotated_channels(self.stream, step_config["type"])
+            
         return self.stream
 
     def apply_shift(self, step_config):
