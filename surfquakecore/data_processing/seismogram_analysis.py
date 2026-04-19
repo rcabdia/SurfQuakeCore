@@ -531,7 +531,10 @@ class StreamProcessing:
 
     def apply_rotation(self, step_config):
 
-        self.stream = SeismicUtils.standardize_to_NE_components(self.stream)
+        # Now Automatically will trim the traces per station to the max starttime and min endtime.
+        # This improves the robustness of the rotation process
+
+        self.stream = SeismicUtils.standardize_to_NE_components(self.stream, auto_trim=True)
 
         if "GAC" in step_config["method"]:
             self.stream.rotate(method=step_config["type"])

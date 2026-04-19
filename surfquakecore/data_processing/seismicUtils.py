@@ -5,11 +5,6 @@
 seismicUtils
 """
 
-from obspy import Stream
-from collections import defaultdict
-import numpy as np
-from scipy import signal
-
 import numpy as np
 from obspy import Stream
 from collections import defaultdict
@@ -18,7 +13,19 @@ from scipy import signal
 class SeismicUtils:
 
     @staticmethod
-    def standardize_to_NE_components(stream, verbose=False):
+    def standardize_to_NE_components(stream, verbose=False, auto_trim=False):
+        """
+        Standardize channel codes to Z, N, E and optionally trim to common time window per station.
+
+        Parameters
+        ----------
+        stream : obspy.Stream
+        verbose : bool
+            Print renaming and trim info.
+        auto_trim : bool
+            If True, trim each station group to max(starttime) → min(endtime).
+            Default is False.
+        """
         mapping = {"1": "N", "2": "E", "X": "E", "Y": "N", "Z": "Z"}
         station_groups = defaultdict(list)
         for tr in stream:
@@ -28,21 +35,38 @@ class SeismicUtils:
         new_stream = Stream()
 
         for station_key, traces in station_groups.items():
+
+            # --- Rename channels ---
             components = set(tr.stats.channel[-1].upper() for tr in traces)
             if {"Z", "N", "E"}.issubset(components):
                 if verbose:
                     print(f"✔ Station {station_key} already uses Z, N, E.")
-                new_stream += Stream(traces)
-                continue
+            else:
+                for tr in traces:
+                    orig = tr.stats.channel
+                    last = orig[-1].upper()
+                    if last in mapping:
+                        new_code = orig[:-1] + mapping[last]
+                        if verbose:
+                            print(f"  Renaming {orig} → {new_code}")
+                        tr.stats.channel = new_code
+
+            # --- Auto trim to common time window ---
+            if auto_trim and len(traces) > 1:
+                t_start = max(tr.stats.starttime for tr in traces)
+                t_end = min(tr.stats.endtime for tr in traces)
+
+                if t_end <= t_start:
+                    if verbose:
+                        print(f"  [WARN] {station_key}: no common time overlap, skipping trim.")
+                else:
+                    if verbose:
+                        print(f"  Trimming {station_key[0]}.{station_key[1]} "
+                              f"to {t_start} → {t_end}")
+                    traces = [tr.copy().trim(starttime=t_start, endtime=t_end)
+                              for tr in traces]
 
             for tr in traces:
-                orig = tr.stats.channel
-                last = orig[-1].upper()
-                if last in mapping:
-                    new_code = orig[:-1] + mapping[last]
-                    if verbose:
-                        print(f"Renaming {orig} → {new_code}")
-                    tr.stats.channel = new_code
                 new_stream.append(tr)
 
         return new_stream

@@ -50,6 +50,7 @@ class PlotCommandPrompt:
             "xcorr": self._cmd_xcorr,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
+            "rotate": self._cmd_rotate,
             "concat": self._cmd_concat,
             "load_picks": self._cmd_load_picks,
             "shift": self._cmd_shift,
@@ -359,6 +360,198 @@ class PlotCommandPrompt:
 
         # plotting
         self.plot_proj._plot_stack(stack_tr)
+
+    @staticmethod
+    def _rename_rotated_channels(stream, method):
+        """Rename channel codes after rotation to reflect new components."""
+        component_map = {
+            "NE->RT": {"N": "R", "1": "R", "Y": "R",
+                       "E": "T", "2": "T", "X": "T"},
+            "->LQT": {"Z": "L", "N": "Q", "1": "Q", "Y": "Q",
+                      "E": "T", "2": "T", "X": "T"},
+            "ZNE->LQT": {"Z": "L", "N": "Q", "1": "Q", "Y": "Q",
+                         "E": "T", "2": "T", "X": "T"},
+            "->ZNE": {}  # ObsPy already renames these
+        }
+        mapping = component_map.get(method, {})
+        for tr in stream:
+            last = tr.stats.channel[-1].upper()
+            if last in mapping:
+                tr.stats.channel = tr.stats.channel[:-1] + mapping[last]
+
+    def _cmd_rotate(self, args):
+        """
+        Rotate three-component seismograms and rename channels accordingly.
+
+        Usage:
+            rotate NE->RT                        # uses back_azimuth from trace header (geodetic)
+            rotate NE->RT <back_azimuth>         # uses a single global back_azimuth
+            rotate ->LQT <back_azimuth> [inclination]
+            rotate ->ZNE
+            rotate ZNE->LQT <back_azimuth> [inclination]
+
+        Examples:
+            >> rotate NE->RT
+            >> rotate NE->RT 45.0
+            >> rotate ->LQT 45.0 10.0
+            >> rotate ->ZNE
+        """
+        from obspy import Stream
+        from collections import defaultdict
+        from surfquakecore.data_processing.seismicUtils import SeismicUtils
+
+        VALID_METHODS = ["NE->RT", "->LQT", "->ZNE", "ZNE->LQT"]
+
+        if len(args) < 2:
+            print("Usage: rotate <method> [back_azimuth] [inclination]")
+            print(f"Available methods: {', '.join(VALID_METHODS)}")
+            return
+
+        method = args[1]
+
+        if method not in VALID_METHODS:
+            print(f"[ERROR] Unknown rotation method '{method}'. Available: {', '.join(VALID_METHODS)}")
+            return
+
+        # Parse optional global back_azimuth and inclination
+        back_azimuth_global = None
+        inclination_global = 0.0
+
+        try:
+            if len(args) >= 3:
+                back_azimuth_global = float(args[2])
+            if len(args) >= 4:
+                inclination_global = float(args[3])
+        except ValueError:
+            print("[ERROR] back_azimuth and inclination must be numeric values.")
+            return
+
+        # Get traces
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to rotate.")
+            return
+
+        # Trim to common time window (max starttime → min endtime) per station group
+        # This is required for ObsPy rotate to work correctly
+        try:
+            stream_raw = Stream(traces)
+
+            # Trim per station group: each group of 3 components must share the same time window
+            station_groups_raw = defaultdict(list)
+            for tr in stream_raw:
+                key = (tr.stats.network, tr.stats.station, tr.stats.location)
+                station_groups_raw[key].append(tr)
+
+            trimmed_stream = Stream()
+            for station_key, station_traces in station_groups_raw.items():
+                if len(station_traces) < 2:
+                    # Single component — nothing to rotate, keep as is
+                    trimmed_stream += Stream(station_traces)
+                    continue
+
+                t_start = max(tr.stats.starttime for tr in station_traces)
+                t_end = min(tr.stats.endtime for tr in station_traces)
+
+                if t_end <= t_start:
+                    print(f"[WARN] No common time overlap for station "
+                          f"{station_key[0]}.{station_key[1]}.{station_key[2]} — skipping trim.")
+                    trimmed_stream += Stream(station_traces)
+                    continue
+
+                for tr in station_traces:
+                    trimmed_stream += Stream([tr.copy().trim(starttime=t_start, endtime=t_end)])
+
+                print(f"[INFO] {station_key[0]}.{station_key[1]} trimmed to "
+                      f"{t_start} → {t_end}")
+
+        except Exception as e:
+            print(f"[ERROR] Could not trim traces to common window: {e}")
+            return
+
+        # Standardize components to ZNE before rotating
+        try:
+            stream = SeismicUtils.standardize_to_NE_components(trimmed_stream, verbose=True)
+        except Exception as e:
+            print(f"[ERROR] Could not standardize components: {e}")
+            return
+
+        # ->ZNE: single call, no back_azimuth needed
+        if method == "->ZNE":
+            try:
+                stream.rotate(method=method)
+                self._rename_rotated_channels(stream, method)
+                print(f"[INFO] Rotation '->ZNE' applied to {len(stream)} traces.")
+            except Exception as e:
+                print(f"[ERROR] Rotation failed: {e}")
+                return
+            self.plot_proj.trace_list = list(stream)
+            self.plot_proj.clear_plot()
+            self.prompt_active = False
+            self._exit_code = "replot"
+            return
+
+        # For methods that need back_azimuth: group by station and rotate per station
+        station_groups = defaultdict(list)
+        for tr in stream:
+            key = (tr.stats.network, tr.stats.station, tr.stats.location)
+            station_groups[key].append(tr)
+
+        rotated_stream = Stream()
+        rotated_count = 0
+        skipped_count = 0
+
+        for station_key, station_traces in station_groups.items():
+
+            # Determine back_azimuth for this station
+            if back_azimuth_global is not None:
+                baz = back_azimuth_global
+                inc = inclination_global
+            else:
+                # Try to extract from trace header geodetic info
+                baz = None
+                inc = 0.0
+                for tr in station_traces:
+                    geodetic = tr.stats.get("geodetic", {})
+                    geo_vals = geodetic.get("geodetic", None)  # [dist, az, baz, incidence]
+                    if geo_vals and len(geo_vals) >= 3:
+                        baz = geo_vals[2]  # back_azimuth is index 2
+                        if len(geo_vals) >= 4:
+                            inc = geo_vals[3]
+                        break
+
+                if baz is None:
+                    print(f"[WARN] No back_azimuth found in header for "
+                          f"{station_key[0]}.{station_key[1]}.{station_key[2]} — skipping.")
+                    skipped_count += 1
+                    rotated_stream += Stream(station_traces)
+                    continue
+
+            # Rotate this station's traces
+            try:
+                st_sta = Stream(station_traces)
+                if method in ("->LQT", "ZNE->LQT"):
+                    st_sta.rotate(method=method, back_azimuth=baz, inclination=inc)
+                else:
+                    st_sta.rotate(method=method, back_azimuth=baz)
+                self._rename_rotated_channels(st_sta, method)
+                rotated_stream += st_sta
+                rotated_count += 1
+                print(f"[INFO] {station_key[0]}.{station_key[1]} rotated with "
+                      f"baz={baz:.2f}° inc={inc:.2f}°")
+            except Exception as e:
+                print(f"[ERROR] Rotation failed for {station_key[1]}: {e} — keeping original.")
+                rotated_stream += Stream(station_traces)
+                skipped_count += 1
+
+        print(f"[INFO] Rotation '{method}' complete: "
+              f"{rotated_count} stations rotated, {skipped_count} skipped.")
+
+        # Update trace_list and replot
+        self.plot_proj.trace_list = list(rotated_stream)
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
 
     def _cmd_filter(self, args):
         """
@@ -1367,6 +1560,23 @@ class PlotCommandPrompt:
                 >> stack 0,3,7
                 >> stack 0-5 --method root:4
                 >> stack all --method pw:2
+        """,
+
+        "rotate": """
+        
+        Rotate traces to a specific angle or to the Gear Arc Circle (GAC)
+        Usage:
+            rotate NE->RT                        # uses back_azimuth from trace header (geodetic), to rotate to the GAC
+            rotate NE->RT <back_azimuth>         # uses a single global back_azimuth
+            rotate ->LQT <back_azimuth> [inclination]
+            rotate ->ZNE
+            rotate ZNE->LQT <back_azimuth> [inclination]
+
+        Examples:
+            >> rotate NE->RT
+            >> rotate NE->RT 45.0
+            >> rotate ->LQT 45.0 10.0
+            >> rotate ->ZNE
         """
 
         }
@@ -1400,6 +1610,7 @@ class PlotCommandPrompt:
         print(" concat                                          Merge/concatenate traces")
         print(" shift --phase <name>  ...                       Shift by pick (type: help shift for info)")
         print(" cut --phase <name> ...                          Trim traces (type: help cut for usage)")
+        print(" rotate NE->RT <back_azimuth> ...                Rotate traces (type: help rotate for usage)")
         print(" write --folder_path <path> [--all]              Export displayed traces or all traces in memory to HDF5")
         print(" info                                            Print header information from displayed traces")
         print(" exit                                            Close command line and exit to interactive picking mode")
