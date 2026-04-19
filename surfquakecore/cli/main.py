@@ -10,7 +10,6 @@
 
 import warnings
 import os
-
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore")
 import sys
@@ -19,7 +18,6 @@ from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from dataclasses import dataclass
 from multiprocessing import freeze_support
 from typing import Optional
-
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
@@ -171,6 +169,10 @@ def _create_actions():
             name="ant_cross_stack", run=_ant_cross_stack,
             description="Cross Correlate and Stack Noise matrix"),
 
+        "ftan": _CliActions(
+            name="ftan", run=_ftan,
+            description="Automatic Frequency-Time Analysis"),
+
     }
     return _actions
 
@@ -199,7 +201,6 @@ def main(argv: Optional[str] = None):
         print(f"[ERROR] Unknown command: {input_action}\n")
         _print_main_help(actions)
         sys.exit(1)
-
 
 
 def _project():
@@ -2905,6 +2906,219 @@ def _ant_cross_stack():
         stacker.rotate_specific_daily()
 
     print(f"\nDone. Results written under: {input_path}")
+
+def _ftan():
+    """
+    CLI for Automatic Frequency-Time ANalysis (AFTAN).
+    Measures surface-wave group and phase velocity dispersion
+    from EGFs (H5 crossstack output) or causal seismograms (SAC).
+    """
+    from surfquakecore.ant.aftan import run_aftan, plot_ftan
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} ftan",
+        description="Automatic Frequency-Time ANalysis (AFTAN) of surface-wave dispersion.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+Overview:
+  AFTAN measures surface-wave group (and optionally phase) velocity dispersion
+  curves from Empirical Green's Functions (EGFs) produced by ant_cross_stack,
+  or from earthquake seismograms (SAC format).
+
+  For H5 EGFs the inter-station distance and geometry are read automatically
+  from the tr.stats.geodetic header written by crossstack.py.
+  For SAC files the distance is read from tr.stats.sac.dist.
+
+  Output per pair:
+    <pair>.disp   — text table: period, group-vel, phase-vel, SNR, ...
+    <pair>.png    — FTAN amplitude map + dispersion curve (if --plot)
+
+Usage Examples:
+  # Process all H5 EGFs in a folder, folded branch, default velocity range:
+  surfquake ftan -i ./stack/ -o ./ftan_out/
+
+  # Specify period range, causal branch only, save plots:
+  surfquake ftan -i ./stack/ -o ./ftan_out/ --tmin 3 --tmax 80 \\
+                 --vmin 2.0 --vmax 5.0 --branch causal --plot
+
+  # Single SAC file (causal seismogram):
+  surfquake ftan -i ./event.SAC -o ./ftan_out/ --branch N/A --piover4 1.0
+
+Key Arguments:
+  -i  --input        [REQUIRED] Input folder (H5 batch) or single file
+  -o  --output       [REQUIRED] Output folder for dispersion tables and plots
+  --tmin             [OPTIONAL] Minimum period [s]            (default: 5.0)
+  --tmax             [OPTIONAL] Maximum period [s]            (default: 150.0)
+  --vmin             [OPTIONAL] Min group velocity [km/s]     (default: 2.0)
+  --vmax             [OPTIONAL] Max group velocity [km/s]     (default: 5.0)
+  --nfin             [OPTIONAL] Number of frequency nodes     (default: 64)
+  --ffact            [OPTIONAL] Filter width factor           (default: 1.0)
+  --branch           [OPTIONAL] EGF branch: fold|causal|acausal (default: fold)
+  --piover4          [OPTIONAL] Phase shift: -1 EGF, +1 seismogram (default: -1)
+  --tresh            [OPTIONAL] Jump-detection threshold      (default: 10.0)
+  --perc             [OPTIONAL] Min % of freq range for output (default: 50.0)
+  --npoints          [OPTIONAL] Max jump size in freq bins    (default: 5)
+  --taperl           [OPTIONAL] Left taper factor             (default: 1.5)
+  --pattern          [OPTIONAL] Glob pattern for batch mode   (default: *.H5)
+  --plot             [OPTIONAL] Save FTAN map + dispersion PNG for each pair
+  --no_final         [OPTIONAL] Also write preliminary (arr1) results
+
+Reference:
+  Levshin & Ritzwoller (2001). Automated Detection, Extraction and Measurement
+  of Regional Surface Waves. Pure and Applied Geophysics.
+  Barmine, M. (2006). aftanpg / aftanipg FORTRAN routines, CIEI, CU.
+
+Documentation:
+  https://projectisp.github.io/surfquaketutorial.github.io/
+"""
+    )
+
+    arg_parse.add_argument("-i", "--input", required=True, type=str,
+                           help="Input: folder of H5 EGFs or path to a single waveform file")
+    arg_parse.add_argument("-o", "--output", required=True, type=str,
+                           help="Output folder for dispersion tables and plots")
+    arg_parse.add_argument("--tmin",     type=float, default=5.0,   help="Min period [s]")
+    arg_parse.add_argument("--tmax",     type=float, default=150.0, help="Max period [s]")
+    arg_parse.add_argument("--vmin",     type=float, default=2.0,   help="Min group velocity [km/s]")
+    arg_parse.add_argument("--vmax",     type=float, default=5.0,   help="Max group velocity [km/s]")
+    arg_parse.add_argument("--nfin",     type=int,   default=64,    help="Number of frequency nodes (≤100)")
+    arg_parse.add_argument("--ffact",    type=float, default=1.0,   help="Gaussian filter width factor")
+    arg_parse.add_argument("--tresh",    type=float, default=10.0,  help="Jump-detection threshold")
+    arg_parse.add_argument("--perc",     type=float, default=50.0,  help="Min %% of freq range for output")
+    arg_parse.add_argument("--npoints",  type=int,   default=5,     help="Max jump size in frequency bins")
+    arg_parse.add_argument("--taperl",   type=float, default=1.5,   help="Left-taper factor (taperl*tmax)")
+    arg_parse.add_argument("--branch",   type=str,   default="fold",
+                           choices=["fold", "causal", "acausal"],
+                           help="EGF branch to analyse (ignored for SAC)")
+    arg_parse.add_argument("--piover4",  type=float, default=-1.0,
+                           help="Phase correction: -1.0 EGF/cross-corr, +1.0 seismogram")
+    arg_parse.add_argument("--pattern",  type=str,   default="*.H5",
+                           help="Glob pattern for batch folder mode (default: *.H5)")
+    arg_parse.add_argument("--plot",     action="store_true",
+                           help="Save FTAN amplitude map + dispersion curve PNG")
+    arg_parse.add_argument("--no_final", action="store_true",
+                           help="Also write preliminary (pre jump-correction) dispersion table")
+
+    parsed = arg_parse.parse_args()
+    input_path  = make_abs(parsed.input)
+    output_path = make_abs(parsed.output)
+    os.makedirs(output_path, exist_ok=True)
+
+    common_kw = dict(
+        vmin=parsed.vmin, vmax=parsed.vmax,
+        tmin=parsed.tmin, tmax=parsed.tmax,
+        tresh=parsed.tresh, ffact=parsed.ffact,
+        perc=parsed.perc, npoints=parsed.npoints,
+        taperl=parsed.taperl, nfin=parsed.nfin,
+        piover4=parsed.piover4, branch=parsed.branch,
+    )
+
+    # ------------------------------------------------------------------ #
+    # Collect files: folder → batch, file → single                        #
+    # ------------------------------------------------------------------ #
+    import glob
+    if os.path.isdir(input_path):
+        files = sorted(glob.glob(os.path.join(input_path, parsed.pattern)))
+        if not files:
+            print(f"[FTAN] No files matching '{parsed.pattern}' found in {input_path}")
+            return
+        print(f"[FTAN] Found {len(files)} file(s) matching '{parsed.pattern}'")
+    else:
+        if not os.path.isfile(input_path):
+            print(f"[FTAN] Input not found: {input_path}")
+            return
+        files = [input_path]
+
+    # ------------------------------------------------------------------ #
+    # Process each file                                                    #
+    # ------------------------------------------------------------------ #
+    n_ok = 0
+    n_skip = 0
+
+    for filepath in files:
+        basename = os.path.splitext(os.path.basename(filepath))[0]
+        try:
+            result = run_aftan(filepath, **common_kw)
+            ierr   = result['ierr']
+
+            if ierr == 2:
+                print(f"[SKIP] {basename}: no final result (ierr=2)")
+                n_skip += 1
+                continue
+
+            delta  = result['delta']
+            #dt     = result['dt']
+            nfout1 = result['nfout1']
+            nfout2 = result['nfout2']
+            arr1   = result['arr1']
+            arr2   = result['arr2']
+            branch_used = result.get('branch', parsed.branch)
+
+            # ---- write final dispersion table ----
+            if nfout2 > 0:
+                out_file = os.path.join(output_path, basename + ".disp")
+                header = (
+                    f"# AFTAN dispersion  file={basename}  delta={delta:.3f} km  "
+                    f"branch={branch_used}  ierr={ierr}\n"
+                    f"# {'Period_s':>10} {'GroupVel':>10} {'PhaseVel':>10} "
+                    f"{'Amplitude':>10} {'SNR_dB':>10} {'HalfWidth_s':>12} "
+                    f"{'ObsPeriod_s':>12}\n"
+                )
+                rows = []
+                for i in range(nfout2):
+                    rows.append(
+                        f"  {arr2[0,i]:>10.4f} {arr2[2,i]:>10.4f} {arr2[3,i]:>10.4f} "
+                        f"{arr2[4,i]:>10.2f} {arr2[5,i]:>10.2f} {arr2[6,i]:>12.4f} "
+                        f"{arr2[1,i]:>12.4f}"
+                    )
+                with open(out_file, "w") as fh:
+                    fh.write(header)
+                    fh.write("\n".join(rows) + "\n")
+                print(f"[OK]  {basename}  Δ={delta:.1f} km  "
+                      f"nper={nfout2}  ierr={ierr}  → {out_file}")
+
+            # ---- optionally write preliminary table ----
+            if parsed.no_final and nfout1 > 0:
+                out_file1 = os.path.join(output_path, basename + ".disp.prelim")
+                header1 = (
+                    f"# AFTAN preliminary  file={basename}  delta={delta:.3f} km\n"
+                    f"# {'Period_s':>10} {'GroupVel':>10} {'PhaseVel':>10} "
+                    f"{'Amplitude':>10} {'DiscFun':>10} {'SNR_dB':>10} "
+                    f"{'HalfWidth_s':>12} {'ObsPeriod_s':>12}\n"
+                )
+                rows1 = []
+                for i in range(nfout1):
+                    rows1.append(
+                        f"  {arr1[0,i]:>10.4f} {arr1[2,i]:>10.4f} {arr1[3,i]:>10.4f} "
+                        f"{arr1[4,i]:>10.2f} {arr1[5,i]:>10.4f} {arr1[6,i]:>10.2f} "
+                        f"{arr1[7,i]:>12.4f} {arr1[1,i]:>12.4f}"
+                    )
+                with open(out_file1, "w") as fh:
+                    fh.write(header1)
+                    fh.write("\n".join(rows1) + "\n")
+
+            # ---- optionally save plot ----
+            if parsed.plot and nfout2 > 0:
+                import matplotlib
+                matplotlib.use("Agg")   # non-interactive backend
+                fig = plot_ftan(result, show=False,
+                                title=f"{basename}  Δ={delta:.1f} km  branch={branch_used}")
+                if fig is not None:
+                    png_path = os.path.join(output_path, basename + ".png")
+                    fig.savefig(png_path, dpi=150, bbox_inches="tight")
+                    import matplotlib.pyplot as plt
+                    plt.close(fig)
+
+            n_ok += 1
+
+        except Exception as exc:
+            import traceback as _tb
+            print(f"[ERROR] {basename}: {exc}")
+            _tb.print_exc()
+            n_skip += 1
+
+    print(f"\n[FTAN] Done.  Processed: {n_ok}  Skipped/failed: {n_skip}")
+    print(f"[FTAN] Output in: {output_path}")
 
 if __name__ == "__main__":
     freeze_support()
