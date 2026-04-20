@@ -2987,9 +2987,14 @@ Documentation:
     arg_parse.add_argument("--perc",     type=float, default=50.0,  help="Min %% of freq range for output")
     arg_parse.add_argument("--npoints",  type=int,   default=5,     help="Max jump size in frequency bins")
     arg_parse.add_argument("--taperl",   type=float, default=1.5,   help="Left-taper factor (taperl*tmax)")
-    arg_parse.add_argument("--branch",   type=str,   default="fold",
-                           choices=["fold", "causal", "acausal"],
+    arg_parse.add_argument("--branch",   type=str,   default="fold", choices=["fold", "causal", "acausal"],
                            help="EGF branch to analyse (ignored for SAC)")
+    arg_parse.add_argument("--ref", type=str, default=None,
+                           help="Reference model name (e.g. 'ak135f') or path to CSV. "
+                                "Enables phase velocity output and phase-match filter.")
+    arg_parse.add_argument("--wave", type=str, default="rayleigh",
+                           choices=["rayleigh", "love"],
+                           help="Wave type for reference curve (default: rayleigh)")
     arg_parse.add_argument("--piover4",  type=float, default=-1.0,
                            help="Phase correction: -1.0 EGF/cross-corr, +1.0 seismogram")
     arg_parse.add_argument("--pattern",  type=str,   default="*.H5",
@@ -3004,6 +3009,30 @@ Documentation:
     output_path = make_abs(parsed.output)
     os.makedirs(output_path, exist_ok=True)
 
+    # ------------------------------------------------------------------ #
+    # Load reference model if requested                                   #
+    # ------------------------------------------------------------------ #
+    phprper = None
+    phprvel = None
+    pred = None
+
+    if parsed.ref:
+        try:
+            from surfquakecore.ant.ant_refs import ref_for_aftan
+            ref_data = ref_for_aftan(parsed.ref, wave=parsed.wave,
+                                     tmin=parsed.tmin, tmax=parsed.tmax)
+            phprper = ref_data['phprper']
+            phprvel = ref_data['phprvel']
+            pred = ref_data['pred']
+            print(f"[FTAN] Reference model '{parsed.ref}' loaded  "
+                  f"({parsed.wave}, {len(phprper)} points, "
+                  f"T={phprper[0]:.1f}–{phprper[-1]:.1f} s)")
+        except Exception as exc:
+            print(f"[FTAN][WARN] Could not load reference '{parsed.ref}': {exc}")
+            print("[FTAN][WARN] Continuing without reference (group velocity only).")
+
+    use_pmf = (pred is not None)  # enable phase-match filter only if pred available
+
     common_kw = dict(
         vmin=parsed.vmin, vmax=parsed.vmax,
         tmin=parsed.tmin, tmax=parsed.tmax,
@@ -3011,6 +3040,8 @@ Documentation:
         perc=parsed.perc, npoints=parsed.npoints,
         taperl=parsed.taperl, nfin=parsed.nfin,
         piover4=parsed.piover4, branch=parsed.branch,
+        phprper=phprper, phprvel=phprvel,
+        pred=pred, use_pmf=use_pmf,
     )
 
     # ------------------------------------------------------------------ #

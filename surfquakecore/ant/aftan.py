@@ -1348,10 +1348,10 @@ def run_aftan(filepath: str,
               taperl: float = 1.5,
               nfin: int     = 64,
               piover4: float = -1.0,
-              pred: Optional[np.ndarray] = None,
-              phprper: Optional[np.ndarray] = None,
-              phprvel: Optional[np.ndarray] = None,
-              use_pmf: bool  = False,
+              pred: Optional[np.ndarray] = None,       # ← already there?
+              phprper: Optional[np.ndarray] = None,    # ← ADD if missing
+              phprvel: Optional[np.ndarray] = None,    # ← ADD if missing
+              use_pmf: bool  = False,                  # ← ADD if missing
               trace_index: int = 0,
               branch: str   = 'fold',
               force_dist_km: Optional[float] = None,
@@ -1482,8 +1482,9 @@ def run_aftan(filepath: str,
         vmin=vmin, vmax=vmax, tmin=tmin, tmax=tmax,
         tresh=tresh, ffact=ffact, perc=perc, npoints=npoints,
         taperl=taperl, nfin=nfin,
-        nphpr=len(phprper) if phprper is not None else 0,
-        phprper=phprper, phprvel=phprvel,
+        nphpr=len(phprper) if phprper is not None else 0,  # ← this line critical
+        phprper=phprper,
+        phprvel=phprvel,
     )
 
     if use_pmf and pred is not None:
@@ -1496,7 +1497,11 @@ def run_aftan(filepath: str,
                 tamp=tamp, amp=amp, ierr=ierr,
                 delta=delta, dt=dt, t0=t0,
                 azim=azim, bazim=bazim,
-                branch=branch_used, trace=tr, source=source)
+                branch=branch_used, trace=tr, source=source,
+                sei=sei,
+                phprper=phprper,
+                phprvel=phprvel,
+                pred=pred)
 
 
 # ---------------------------------------------------------------------------
@@ -1547,26 +1552,42 @@ def run_aftan_batch(folder: str,
 
 def plot_ftan(result: dict,
               show: bool  = True,
-              vel_axis: bool = True,
-              title: Optional[str] = None):
+              title: Optional[str] = None,
+              vmin_plot: Optional[float] = None,
+              vmax_plot: Optional[float] = None,
+              cmap: str = 'jet'):
     """
-    Plot the FTAN amplitude map alongside the dispersion curves.
+    Three-panel FTAN figure matching the standard seismological layout:
+
+      LEFT   — Dispersion curves: Period [s] (x) vs Velocity [km/s] (y)
+                group velocity (blue squares) + phase velocity if available
+      CENTRE — FTAN amplitude map: Period [s] (x) vs Velocity [km/s] (y)
+                with the automatic group-velocity ridge overlaid in white
+      RIGHT  — EGF waveform (fold / causal / acausal branch):
+                Amplitude (x) vs Lag time [s] (y), narrow panel
 
     Parameters
     ----------
-    result   : dict returned by run_aftan()
-    show     : call plt.show() when True
-    vel_axis : show group velocity on the x-axis of the amplitude map
-               (True, default) instead of group travel time
-    title    : custom figure title; auto-generated if None
+    result    : dict returned by run_aftan()
+    show      : call plt.show() when True
+    title     : figure suptitle; auto-generated if None
+    vmin_plot : override minimum velocity for both left & centre y-axes
+    vmax_plot : override maximum velocity for both left & centre y-axes
+    cmap      : colormap for the amplitude map (default 'jet')
     """
     try:
         import matplotlib.pyplot as plt
+        import matplotlib.gridspec as gridspec
+        from matplotlib.colors import Normalize
+        from matplotlib.cm import ScalarMappable
     except ImportError:
         print("matplotlib not available – skipping plot")
         return
 
-    amp    = result['amp']          # (nf, ncol)
+    # ------------------------------------------------------------------ #
+    # Unpack result                                                        #
+    # ------------------------------------------------------------------ #
+    amp    = result['amp']          # shape (nf, ncol)  — rows=freq, cols=time
     tamp   = result['tamp']
     dt     = result['dt']
     delta  = result['delta']
@@ -1576,15 +1597,38 @@ def plot_ftan(result: dict,
     nfout1 = result['nfout1']
     nfout2 = result['nfout2']
     source = result.get('source', '')
-    branch = result.get('branch', '')
+    branch = result.get('branch', 'fold')
+    sei    = result.get('sei', None)      # prepared EGF branch waveform
 
     nf, ncol = amp.shape
-    times = tamp + np.arange(ncol) * dt      # lag times of each column
 
-    # group velocity at each column  (lag = t + t0, but t0=0 for EGFs)
+    # time axis of amp map columns (lag = 0 … max_lag for EGFs, t0=0)
+    times = tamp + np.arange(ncol) * dt   # [s], starts at tamp
+
+    # convert each time column to group velocity  U = delta / lag
     lag = times + t0
     with np.errstate(divide='ignore', invalid='ignore'):
-        vels = np.where(np.abs(lag) > 1e-6, delta / lag, 0.0)
+        vels = np.where(lag > 1e-3, delta / lag, np.nan)   # [km/s]
+
+    # period axis: log-spaced frequencies were stored index 0=shortest period
+    # recover from arr1 if available, else use index
+    if nfout1 > 0:
+        per_min = arr1[0, 0]
+        per_max = arr1[0, nfout1 - 1]
+    else:
+        per_min, per_max = tamp, tamp + ncol * dt   # fallback
+
+    # periods corresponding to each frequency index row
+    # (rows go 0=high-freq/short-period … nf-1=low-freq/long-period
+    #  because of log(ome)+k*step with step<0)
+    per_axis = np.linspace(per_min, per_max, nf)
+
+    # velocity limits for display
+    v_lo = vmin_plot if vmin_plot is not None else float(np.nanmin(vels[vels > 0])) if np.any(vels > 0) else 2.0
+    v_hi = vmax_plot if vmax_plot is not None else float(np.nanmax(vels[np.isfinite(vels)])) if np.any(np.isfinite(vels)) else 5.0
+    # round nicely
+    #v_lo = np.floor(v_lo * 4) / 4
+    #v_hi = np.ceil(v_hi  * 4) / 4
 
     # ---- auto title ----
     if title is None:
@@ -1593,63 +1637,177 @@ def plot_ftan(result: dict,
         az   = result.get('azim', float('nan'))
         title = (f"{name}   Δ={delta:.1f} km"
                  + (f"  az={az:.1f}°" if not np.isnan(az) else "")
-                 + (f"  branch={branch}" if branch not in ('N/A', '') else "")
-                 + (f"  [{source}]" if source else ""))
+                 + (f"  branch={branch}" if branch not in ('N/A', '') else ""))
 
-    fig, (ax_map, ax_disp) = plt.subplots(1, 2, figsize=(15, 6))
+    # ------------------------------------------------------------------ #
+    # Figure layout:  [disp | ftan_map | egf]  widths 3 : 3 : 1          #
+    # ------------------------------------------------------------------ #
+    fig = plt.figure(figsize=(16, 7))
+    gs  = gridspec.GridSpec(1, 3, width_ratios=[3, 3, 1.2],
+                            wspace=0.32, left=0.07, right=0.96,
+                            top=0.88, bottom=0.11)
 
-    # ---- amplitude map ----
-    if vel_axis:
-        valid = vels > 0
-        if np.any(valid):
-            T_idx = np.arange(nf)
-            ax_map.pcolormesh(vels, T_idx, amp,
-                              cmap='jet', vmin=40, vmax=100, shading='auto')
-            ax_map.set_xlim(vels[valid].min(), vels[valid].max())
-            ax_map.set_xlabel('Group velocity [km/s]')
-        else:
-            vel_axis = False   # fallback
+    ax_disp = fig.add_subplot(gs[0])
+    ax_map  = fig.add_subplot(gs[1])
+    ax_egf  = fig.add_subplot(gs[2])
 
-    if not vel_axis:
-        ax_map.imshow(amp, aspect='auto', origin='lower',
-                      extent=[times[0], times[-1], 0, nf],
-                      cmap='jet', vmin=40, vmax=100)
-        ax_map.set_xlabel('Group travel time [s]')
-
-    ax_map.set_ylabel('Frequency index  (0 = shortest period)')
-    ax_map.set_title('FTAN amplitude map')
-
-    # overlay automatic ridge
-    if nfout2 > 0:
-        ridge_v = arr2[2, :nfout2]
-        if vel_axis:
-            ax_map.plot(ridge_v, np.arange(nfout2), 'w-', lw=1.8,
-                        label='auto ridge')
-        else:
-            ax_map.plot(delta / ridge_v, np.arange(nfout2), 'w-', lw=1.8)
-
-    # ---- dispersion curves ----
+    # ================================================================== #
+    # LEFT panel — dispersion curves                                      #
+    # ================================================================== #
     if nfout1 > 0:
         ax_disp.plot(arr1[0, :nfout1], arr1[2, :nfout1],
-                     'o', color='lightsteelblue', ms=4, alpha=0.6,
+                     'o', color='steelblue', ms=3, alpha=0.4,
                      label='Prelim. group vel.')
     if nfout2 > 0:
         ax_disp.plot(arr2[0, :nfout2], arr2[2, :nfout2],
-                     's-', color='navy', ms=5, lw=1.5,
-                     label='Final group vel.')
-        if np.any(arr2[3, :nfout2] > 0):
-            ax_disp.plot(arr2[0, :nfout2], arr2[3, :nfout2],
-                         '^-', color='firebrick', ms=5, lw=1.5,
+                     's-', color='navy', ms=5, lw=1.8,
+                     label='Group vel.')
+        # phase velocity — only plot if values look physical (> 0)
+        pv = arr2[3, :nfout2]
+        if np.any(pv > 0.5):
+            ax_disp.plot(arr2[0, :nfout2], pv,
+                         '^-', color='firebrick', ms=5, lw=1.8,
                          label='Phase vel.')
 
-    ax_disp.set_xlabel('Period [s]')
-    ax_disp.set_ylabel('Velocity [km/s]')
-    ax_disp.set_title('Dispersion curves')
-    ax_disp.legend(fontsize=9)
-    ax_disp.grid(True, alpha=0.3)
+        # ---- reference model overlay (left panel) ----
+        phprper_ref = result.get('phprper')
+        phprvel_ref = result.get('phprvel')
+        pred_ref = result.get('pred')
 
-    fig.suptitle(title, fontsize=10)
-    plt.tight_layout()
+        if phprper_ref is not None and phprvel_ref is not None:
+            ax_disp.plot(phprper_ref, phprvel_ref,
+                         '--', color='orange', lw=1.5, alpha=0.8,
+                         label='Ref. phase vel.')
+
+        if pred_ref is not None:
+            ax_disp.plot(pred_ref[:, 0], pred_ref[:, 1],
+                         '--', color='limegreen', lw=1.5, alpha=0.8,
+                         label='Ref. group vel.')
+
+    ax_disp.set_xlim(per_min, per_max)
+    ax_disp.set_ylim(v_lo, v_hi)
+    ax_disp.set_xlabel('Period [s]', fontsize=11)
+    ax_disp.set_ylabel('Velocity [km/s]', fontsize=11)
+    ax_disp.set_title('Dispersion curves', fontsize=11)
+    ax_disp.legend(fontsize=8, loc='lower right')
+    ax_disp.grid(True, alpha=0.25, linestyle='--')
+
+    # ================================================================== #
+    # CENTRE panel — FTAN amplitude map (Period × Velocity)              #
+    # ================================================================== #
+    # Build a regular (period, velocity) grid by interpolating amp rows
+    n_vel  = 300
+    n_per  = nf
+    vel_grid = np.linspace(v_lo, v_hi, n_vel)
+    per_grid = per_axis                        # nf points
+
+    # For each frequency (row), find which velocity columns are in range
+    # and interpolate. amp[row, col] is at velocity vels[col].
+    amp_img = np.full((n_vel, n_per), np.nan)
+
+    for ki in range(nf):
+        row_amp  = amp[ki, :]       # amplitudes across time/velocity
+        row_vel  = vels             # velocity at each column
+        # keep only finite values inside display range
+        mask = np.isfinite(row_vel) & (row_vel >= v_lo) & (row_vel <= v_hi)
+        if mask.sum() < 2:
+            continue
+        rv = row_vel[mask]
+        ra = row_amp[mask]
+        # sort by velocity (vels is decreasing in time)
+        idx = np.argsort(rv)
+        rv, ra = rv[idx], ra[idx]
+        amp_img[:, ki] = np.interp(vel_grid, rv, ra,
+                                   left=np.nan, right=np.nan)
+
+    # normalise: 0 dB at max, clip at -5 dB (like model.png colour scale)
+    amp_norm = amp_img - np.nanmax(amp_img)
+    amp_norm = np.clip(amp_norm, -25, 0)
+
+    pcm = ax_map.contourf(per_grid, vel_grid, amp_norm,
+                            cmap=cmap, vmin=-25, vmax=0, levels = 100,
+                            shading='auto')
+
+    # reference group velocity on map
+    if pred_ref is not None:
+        rp = pred_ref[:, 0]
+        rv = pred_ref[:, 1]
+        mask_ref = (rp >= per_min) & (rp <= per_max) & (rv >= v_lo) & (rv <= v_hi)
+        if mask_ref.sum() > 1:
+            ax_map.plot(rp[mask_ref], rv[mask_ref],
+                        '--', color='orange', lw=1.5, alpha=0.9,
+                        label='Ref. group vel.')
+    # colourbar
+    cbar = fig.colorbar(pcm, ax=ax_map, pad=0.02, shrink=0.85)
+    cbar.set_label('Power [dB]', fontsize=9)
+    #cbar.set_ticks([-5, -4, -3, -2, -1, 0])
+
+    # overlay group-velocity ridge
+    if nfout2 > 0:
+        per_ridge = arr2[0, :nfout2]
+        vel_ridge = arr2[2, :nfout2]
+        ax_map.plot(per_ridge, vel_ridge,
+                    'w.', ms=6, lw=0, label='auto ridge')
+
+    ax_map.set_xlim(per_min, per_max)
+    ax_map.set_ylim(v_lo, v_hi)
+    ax_map.set_xlabel('Period [s]', fontsize=11)
+    ax_map.set_ylabel('Velocity [km/s]', fontsize=11)
+    ax_map.set_title('Group Velocity', fontsize=11)
+
+    # ================================================================== #
+    # RIGHT panel — EGF waveform                                         #
+    # ================================================================== #
+    if sei is not None and len(sei) > 0:
+        n_sei   = len(sei)
+        t_sei   = np.arange(n_sei) * dt          # lag times [s]
+
+        # clip to a sensible lag window: 0 … delta/vmin + some margin
+        t_max_show = delta / max(v_lo, 0.5) * 1.1
+        mask_t = t_sei <= t_max_show
+
+        # normalise waveform to ±1 for display
+        wf = sei[mask_t].astype(float)
+        peak = np.max(np.abs(wf))
+        if peak > 0:
+            wf /= peak
+
+        t_show = t_sei[mask_t]
+
+        # plot: x=amplitude, y=time (so waveform reads bottom→top)
+        ax_egf.plot(wf, t_show, color='steelblue', lw=0.8)
+        ax_egf.fill_betweenx(t_show, 0, wf,
+                             where=wf >= 0, color='steelblue', alpha=0.35)
+        ax_egf.fill_betweenx(t_show, 0, wf,
+                             where=wf <  0, color='tomato',    alpha=0.35)
+
+        # mark expected arrival window
+        if v_lo > 0 and v_hi > 0:
+            t_fast = delta / v_hi
+            t_slow = delta / v_lo
+            ax_egf.axhspan(t_fast, t_slow,
+                           color='gold', alpha=0.12, label='vel. window')
+
+        ax_egf.set_ylim(0, t_max_show)
+        ax_egf.set_xlim(-1.5, 1.5)
+        ax_egf.set_xlabel('Amplitude\n(norm.)', fontsize=9)
+        ax_egf.set_ylabel('Time [s]', fontsize=10)
+        ax_egf.set_title('EGF', fontsize=11)
+        ax_egf.axvline(0, color='k', lw=0.5, alpha=0.4)
+        ax_egf.yaxis.set_label_position('right')
+        ax_egf.yaxis.tick_right()
+        ax_egf.tick_params(axis='y', labelsize=8)
+        ax_egf.tick_params(axis='x', labelsize=7)
+        lbl = {'fold': 'fold (avg)', 'causal': 'causal', 'acausal': 'acausal'}
+        ax_egf.set_title(f"EGF\n({lbl.get(branch, branch)})", fontsize=10)
+    else:
+        ax_egf.text(0.5, 0.5, 'No EGF\ndata',
+                    ha='center', va='center', transform=ax_egf.transAxes,
+                    fontsize=10, color='gray')
+        ax_egf.set_title('EGF', fontsize=11)
+
+    # ------------------------------------------------------------------ #
+    fig.suptitle(title, fontsize=11, y=0.97)
     if show:
         plt.show()
     return fig
@@ -1665,3 +1823,4 @@ if __name__ == '__main__':
     print("  run_aftan()       – high-level wrapper (SAC / H5 / MiniSEED)")
     print("  run_aftan_batch() – process all H5 files in a folder")
     print("  plot_ftan()       – amplitude map + dispersion curves")
+
