@@ -3019,8 +3019,7 @@ Documentation:
     if parsed.ref:
         try:
             from surfquakecore.ant.ant_refs import ref_for_aftan
-            ref_data = ref_for_aftan(parsed.ref, wave=parsed.wave,
-                                     tmin=parsed.tmin, tmax=parsed.tmax)
+            ref_data = ref_for_aftan(parsed.ref, wave=parsed.wave, tmin=parsed.tmin, tmax=parsed.tmax)
             phprper = ref_data['phprper']
             phprvel = ref_data['phprvel']
             pred = ref_data['pred']

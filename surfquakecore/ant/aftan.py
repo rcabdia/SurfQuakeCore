@@ -6,6 +6,7 @@ Pure-Python / NumPy / SciPy translation of the original FORTRAN routines
   • aftanipg.f  (iterative FTAN with phase-match filter)
 
 Original FORTRAN author : M. Barmine, CIEI, CU  (v2.00, 2006)
+Python translation       : Claude Sonnet, 2026
 
 Dependencies
 ------------
@@ -92,6 +93,7 @@ dramatically improving the separation of overlapping modes.
 
 import numpy as np
 from scipy.interpolate import CubicSpline, interp1d
+from scipy.signal import hilbert
 from typing import Optional, Tuple
 
 
@@ -117,7 +119,7 @@ def _taper(nb: int, ne: int, n: int, sei: np.ndarray,
     """
     # power-of-2 padding
     ns = 1
-    while ns < ne:
+    while ns < n:
         ns *= 2
 
     s = np.zeros(ns, dtype=np.complex128)
@@ -1348,10 +1350,10 @@ def run_aftan(filepath: str,
               taperl: float = 1.5,
               nfin: int     = 64,
               piover4: float = -1.0,
-              pred: Optional[np.ndarray] = None,       # ← already there?
-              phprper: Optional[np.ndarray] = None,    # ← ADD if missing
-              phprvel: Optional[np.ndarray] = None,    # ← ADD if missing
-              use_pmf: bool  = False,                  # ← ADD if missing
+              pred: Optional[np.ndarray] = None,
+              phprper: Optional[np.ndarray] = None,
+              phprvel: Optional[np.ndarray] = None,
+              use_pmf: bool  = False,
               trace_index: int = 0,
               branch: str   = 'fold',
               force_dist_km: Optional[float] = None,
@@ -1482,9 +1484,8 @@ def run_aftan(filepath: str,
         vmin=vmin, vmax=vmax, tmin=tmin, tmax=tmax,
         tresh=tresh, ffact=ffact, perc=perc, npoints=npoints,
         taperl=taperl, nfin=nfin,
-        nphpr=len(phprper) if phprper is not None else 0,  # ← this line critical
-        phprper=phprper,
-        phprvel=phprvel,
+        nphpr=len(phprper) if phprper is not None else 0,
+        phprper=phprper, phprvel=phprvel,
     )
 
     if use_pmf and pred is not None:
@@ -1499,9 +1500,7 @@ def run_aftan(filepath: str,
                 azim=azim, bazim=bazim,
                 branch=branch_used, trace=tr, source=source,
                 sei=sei,
-                phprper=phprper,
-                phprvel=phprvel,
-                pred=pred)
+                phprper=phprper, phprvel=phprvel, pred=pred)
 
 
 # ---------------------------------------------------------------------------
@@ -1627,8 +1626,8 @@ def plot_ftan(result: dict,
     v_lo = vmin_plot if vmin_plot is not None else float(np.nanmin(vels[vels > 0])) if np.any(vels > 0) else 2.0
     v_hi = vmax_plot if vmax_plot is not None else float(np.nanmax(vels[np.isfinite(vels)])) if np.any(np.isfinite(vels)) else 5.0
     # round nicely
-    #v_lo = np.floor(v_lo * 4) / 4
-    #v_hi = np.ceil(v_hi  * 4) / 4
+    v_lo = np.floor(v_lo * 4) / 4
+    v_hi = np.ceil(v_hi  * 4) / 4
 
     # ---- auto title ----
     if title is None:
@@ -1654,35 +1653,36 @@ def plot_ftan(result: dict,
     # ================================================================== #
     # LEFT panel — dispersion curves                                      #
     # ================================================================== #
+    # pull reference arrays from result (None if no --ref was given)
+    ref_phprper = result.get('phprper')   # phase vel reference periods
+    ref_phprvel = result.get('phprvel')   # phase vel reference values
+    ref_pred    = result.get('pred')      # group vel prediction (N×2)
+
+    # ---- reference curves first so data sits on top ----
+    if ref_pred is not None:
+        ax_disp.plot(ref_pred[:, 0], ref_pred[:, 1],
+                     '--', color='limegreen', lw=1.6, alpha=0.85,
+                     zorder=1, label='Ref. group vel.')
+    if ref_phprper is not None and ref_phprvel is not None:
+        ax_disp.plot(ref_phprper, ref_phprvel,
+                     '--', color='darkorange', lw=1.6, alpha=0.85,
+                     zorder=1, label='Ref. phase vel.')
+
+    # ---- measured curves ----
     if nfout1 > 0:
         ax_disp.plot(arr1[0, :nfout1], arr1[2, :nfout1],
                      'o', color='steelblue', ms=3, alpha=0.4,
-                     label='Prelim. group vel.')
+                     zorder=2, label='Prelim. group vel.')
     if nfout2 > 0:
         ax_disp.plot(arr2[0, :nfout2], arr2[2, :nfout2],
                      's-', color='navy', ms=5, lw=1.8,
-                     label='Group vel.')
-        # phase velocity — only plot if values look physical (> 0)
+                     zorder=3, label='Group vel.')
+        # phase velocity — only plot if values look physical (> 0.5 km/s)
         pv = arr2[3, :nfout2]
         if np.any(pv > 0.5):
             ax_disp.plot(arr2[0, :nfout2], pv,
                          '^-', color='firebrick', ms=5, lw=1.8,
-                         label='Phase vel.')
-
-        # ---- reference model overlay (left panel) ----
-        phprper_ref = result.get('phprper')
-        phprvel_ref = result.get('phprvel')
-        pred_ref = result.get('pred')
-
-        if phprper_ref is not None and phprvel_ref is not None:
-            ax_disp.plot(phprper_ref, phprvel_ref,
-                         '--', color='orange', lw=1.5, alpha=0.8,
-                         label='Ref. phase vel.')
-
-        if pred_ref is not None:
-            ax_disp.plot(pred_ref[:, 0], pred_ref[:, 1],
-                         '--', color='limegreen', lw=1.5, alpha=0.8,
-                         label='Ref. group vel.')
+                         zorder=3, label='Phase vel.')
 
     ax_disp.set_xlim(per_min, per_max)
     ax_disp.set_ylim(v_lo, v_hi)
@@ -1722,32 +1722,33 @@ def plot_ftan(result: dict,
 
     # normalise: 0 dB at max, clip at -5 dB (like model.png colour scale)
     amp_norm = amp_img - np.nanmax(amp_img)
-    amp_norm = np.clip(amp_norm, -25, 0)
+    amp_norm = np.clip(amp_norm, -5, 0)
 
-    pcm = ax_map.contourf(per_grid, vel_grid, amp_norm,
-                            cmap=cmap, vmin=-25, vmax=0, levels = 100,
+    pcm = ax_map.pcolormesh(per_grid, vel_grid, amp_norm,
+                            cmap=cmap, vmin=-5, vmax=0,
                             shading='auto')
 
-    # reference group velocity on map
-    if pred_ref is not None:
-        rp = pred_ref[:, 0]
-        rv = pred_ref[:, 1]
-        mask_ref = (rp >= per_min) & (rp <= per_max) & (rv >= v_lo) & (rv <= v_hi)
-        if mask_ref.sum() > 1:
-            ax_map.plot(rp[mask_ref], rv[mask_ref],
-                        '--', color='orange', lw=1.5, alpha=0.9,
-                        label='Ref. group vel.')
     # colourbar
     cbar = fig.colorbar(pcm, ax=ax_map, pad=0.02, shrink=0.85)
     cbar.set_label('Power [dB]', fontsize=9)
-    #cbar.set_ticks([-5, -4, -3, -2, -1, 0])
+    cbar.set_ticks([-5, -4, -3, -2, -1, 0])
 
-    # overlay group-velocity ridge
+    # overlay automatic group-velocity ridge (white dots)
     if nfout2 > 0:
         per_ridge = arr2[0, :nfout2]
         vel_ridge = arr2[2, :nfout2]
         ax_map.plot(per_ridge, vel_ridge,
-                    'w.', ms=6, lw=0, label='auto ridge')
+                    'w.', ms=6, lw=0, zorder=3, label='Auto ridge')
+
+    # overlay reference group velocity (if provided)
+    if ref_pred is not None:
+        rp = ref_pred[:, 0]
+        rv = ref_pred[:, 1]
+        mask_ref = (rp >= per_min) & (rp <= per_max) & (rv >= v_lo) & (rv <= v_hi)
+        if mask_ref.sum() > 1:
+            ax_map.plot(rp[mask_ref], rv[mask_ref],
+                        '--', color='limegreen', lw=1.8, alpha=0.9,
+                        zorder=4, label='Ref. group vel.')
 
     ax_map.set_xlim(per_min, per_max)
     ax_map.set_ylim(v_lo, v_hi)
@@ -1823,4 +1824,5 @@ if __name__ == '__main__':
     print("  run_aftan()       – high-level wrapper (SAC / H5 / MiniSEED)")
     print("  run_aftan_batch() – process all H5 files in a folder")
     print("  plot_ftan()       – amplitude map + dispersion curves")
+
 

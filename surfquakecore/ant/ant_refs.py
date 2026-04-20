@@ -72,30 +72,32 @@ def load_ref(name: str) -> dict:
     ValueError         if the CSV cannot be parsed.
     """
     # --- full path supplied directly ---
-    if os.path.isfile(name):
-        csv_path = name
-        model_name = os.path.splitext(os.path.basename(name))[0] + "_earth_velocity_first_mode.txt"
-    else:
-        # --- look up in models directory ---
-        if not os.path.isdir(_MODELS_DIR):
-            raise FileNotFoundError(
-                f"Models directory not found: {_MODELS_DIR}\n"
-                f"Create it and place <model>.csv files inside."
-            )
-        target = _normalise_name(name)
-        csv_path = None
-        for f in os.listdir(_MODELS_DIR):
-            if f.endswith(".csv") and _normalise_name(f[:-4]) == target:
-                csv_path = os.path.join(_MODELS_DIR, f)
-                model_name = f[:-4]
-                break
-        if csv_path is None:
-            available = list_refs()
-            raise FileNotFoundError(
-                f"Reference model '{name}' not found in {_MODELS_DIR}.\n"
-                f"Available models: {available}\n"
-                f"You can also pass a full path to a CSV file."
-            )
+    model_name = os.path.splitext(os.path.basename(name))[0] + "_earth_velocity_fundamental_mode.txt"
+    csv_path = os.path.join(_MODELS_DIR, model_name)
+    # if os.path.isfile(name):
+    #     csv_path = name
+    #     model_name = os.path.splitext(os.path.basename(name))[0] + "_earth_velocity_first_mode.txt"
+    # else:
+    #     # --- look up in models directory ---
+    #     if not os.path.isdir(_MODELS_DIR):
+    #         raise FileNotFoundError(
+    #             f"Models directory not found: {_MODELS_DIR}\n"
+    #             f"Create it and place <model>.csv files inside."
+    #         )
+    #     target = _normalise_name(name)
+    #     csv_path = None
+    #     for f in os.listdir(_MODELS_DIR):
+    #         if f.endswith(".csv") and _normalise_name(f[:-4]) == target:
+    #             csv_path = os.path.join(_MODELS_DIR, f)
+    #             model_name = f[:-4]
+    #             break
+    #     if csv_path is None:
+    #         available = list_refs()
+    #         raise FileNotFoundError(
+    #             f"Reference model '{name}' not found in {_MODELS_DIR}.\n"
+    #             f"Available models: {available}\n"
+    #             f"You can also pass a full path to a CSV file."
+    #         )
 
     # --- parse CSV ---
     try:
