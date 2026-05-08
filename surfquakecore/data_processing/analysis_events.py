@@ -11,7 +11,6 @@
 import traceback
 import yaml
 from obspy import read_inventory, UTCDateTime
-from obspy.taup import TauPyModel
 import os
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
 from typing import Optional, List
@@ -38,7 +37,7 @@ class AnalysisEvents:
                  phase_list: Optional[list] = None, vel: Optional[float] = None,
                  time_segment: Optional[bool] = False):
 
-        self.model = TauPyModel("iasp91")
+
         self.output = output
         self._exist_folder = False
         self.inventory = None
@@ -355,6 +354,12 @@ class AnalysisEvents:
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, auto=False):
 
+        if self.phase_list:
+            from obspy.taup import TauPyModel
+            model = TauPyModel("iasp91")
+        else:
+            model = None
+
         plot = not auto
         interactive = False
 
@@ -385,10 +390,8 @@ class AnalysisEvents:
                         # --- Create tasks for each station ---
                         tasks = []
                         for file_group in station_files.values():
-                            tasks.append((
-                                file_group, event, self.model, cut_start, cut_end,
-                                self.inventory, self._set_header
-                            ))
+                            tasks.append((file_group, event, model, cut_start, cut_end,
+                                self.inventory, self._set_header))
 
                         # --- Process stations (parallel if no post-script) ---
                         if self.post_script_func:
