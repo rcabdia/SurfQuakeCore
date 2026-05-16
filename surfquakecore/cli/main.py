@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------
 # Filename: main.py
-# Program: surfQuake & ISP
+# Program: surfQuake CLI runner
 # Date: March 2026
 # Purpose: Command Line Interface Core
 # Author: Roberto Cabieces & Thiago C. Junqueira
-#  Email: rcabdia@roa.es
+# Email: rcabdia@roa.es // Roberto.Cabieces@cmre.nato.int
 # --------------------------------------------------------------------
 
 import warnings
@@ -169,8 +169,8 @@ def _create_actions():
             name="ant_cross_stack", run=_ant_cross_stack,
             description="Cross Correlate and Stack Noise matrix"),
 
-        "ftan": _CliActions(
-            name="ftan", run=_ftan,
+        "aftan": _CliActions(
+            name="aftan", run=_ftan,
             description="Automatic Frequency-Time Analysis"),
 
     }
@@ -2916,7 +2916,7 @@ def _ftan():
     from surfquakecore.ant.aftan import run_aftan, plot_ftan
 
     arg_parse = ArgumentParser(
-        prog=f"{__entry_point_name} ftan",
+        prog=f"{__entry_point_name} aftan",
         description="Automatic Frequency-Time ANalysis (AFTAN) of surface-wave dispersion.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""

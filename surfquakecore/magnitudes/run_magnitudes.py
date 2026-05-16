@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------
-# Filename: run_nll.py
+# Filename: run_magnitudes.py
 # Program: surfQuake & ISP
 # Date: January 2024
 # Purpose: Manage Event Locator

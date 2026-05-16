@@ -92,6 +92,17 @@ dramatically improving the separation of overlapping modes.
 """
 
 import numpy as np
+from matplotlib import ticker
+from scipy.interpolate import CubicSpline, interp1d
+from scipy.signal import hilbert
+from typing import Optional, Tuple
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+import numpy as np
 from scipy.interpolate import CubicSpline, interp1d
 from scipy.signal import hilbert
 from typing import Optional, Tuple
@@ -119,7 +130,7 @@ def _taper(nb: int, ne: int, n: int, sei: np.ndarray,
     """
     # power-of-2 padding
     ns = 1
-    while ns < n:
+    while ns < ne:
         ns *= 2
 
     s = np.zeros(ns, dtype=np.complex128)
@@ -153,7 +164,7 @@ def _taper_v2(nb: int, ne: int, n: int, sei: np.ndarray,
     outside [0, ne] is zeroed.
     """
     ns = 1
-    while ns < n:
+    while ns < n:          # must fit the FULL input, not just ne
         ns *= 2
 
     s = np.zeros(ns, dtype=np.complex128)
@@ -1626,9 +1637,11 @@ def plot_ftan(result: dict,
     v_lo = vmin_plot if vmin_plot is not None else float(np.nanmin(vels[vels > 0])) if np.any(vels > 0) else 2.0
     v_hi = vmax_plot if vmax_plot is not None else float(np.nanmax(vels[np.isfinite(vels)])) if np.any(np.isfinite(vels)) else 5.0
     # round nicely
-    v_lo = np.floor(v_lo * 4) / 4
-    v_hi = np.ceil(v_hi  * 4) / 4
-
+    #v_lo = np.floor(v_lo * 4) / 4
+    #v_hi = np.ceil(v_hi  * 4) / 4
+    v_lo = 1.5
+    v_hi = 5.0
+    #v_hi = np.ceil(v_hi  * 4) / 4
     # ---- auto title ----
     if title is None:
         tr   = result.get('trace')
@@ -1691,7 +1704,8 @@ def plot_ftan(result: dict,
     ax_disp.set_title('Dispersion curves', fontsize=11)
     ax_disp.legend(fontsize=8, loc='lower right')
     ax_disp.grid(True, alpha=0.25, linestyle='--')
-
+    ax_disp.set_xscale('log')
+    ax_disp.xaxis.set_major_formatter(ticker.ScalarFormatter())
     # ================================================================== #
     # CENTRE panel — FTAN amplitude map (Period × Velocity)              #
     # ================================================================== #
@@ -1722,16 +1736,16 @@ def plot_ftan(result: dict,
 
     # normalise: 0 dB at max, clip at -5 dB (like model.png colour scale)
     amp_norm = amp_img - np.nanmax(amp_img)
-    amp_norm = np.clip(amp_norm, -5, 0)
+    amp_norm = np.clip(amp_norm, -15, 0)
 
-    pcm = ax_map.pcolormesh(per_grid, vel_grid, amp_norm,
-                            cmap=cmap, vmin=-5, vmax=0,
+    pcm = ax_map.contourf(per_grid, vel_grid, amp_norm,
+                            cmap=cmap, vmin=-15, vmax=0, levels=50,
                             shading='auto')
 
     # colourbar
     cbar = fig.colorbar(pcm, ax=ax_map, pad=0.02, shrink=0.85)
     cbar.set_label('Power [dB]', fontsize=9)
-    cbar.set_ticks([-5, -4, -3, -2, -1, 0])
+    #cbar.set_ticks([-5, -4, -3, -2, -1, 0])
 
     # overlay automatic group-velocity ridge (white dots)
     if nfout2 > 0:
@@ -1751,10 +1765,9 @@ def plot_ftan(result: dict,
                         zorder=4, label='Ref. group vel.')
 
     ax_map.set_xlim(per_min, per_max)
+    ax_map.set_xscale('log')
     ax_map.set_ylim(v_lo, v_hi)
     ax_map.set_xlabel('Period [s]', fontsize=11)
-    ax_map.set_ylabel('Velocity [km/s]', fontsize=11)
-    ax_map.set_title('Group Velocity', fontsize=11)
 
     # ================================================================== #
     # RIGHT panel — EGF waveform                                         #
@@ -1824,5 +1837,3 @@ if __name__ == '__main__':
     print("  run_aftan()       – high-level wrapper (SAC / H5 / MiniSEED)")
     print("  run_aftan_batch() – process all H5 files in a folder")
     print("  plot_ftan()       – amplitude map + dispersion curves")
-
-

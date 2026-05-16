@@ -354,11 +354,9 @@ class AnalysisEvents:
 
     def run_waveform_cutting(self, cut_start: float, cut_end: float, auto=False):
 
-        if self.phase_list:
-            from obspy.taup import TauPyModel
-            model = TauPyModel("iasp91")
-        else:
-            model = None
+        from obspy.taup import TauPyModel
+        model = TauPyModel("iasp91")
+
 
         plot = not auto
         interactive = False
