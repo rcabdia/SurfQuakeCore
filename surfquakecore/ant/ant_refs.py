@@ -31,7 +31,7 @@ import os
 import re
 import numpy as np
 
-_MODELS_DIR = os.path.join(os.path.dirname(__file__), "disp_map_ref")
+_MODELS_DIR = os.path.join(os.path.dirname(__file__), "disp_curv_ref")
 
 
 def _normalise_name(name: str) -> str:
