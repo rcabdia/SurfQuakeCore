@@ -88,6 +88,9 @@ def sac_to_h5(sac_path: str,
         'arrivals': []
     })
 
+    tr.stats.mseed = {'dataquality': 'D', 'geodetic': [dist_km*1E3, bazim, azim],
+                                                      'cross_channels': "ZZ",
+                                                      'coordinates': [evla, evlo, 0.0, 0.0]}
     # --- write using ObsPy native H5 writer ---
     tr.write(h5_path, format="H5")
 

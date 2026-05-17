@@ -1637,10 +1637,8 @@ def plot_ftan(result: dict,
     v_lo = vmin_plot if vmin_plot is not None else float(np.nanmin(vels[vels > 0])) if np.any(vels > 0) else 2.0
     v_hi = vmax_plot if vmax_plot is not None else float(np.nanmax(vels[np.isfinite(vels)])) if np.any(np.isfinite(vels)) else 5.0
     # round nicely
-    #v_lo = np.floor(v_lo * 4) / 4
-    #v_hi = np.ceil(v_hi  * 4) / 4
-    v_lo = 1.5
-    v_hi = 5.0
+    v_lo = np.floor(v_lo * 4) / 4
+    v_hi = np.ceil(v_hi  * 4) / 4
     #v_hi = np.ceil(v_hi  * 4) / 4
     # ---- auto title ----
     if title is None:
