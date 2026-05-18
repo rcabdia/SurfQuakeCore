@@ -335,18 +335,255 @@ def build_velocity_grid(tf_abs2: np.ndarray,
 
 
 # ===========================================================================
-# 5.  Ridge extraction
-#     Faithful port of FrequencyTimeFrame.find_ridges() (line 768)
+# 5a.  AFTAN-style jump correction
+#      Ported from aftan.py _trigger() — polynomial fit + MAD outlier detection
 # ===========================================================================
+
+def _trigger(grvel: np.ndarray,
+             per: np.ndarray,
+             nf: int,
+             tresh: float) -> Tuple[np.ndarray, np.ndarray, int]:
+    """
+    Detect jumps in a group-velocity curve using polynomial fitting + MAD.
+
+    Ported directly from AFTAN's _trigger() subroutine (Barmine 2006).
+
+    Algorithm
+    ---------
+    1. Fit a cubic polynomial to  log(U) vs log(T)
+       (log-log space linearises the typical power-law dispersion shape)
+    2. Compute residuals = log(U_measured) - log(U_fitted)
+    3. MAD = median(|residuals|)  — robust scale estimator
+    4. Normalised residual = residual / MAD
+    5. Flag points where |norm_residual| >= tresh as jumps
+
+    Parameters
+    ----------
+    grvel  : (nf,) group velocity array [km/s]
+    per    : (nf,) period array [s]
+    nf     : number of valid points to use
+    tresh  : jump detection threshold (typical: 2.0 – 5.0 for CWT)
+             Lower = more sensitive.  Original AFTAN default = 10.0
+             but CWT ridges are noisier so 2–3 is more appropriate.
+
+    Returns
+    -------
+    norm_res : (nf,) normalised residuals
+    ftrig    : (nf,) |norm_res| / tresh  (fractional trigger)
+    ierr     : 0 = no jumps detected,  1 = jumps detected
+    """
+    norm_res = np.zeros(nf)
+    ftrig    = np.zeros(nf)
+
+    if nf < 4:
+        return norm_res, ftrig, 0
+
+    log_per = np.log(per[:nf])
+    log_u   = np.log(np.maximum(grvel[:nf], 1e-6))
+
+    try:
+        deg    = min(3, nf - 1)
+        coeffs = np.polyfit(log_per, log_u, deg=deg)
+        log_u_fit = np.polyval(coeffs, log_per)
+        residuals = log_u - log_u_fit
+    except Exception:
+        return norm_res, ftrig, 0
+
+    mad = np.median(np.abs(residuals))
+    if mad < 1e-10:
+        return norm_res, ftrig, 0
+
+    norm_res[:nf] = residuals / mad
+    ftrig[:nf]    = np.abs(norm_res[:nf]) / tresh
+    ierr = 1 if np.any(np.abs(norm_res[:nf]) >= tresh) else 0
+
+    return norm_res, ftrig, ierr
+
+
+def apply_jump_correction(group_vel: np.ndarray,
+                           per_axis: np.ndarray,
+                           tresh: float = 3.0,
+                           npoints: int = 5,
+                           ) -> np.ndarray:
+    """
+    Apply AFTAN-style jump correction to a CWT group-velocity ridge.
+
+    This replaces the simple median-filter spike removal with the
+    physically motivated AFTAN approach:
+
+    1. Run _trigger() to detect jumps (points whose normalised residual
+       from a polynomial fit exceeds `tresh`).
+    2. For short isolated jump segments (≤ npoints consecutive flagged
+       periods), attempt to interpolate smoothly from the surrounding
+       valid points using cubic spline.
+    3. For longer segments, set to NaN (cannot reliably correct).
+
+    Parameters
+    ----------
+    group_vel : (nf,) group velocity ridge [km/s]  — may contain NaN
+    per_axis  : (nf,) period axis [s]
+    tresh     : jump detection threshold.
+                Default 3.0 for CWT (AFTAN uses 10.0 for its cleaner ridges).
+                Lower = more aggressive correction.
+    npoints   : maximum length of a correctable jump segment [periods].
+                Segments longer than this are left as NaN.
+                Default 5 (same as AFTAN default).
+
+    Returns
+    -------
+    grvel_corrected : (nf,) corrected group velocity [km/s]
+    """
+    nf       = len(group_vel)
+    grvel    = group_vel.copy()
+    valid    = np.isfinite(grvel)
+
+    if valid.sum() < 4:
+        return grvel
+
+    # work only on valid points
+    valid_idx = np.where(valid)[0]
+    nv        = len(valid_idx)
+    grvel_v   = grvel[valid_idx]
+    per_v     = per_axis[valid_idx]
+
+    # --- detect jumps ---
+    norm_res, ftrig, ierr = _trigger(grvel_v, per_v, nv, tresh)
+
+    if ierr == 0:
+        return grvel   # no jumps detected, nothing to do
+
+    # --- find jump segments ---
+    flagged = np.abs(norm_res) >= tresh     # boolean, length nv
+
+    # group consecutive flagged points into segments
+    segments = []
+    i = 0
+    while i < nv:
+        if flagged[i]:
+            j = i
+            while j < nv and flagged[j]:
+                j += 1
+            segments.append((i, j - 1))    # inclusive start/end in valid_idx
+            i = j
+        else:
+            i += 1
+
+    # --- correct short segments by cubic spline interpolation ---
+    grvel_corr = grvel_v.copy()
+
+    for (seg_start, seg_end) in segments:
+        seg_len = seg_end - seg_start + 1
+        if seg_len > npoints:
+            # too long to correct reliably — mark as NaN
+            grvel[valid_idx[seg_start:seg_end + 1]] = np.nan
+            continue
+
+        # find anchor points: last clean point before and first after
+        left_idx  = seg_start - 1
+        right_idx = seg_end   + 1
+
+        if left_idx < 0 or right_idx >= nv:
+            # at the edge — cannot interpolate, mark NaN
+            grvel[valid_idx[seg_start:seg_end + 1]] = np.nan
+            continue
+
+        # cubic spline through the two anchor points
+        # (use up to 2 points on each side for a better constraint)
+        left_pts  = max(0, left_idx - 1)
+        right_pts = min(nv - 1, right_idx + 1)
+
+        x_anchor = np.concatenate([
+            per_v[left_pts:left_idx + 1],
+            per_v[right_idx:right_pts + 1]
+        ])
+        y_anchor = np.concatenate([
+            grvel_corr[left_pts:left_idx + 1],
+            grvel_corr[right_idx:right_pts + 1]
+        ])
+
+        if len(x_anchor) < 2:
+            grvel[valid_idx[seg_start:seg_end + 1]] = np.nan
+            continue
+
+        try:
+            interp_fn = scipy.interpolate.interp1d(
+                x_anchor, y_anchor,
+                kind='linear', bounds_error=False,
+                fill_value='extrapolate')
+            corrected = interp_fn(per_v[seg_start:seg_end + 1])
+
+            # only accept correction if it is physically plausible
+            # (stays within ±20% of surrounding values)
+            ref_level = 0.5 * (grvel_corr[left_idx] + grvel_corr[right_idx])
+            if np.all(np.abs(corrected - ref_level) < 0.2 * ref_level):
+                grvel[valid_idx[seg_start:seg_end + 1]] = corrected
+            else:
+                grvel[valid_idx[seg_start:seg_end + 1]] = np.nan
+        except Exception:
+            grvel[valid_idx[seg_start:seg_end + 1]] = np.nan
+
+    n_flagged   = sum(seg_end - seg_start + 1 for seg_start, seg_end in segments)
+    n_corrected = sum(
+        seg_end - seg_start + 1 for seg_start, seg_end in segments
+        if seg_end - seg_start + 1 <= npoints)
+    print(f"            Jump correction: {len(segments)} segment(s) detected  "
+          f"{n_flagged} periods flagged  "
+          f"{n_corrected} corrected  tresh={tresh}")
+
+    return grvel
+
+
+
 
 def find_ridges(scalogram_db: np.ndarray,
                 vel_axis: np.ndarray,
                 height_db: float = -15.0,
                 min_dist_kms: float = 0.2,
-                num_ridges: int = 1) -> Tuple[np.ndarray, np.ndarray]:
+                num_ridges: int = 1,
+                ref_group_vel: Optional[np.ndarray] = None,
+                ref_periods: Optional[np.ndarray] = None,
+                per_axis: Optional[np.ndarray] = None,
+                ref_tolerance_kms: float = 0.5,
+                ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Extract group-velocity ridges using scipy.signal.find_peaks.
-    Mirrors find_ridges() in frequencytime.py including threshold=-5.
+    Extract group-velocity ridges from the dB scalogram.
+
+    Without reference
+    -----------------
+    At each period column, find all local maxima above height_db.
+    Pick the one with the HIGHEST amplitude (strongest energy).
+
+    With reference
+    --------------
+    Among all local maxima above height_db, pick the one whose
+    velocity is CLOSEST to the reference group velocity at that period.
+
+    Tolerance (ref_tolerance_kms)
+    ------------------------------
+    When a reference is provided, if the closest candidate peak is
+    farther than ref_tolerance_kms [km/s] from the reference value,
+    that period is marked as NaN (outlier rejected).
+
+    This prevents the picker from latching onto spurious energy blobs
+    that happen to be local maxima but are clearly unrelated to the
+    mode tracked by the reference curve.
+
+    Parameters
+    ----------
+    scalogram_db      : (n_vel, n_per)  power [dB]
+    vel_axis          : (n_vel,)  velocity [km/s] ascending
+    height_db         : minimum peak height [dB]
+    min_dist_kms      : minimum separation between candidate peaks [km/s]
+    num_ridges        : number of ridges to return
+    ref_group_vel     : (N,) reference group velocities [km/s]  (optional)
+    ref_periods       : (N,) reference periods [s]              (optional)
+    per_axis          : (n_per,) period axis [s]                (required if ref given)
+    ref_tolerance_kms : maximum allowed distance from reference [km/s].
+                        Peaks farther than this are rejected as outliers.
+                        Only used when a reference is provided.
+                        Default: 0.5 km/s  (reasonable for most crust models).
+                        Increase to 1.0 for noisy data or large model uncertainty.
+                        Decrease to 0.2–0.3 for well-constrained paths.
     """
     n_vel, n_per = scalogram_db.shape
     dv = abs(vel_axis[1] - vel_axis[0]) if n_vel > 1 else 0.1
@@ -355,18 +592,59 @@ def find_ridges(scalogram_db: np.ndarray,
     group_vel = np.full((num_ridges, n_per), np.nan)
     peak_db   = np.full((num_ridges, n_per), np.nan)
 
+    # build reference interpolator if provided
+    use_ref = (ref_group_vel is not None and
+               ref_periods   is not None and
+               per_axis      is not None)
+    if use_ref:
+        ref_interp = scipy.interpolate.interp1d(
+            ref_periods, ref_group_vel,
+            kind='linear', bounds_error=False,
+            fill_value=(ref_group_vel[0], ref_group_vel[-1]))
+
     for j in range(n_per):
         col = scalogram_db[:, j]
+
+        # find ALL local maxima above floor
         peaks, props = scipy.signal.find_peaks(
             col,
-            height    = (height_db, 0),
-            threshold = -5,
-            distance  = min_dist_samp,
+            height   = (height_db, 0),
+            distance = min_dist_samp,
         )
-        for k in range(num_ridges):
-            if k < len(peaks):
-                group_vel[k, j] = vel_axis[peaks[k]]
-                peak_db[k, j]   = props['peak_heights'][k]
+
+        if len(peaks) == 0:
+            continue
+
+        if use_ref:
+            # --- WITH REFERENCE: pick peak closest to reference ---
+            T_j    = per_axis[j]
+            u_ref  = float(ref_interp(T_j))
+
+            peak_vels     = vel_axis[peaks]
+            dist_from_ref = np.abs(peak_vels - u_ref)
+
+            # sort peaks by distance from reference (closest first)
+            order = np.argsort(dist_from_ref)
+
+            # assign ridges — reject if closest peak exceeds tolerance
+            for k in range(num_ridges):
+                if k < len(order):
+                    pk  = peaks[order[k]]
+                    dv_from_ref = dist_from_ref[order[k]]
+                    if dv_from_ref <= ref_tolerance_kms:
+                        group_vel[k, j] = vel_axis[pk]
+                        peak_db[k, j]   = col[pk]
+                    # else: leave as NaN — outlier rejected
+
+        else:
+            # --- WITHOUT REFERENCE: pick peak with highest amplitude ---
+            order = np.argsort(props['peak_heights'])[::-1]  # strongest first
+
+            for k in range(num_ridges):
+                if k < len(order):
+                    pk = peaks[order[k]]
+                    group_vel[k, j] = vel_axis[pk]
+                    peak_db[k, j]   = col[pk]
 
     return group_vel, peak_db
 
@@ -455,57 +733,6 @@ def estimate_phase_velocity(group_vel_ridge: np.ndarray,
 
     return pv, k_values
 
-# def estimate_phase_velocity(group_vel_ridge: np.ndarray,
-#                              per_axis: np.ndarray,
-#                              vel_axis: np.ndarray,
-#                              phase_grid: np.ndarray,
-#                              ifreq_grid: np.ndarray,
-#                              t_grid: np.ndarray,
-#                              dist_km: float,
-#                              n_branches: int = 10
-#                              ) -> Tuple[np.ndarray, np.ndarray]:
-#     """
-#     Estimate phase velocity for all 2pi cycle branches.
-#
-#     Exact port of FrequencyTimeFrame.phase_velocity() (lines 746-765).
-#
-#     Formula:
-#         c(T, k) = delta * omega_inst / (phi + omega_inst*t0 - pi/4 - k*2*pi + lambda)
-#         lambda = -pi/4   (GUI constant)
-#         k in {-n_branches/2 ... +n_branches/2}
-#
-#     Returns
-#     -------
-#     phase_vel_array : (n_branches, n_per) [km/s], NaN where undefined
-#     k_values        : (n_branches,) integer branch indices
-#     """
-#     landa    = -np.pi / 4.0
-#     k_values = np.arange(-n_branches // 2, n_branches // 2)
-#     n_per    = len(per_axis)
-#     pv       = np.full((len(k_values), n_per), np.nan)
-#
-#     for j in range(n_per):
-#         if np.isnan(group_vel_ridge[j]):
-#             continue
-#         idx_vel = np.abs(vel_axis - group_vel_ridge[j]).argmin()
-#
-#         phi      = phase_grid[idx_vel, j]
-#         ifreq    = ifreq_grid[idx_vel, j]   # Hz
-#         t0       = t_grid[idx_vel, j]       # group arrival time [s]
-#
-#         if not (np.isfinite(phi) and np.isfinite(ifreq) and
-#                 np.isfinite(t0) and ifreq > 0):
-#             continue
-#
-#         omega_inst = 2.0 * np.pi * ifreq
-#         numerator  = dist_km * omega_inst
-#
-#         for ki, k in enumerate(k_values):
-#             denom = phi + omega_inst * t0 - np.pi / 4.0 - k * 2.0 * np.pi + landa
-#             if abs(denom) > 1e-10:
-#                 pv[ki, j] = numerator / denom
-#
-#     return pv, k_values
 
 
 # ===========================================================================
@@ -658,13 +885,17 @@ def cwt_ftan(filepath: str,
              nf: int = 64,
              min_db: float = -15.0,
              min_dist_kms: float = 0.2,
+             ref_tolerance_kms: float = 0.5,
              num_ridges: int = 1,
              branch: str = 'fold',
              use_pmf: bool = False,
              pmf_ref_periods: Optional[np.ndarray] = None,
              pmf_ref_vel: Optional[np.ndarray] = None,
+             pmf_ref_grvel: Optional[np.ndarray] = None,
              filter_parameter: float = 2.0,
              n_branches: int = 10,
+             tresh: float = 3.0,
+             npoints: int = 5,
              force_dist_km: Optional[float] = None,
              ) -> dict:
     """
@@ -727,15 +958,27 @@ def cwt_ftan(filepath: str,
         n_vel=300, min_db=min_db)
 
     # --- ridge ---
+    # Without reference: picks highest-amplitude peak per period.
+    # With pmf_ref_grvel supplied: picks peak closest to reference group velocity.
     group_vel, peak_db = find_ridges(
         amp_img, vel_axis,
-        height_db    = min_db * 0.5,
-        min_dist_kms = min_dist_kms,
-        num_ridges   = num_ridges)
+        height_db         = min_db * 0.5,
+        min_dist_kms      = min_dist_kms,
+        num_ridges        = num_ridges,
+        ref_group_vel     = pmf_ref_grvel,
+        ref_periods       = pmf_ref_periods,
+        per_axis          = per_axis,
+        ref_tolerance_kms = ref_tolerance_kms,
+    )
 
     mean_u = np.nanmean(group_vel[0])
     print(f"            Ridge: U_mean={mean_u:.3f} km/s"
           if np.isfinite(mean_u) else "            Ridge: NOT FOUND")
+
+    # --- AFTAN-style jump correction on the primary ridge ---
+    group_vel[0] = apply_jump_correction(
+        group_vel[0], per_axis,
+        tresh=tresh, npoints=npoints)
 
     # --- phase velocity ---
     phase_vel_array, k_values = estimate_phase_velocity(
@@ -751,6 +994,7 @@ def cwt_ftan(filepath: str,
         group_vel_ridge=group_vel[0],
         ref_periods=pmf_ref_periods,
         ref_phase_vel=pmf_ref_vel,
+
     )
 
     return dict(
@@ -785,11 +1029,25 @@ def plot_cwt_ftan(result: dict,
                   ref_group_vel: Optional[np.ndarray] = None,
                   ref_phase_vel: Optional[np.ndarray] = None) -> object:
     """
-    Four-panel figure:
-      Panel 1 — CWT amplitude map  (Period x Velocity, log x-axis)
-      Panel 2 — Group velocity dispersion curve
-      Panel 3 — All phase-velocity cycle branches (scatter, select with ref)
-      Panel 4 — EGF waveform (narrow)
+    Four-panel figure layout:
+
+      Panel 1 (left)       — CWT amplitude map  (Period × Velocity, log x)
+                             Ridge overlaid as white dots.
+                             Reference group velocity as green dashed line.
+
+      Panel 2 (centre-left) — Phase velocity branches (Period × Phase Vel)
+                              All unselected branches: faded scatter (alpha=0.15)
+                              Selected branch: solid firebrick line, full opacity.
+                              Reference phase velocity: orange dashed.
+                              No legend (too cluttered).
+                              Y-axis shared with panel 1 velocity range.
+
+      Panel 3 (centre-right) — Dispersion curves (Period × Velocity)
+                               Group velocity ridge + selected phase velocity.
+                               Reference curves as dashed lines.
+                               Y-axis shared with panel 1 velocity range.
+
+      Panel 4 (right, narrow) — EGF waveform (Amplitude × Lag time)
     """
     try:
         import matplotlib.pyplot as plt
@@ -811,24 +1069,27 @@ def plot_cwt_ftan(result: dict,
     branch   = result['branch']
     azim     = result.get('azim', float('nan'))
     tr       = result.get('trace')
+    best_pv  = result.get('best_phase_vel')
+    best_k   = result.get('best_k', '?')
 
+    # shared velocity limits — honour the command-line vmin/vmax exactly
     vmin_p, vmax_p = vel_axis[0], vel_axis[-1]
     per_min, per_max = per_axis[0], per_axis[-1]
 
     if title is None:
         name  = tr.id if tr is not None else ''
-        title = (f"{name}   delta={delta:.1f} km"
-                 + (f"  az={azim:.1f}" if not np.isnan(azim) else "")
+        title = (f"{name}   Δ={delta:.1f} km"
+                 + (f"  az={azim:.1f}°" if not np.isnan(azim) else "")
                  + f"  branch={branch}")
 
     fig = plt.figure(figsize=(20, 7))
     gs  = gridspec.GridSpec(1, 4, width_ratios=[3, 2.5, 2.5, 1.2],
                             wspace=0.38, left=0.05, right=0.97,
                             top=0.88, bottom=0.11)
-    ax_map = fig.add_subplot(gs[0])
-    ax_grp = fig.add_subplot(gs[1])
-    ax_phv = fig.add_subplot(gs[2])
-    ax_egf = fig.add_subplot(gs[3])
+    ax_map  = fig.add_subplot(gs[0])   # CWT amplitude map
+    ax_phv  = fig.add_subplot(gs[1])   # phase velocity branches  ← now panel 2
+    ax_disp = fig.add_subplot(gs[2])   # dispersion curves        ← now panel 3
+    ax_egf  = fig.add_subplot(gs[3])   # EGF waveform
 
     ridge_colors = ['white', 'lime', 'cyan']
 
@@ -838,13 +1099,16 @@ def plot_cwt_ftan(result: dict,
         ax.xaxis.set_major_locator(ticker.LogLocator(base=10, subs=[1, 2, 3, 5, 7]))
         ax.set_xlim(per_min, per_max)
 
-    # ---- Panel 1: CWT map ----
+    # ================================================================== #
+    # Panel 1 — CWT amplitude map                                        #
+    # ================================================================== #
     valid = amp[np.isfinite(amp)]
     v_lo  = valid.min() if len(valid) else -15
     pcm = ax_map.contourf(per_axis, vel_axis, amp,
                           levels=60, cmap=cmap, vmin=v_lo, vmax=0)
     fig.colorbar(pcm, ax=ax_map, pad=0.02, shrink=0.85).set_label('Power [dB]', fontsize=8)
 
+    # ridge dots
     for k in range(gv.shape[0]):
         mask = np.isfinite(gv[k])
         if mask.sum() > 0:
@@ -852,78 +1116,107 @@ def plot_cwt_ftan(result: dict,
                            c=ridge_colors[k % len(ridge_colors)],
                            s=15, zorder=5, label=f'Ridge {k+1}')
 
+    # reference group velocity on map
     if ref_periods is not None and ref_group_vel is not None:
         ax_map.plot(ref_periods, ref_group_vel, '--',
                     color='limegreen', lw=1.5, label='Ref. group vel.')
 
     apply_log_ticks(ax_map)
-    ax_map.set_ylim(vmin_p, vmax_p)
+    ax_map.set_ylim(vmin_p, vmax_p)          # ← shared y-limits
     ax_map.set_xlabel('Period [s]', fontsize=10)
     ax_map.set_ylabel('Group Velocity [km/s]', fontsize=10)
     ax_map.set_title('CWT amplitude map', fontsize=10)
     ax_map.legend(fontsize=7, loc='upper right')
     ax_map.grid(True, alpha=0.15, ls='--', color='w')
 
-    # ---- Panel 2: group velocity ----
-    for k in range(gv.shape[0]):
-        mask = np.isfinite(gv[k])
-        if mask.sum() > 0:
-            ax_grp.plot(per_axis[mask], gv[k][mask],
-                        's-', ms=4, lw=1.6,
-                        color=['navy', 'darkgreen'][k % 2],
-                        label=f'Group vel. {k+1}')
-
-    if ref_periods is not None and ref_group_vel is not None:
-        ax_grp.plot(ref_periods, ref_group_vel, '--',
-                    color='limegreen', lw=1.5, alpha=0.8, label='Ref. group vel.')
-    if ref_periods is not None and ref_phase_vel is not None:
-        ax_grp.plot(ref_periods, ref_phase_vel, '--',
-                    color='darkorange', lw=1.5, alpha=0.8, label='Ref. phase vel.')
-
-    apply_log_ticks(ax_grp)
-    ax_grp.set_ylim(vmin_p, vmax_p)
-    ax_grp.set_xlabel('Period [s]', fontsize=10)
-    ax_grp.set_ylabel('Velocity [km/s]', fontsize=10)
-    ax_grp.set_title('Dispersion curves', fontsize=10)
-    ax_grp.legend(fontsize=7)
-    ax_grp.grid(True, alpha=0.25, ls='--')
-
-    # ---- Panel 3: phase velocity branches ----
+    # ================================================================== #
+    # Panel 2 — Phase velocity branches                                  #
+    # ================================================================== #
     cmap_br = plt.cm.get_cmap('tab10', len(k_vals))
+
+    # identify which ki corresponds to best_k so we can highlight it
+    best_ki_plot = None
+    if best_pv is not None:
+        for ki, k in enumerate(k_vals):
+            if int(k) == int(best_k):
+                best_ki_plot = ki
+                break
+
+    # draw all branches — unselected ones are very transparent
     for ki, k in enumerate(k_vals):
         row  = pv_arr[ki, :]
         mask = np.isfinite(row) & (row > vmin_p * 0.5) & (row < vmax_p * 2.5)
-        if mask.sum() > 0:
-            ax_phv.scatter(per_axis[mask], row[mask],
-                           s=12, color=cmap_br(ki),
-                           label=f'k={int(k)}', zorder=3)
+        if mask.sum() == 0:
+            continue
+        is_selected = (ki == best_ki_plot)
+        ax_phv.scatter(per_axis[mask], row[mask],
+                       s=12,
+                       color=cmap_br(ki),
+                       alpha=1.0 if is_selected else 0.15,
+                       zorder=4 if is_selected else 2)
 
+    # reference phase velocity
     if ref_periods is not None and ref_phase_vel is not None:
         ax_phv.plot(ref_periods, ref_phase_vel, '--',
-                    color='darkorange', lw=2, zorder=5, label='Ref. phase vel.')
+                    color='darkorange', lw=2, zorder=5)
 
-
-
-
-    # best phase velocity branch
-    best_pv = result.get('best_phase_vel')
-    best_k = result.get('best_k', '?')
+    # selected branch — bold firebrick line on top
     if best_pv is not None:
         mask = np.isfinite(best_pv)
         if mask.sum() > 0:
             ax_phv.plot(per_axis[mask], best_pv[mask],
-                        '^-', color='firebrick', ms=5, lw=1.8,
-                        label=f'Phase vel best fit. (k={best_k})')
+                        '-', color='firebrick', lw=2.2,
+                        zorder=6, label=f'Selected (k={best_k})')
+            ax_phv.legend(fontsize=8, loc='upper left')
 
     apply_log_ticks(ax_phv)
-    ax_phv.set_ylim(vmin_p * 0.8, vmax_p * 1.5)
+    ax_phv.set_ylim(vmin_p, vmax_p)          # ← shared y-limits
     ax_phv.set_xlabel('Period [s]', fontsize=10)
     ax_phv.set_ylabel('Phase Velocity [km/s]', fontsize=10)
-    ax_phv.set_title('Phase vel. branches\n(select with ref)', fontsize=10)
-    ax_phv.legend(fontsize=6, ncol=2, loc='upper left')
+    ax_phv.set_title('Phase vel. branches', fontsize=10)
     ax_phv.grid(True, alpha=0.25, ls='--')
 
-    # ---- Panel 4: EGF waveform ----
+    # ================================================================== #
+    # Panel 3 — Dispersion curves (group + selected phase)               #
+    # ================================================================== #
+    # group velocity ridges
+    for k in range(gv.shape[0]):
+        mask = np.isfinite(gv[k])
+        if mask.sum() > 0:
+            ax_disp.plot(per_axis[mask], gv[k][mask],
+                         's-', ms=4, lw=1.6,
+                         color=['navy', 'darkgreen'][k % 2],
+                         label=f'Group vel. {k+1}')
+
+    # selected phase velocity on dispersion panel
+    if best_pv is not None:
+        mask = np.isfinite(best_pv)
+        if mask.sum() > 0:
+            ax_disp.plot(per_axis[mask], best_pv[mask],
+                         '^-', color='firebrick', ms=4, lw=1.6,
+                         label=f'Phase vel. (k={best_k})')
+
+    # reference curves
+    if ref_periods is not None and ref_group_vel is not None:
+        ax_disp.plot(ref_periods, ref_group_vel, '--',
+                     color='limegreen', lw=1.5, alpha=0.8,
+                     label='Ref. group vel.')
+    if ref_periods is not None and ref_phase_vel is not None:
+        ax_disp.plot(ref_periods, ref_phase_vel, '--',
+                     color='darkorange', lw=1.5, alpha=0.8,
+                     label='Ref. phase vel.')
+
+    apply_log_ticks(ax_disp)
+    ax_disp.set_ylim(vmin_p, vmax_p)         # ← shared y-limits
+    ax_disp.set_xlabel('Period [s]', fontsize=10)
+    ax_disp.set_ylabel('Velocity [km/s]', fontsize=10)
+    ax_disp.set_title('Dispersion curves', fontsize=10)
+    ax_disp.legend(fontsize=7)
+    ax_disp.grid(True, alpha=0.25, ls='--')
+
+    # ================================================================== #
+    # Panel 4 — EGF waveform                                             #
+    # ================================================================== #
     t_max_show = delta / max(vmin_p, 0.1) * 1.1
     mask_t = t_arr <= t_max_show
     wf = sei[mask_t].astype(float)
@@ -937,7 +1230,7 @@ def plot_cwt_ftan(result: dict,
     ax_egf.fill_betweenx(t_arr[mask_t], 0, wf,
                          where=wf <  0, color='tomato',    alpha=0.35)
     ax_egf.axhspan(delta / vmax_p, delta / vmin_p,
-                   color='gold', alpha=0.15, label='vel. window')
+                   color='gold', alpha=0.15)
     ax_egf.axvline(0, color='k', lw=0.5, alpha=0.4)
     ax_egf.set_ylim(0, t_max_show)
     ax_egf.set_xlim(-1.5, 1.5)
@@ -1003,6 +1296,10 @@ Parameter guide:
     p.add_argument('--nf',                 type=int,   default=64,     help='Number of frequencies')
     p.add_argument('--min_db',             type=float, default=-15.0,  help='dB floor')
     p.add_argument('--min_dist_kms',       type=float, default=0.2,    help='Min ridge sep [km/s]')
+    p.add_argument('--ref_tolerance_kms',  type=float, default=0.5,
+                   help='Max distance from reference for ridge acceptance [km/s] '
+                        '(default: 0.5). Only used when --ref is given. '
+                        'Increase for noisy data, decrease for well-constrained paths.')
     p.add_argument('--num_ridges',         type=int,   default=1,      help='Ridges to extract')
     p.add_argument('--branch',             default='fold',
                    choices=['fold', 'causal', 'acausal'])
@@ -1012,6 +1309,12 @@ Parameter guide:
                    help='PMF Gaussian window width [s]')
     p.add_argument('--n_branches',         type=int,   default=10,
                    help='2pi cycle branches for phase velocity')
+    p.add_argument('--tresh',              type=float, default=3.0,
+                   help='Jump detection threshold for group velocity correction '
+                        '(default: 3.0 for CWT; lower = more aggressive). '
+                        'AFTAN uses 10.0 for its cleaner Gaussian-filtered ridges.')
+    p.add_argument('--npoints',            type=int,   default=5,
+                   help='Max correctable jump length in period bins (default: 5)')
     p.add_argument('--ref',                type=str,   default=None,
                    help='Reference model name or CSV path')
     p.add_argument('--wave',               type=str,   default='rayleigh',
@@ -1075,13 +1378,17 @@ def _run(args):
                 nf               = args.nf,
                 min_db           = args.min_db,
                 min_dist_kms     = args.min_dist_kms,
+                ref_tolerance_kms = args.ref_tolerance_kms,
                 num_ridges       = args.num_ridges,
                 branch           = args.branch,
                 use_pmf          = args.use_pmf and (pmf_ref_periods is not None),
                 pmf_ref_periods  = pmf_ref_periods,
                 pmf_ref_vel      = pmf_ref_vel,
+                pmf_ref_grvel    = ref_group_vel,
                 filter_parameter = args.filter_param,
                 n_branches       = args.n_branches,
+                tresh            = args.tresh,
+                npoints          = args.npoints,
                 force_dist_km    = args.force_dist_km,
             )
 
