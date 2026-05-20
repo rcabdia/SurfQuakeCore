@@ -2971,6 +2971,14 @@ Usage Examples:
   # Ocean path — use ocean reference model:
   surfquake cwt_aftan -i ./stack/ -o ./cwt_out/ \\
                       --ref ak135_ocean_deep --wave rayleigh --plot
+                      
+  # AFTAN original filter bank (preserves all FORTRAN tricks):
+  surfquake cwt_aftan -i ./stack/ -o ./cwt_out/ --wavelet aftan \\
+                      --ffact 1.0 --ref ak135_earth --plot
+
+  # Side-by-side comparison: run twice, change only --wavelet
+  surfquake cwt_aftan -i ./stack/ -o ./morlet_out/ --wavelet morlet
+  surfquake cwt_aftan -i ./stack/ -o ./aftan_out/  --wavelet aftan --ffact 1.0
 
 Key Arguments:
   -i  --input            [REQUIRED] Input folder (H5 batch) or single file
@@ -2981,7 +2989,9 @@ Key Arguments:
   --vmax                 [OPTIONAL] Max group velocity [km/s]         (default: 5.0)
   --nf                   [OPTIONAL] Number of log-spaced frequencies  (default: 100)
   --w                    [OPTIONAL] Morlet wavelet cycles             (default: 6.0)
-  --branch               [OPTIONAL] EGF branch: fold|causal|acausal  (default: fold)
+  --ffact               [OPTIONAL] AFTAN filter width factor         (default: 1.0)
+  --wavelet              [OPTIONAL] Filter bank                       (default: Complex Morlet CWT)
+  --branch               [OPTIONAL] EGF branch: fold|causal|acausal   (default: fold)
   --pattern              [OPTIONAL] Glob pattern for batch mode       (default: *.H5)
   --min_db               [OPTIONAL] dB floor for display/ridge        (default: -25.0)
   --min_dist_kms         [OPTIONAL] Min ridge separation [km/s]       (default: 0.5)
@@ -2989,7 +2999,7 @@ Key Arguments:
   --num_ridges           [OPTIONAL] Number of ridges to extract       (default: 3)
   --tresh                [OPTIONAL] Jump detection threshold          (default: 3.0)
   --npoints              [OPTIONAL] Max correctable jump length       (default: 5)
-  --use_pmf              [OPTIONAL] Apply phase-match filter (needs --ref)
+  --use_pmf              [OPTIONAL] Apply phase-match filter          (needs --ref)
   --filter_param         [OPTIONAL] PMF Gaussian window width [s]     (default: 15.0)
   --n_branches           [OPTIONAL] 2pi cycle branches for phase vel  (default: 10)
   --ref                  [OPTIONAL] Reference model name or CSV path
@@ -3032,6 +3042,13 @@ Documentation:
     arg_parse.add_argument("--vmax",                 type=float, default=5.0,    help="Max group velocity [km/s]")
     arg_parse.add_argument("--nf",                   type=int,   default=100,    help="Number of log-spaced frequencies")
     arg_parse.add_argument("--w",                    type=float, default=6.0,    help="Morlet wavelet cycles")
+    arg_parse.add_argument("--wavelet", type=str, default="morlet",
+                           choices=["morlet", "aftan"],
+                           help="Filter bank: 'morlet' (default) = Complex Morlet CWT; "
+                                "'aftan' = original FORTRAN ratio-based Gaussian filter bank.")
+    arg_parse.add_argument("--ffact", type=float, default=1.0,
+                           help="AFTAN filter width factor α=ffact·20·√(Δ/1000). "
+                                "Only used with --wavelet aftan. Default: 1.0.")
     arg_parse.add_argument("--branch",               type=str,   default="fold",
                            choices=["fold", "causal", "acausal"],
                            help="EGF branch to analyse (ignored for SAC)")
@@ -3110,7 +3127,8 @@ Documentation:
         tresh             = parsed.tresh,
         npoints           = parsed.npoints,
         force_dist_km     = parsed.force_dist_km,
-    )
+        wavelet_type=parsed.wavelet,
+        ffact=parsed.ffact)
 
     # ------------------------------------------------------------------ #
     # Collect files: folder → batch, file → single                        #

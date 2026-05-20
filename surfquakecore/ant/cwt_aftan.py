@@ -56,6 +56,8 @@ import scipy.signal
 import scipy.interpolate
 from obspy import read as obs_read, Trace
 
+from surfquakecore.data_processing.wavelet import AFTANWavelet
+
 
 # ===========================================================================
 # 1.  Phase-match filter
@@ -897,15 +899,41 @@ def cwt_ftan(filepath: str,
              tresh: float = 3.0,
              npoints: int = 5,
              force_dist_km: Optional[float] = None,
+             wavelet_type: str = 'morlet',
+             ffact: float = 1.0,
              ) -> dict:
     """
-    Full CWT-FTAN pipeline.
+    Full CWT/AFTAN-FTAN pipeline.
+
+    Parameters
+    ----------
+    wavelet_type : str
+        'morlet' (default) — Complex Morlet CWT via MorletCWT.
+                             w controls the number of cycles.
+                             Best general-purpose time-frequency analysis.
+
+        'aftan'            — Original FORTRAN AFTAN filter bank via AFTANWavelet.
+                             Uses ratio-based Gaussian H(ω;ω₀)=exp[-α²(ω/ω₀-1)²]
+                             in the frequency domain with one-sided spectrum,
+                             parabolic sub-sample peak, and π/4 correction.
+                             Group velocity is extracted directly inside
+                             AFTANWavelet.compute(); ridge/jump-correction and
+                             phase velocity estimation then run on its output
+                             exactly as for the Morlet path.
+                             ffact controls the filter width α=ffact·20·√(Δ/1000).
+
+    ffact : float
+        AFTAN filter width factor. Only used when wavelet_type='aftan'.
+        Default 1.0 (same as original FORTRAN default).
+
+    All other parameters are identical to the Morlet path.
 
     Returns
     -------
     dict with keys: scalogram_db, vel_axis, per_axis, group_vel, peak_db,
-                    phase_vel_array, k_values, sei, t_arr,
-                    delta, dt, branch, trace, azim, bazim
+                    phase_vel_array, k_values, best_phase_vel, best_k,
+                    sei, t_arr, delta, dt, branch, trace, azim, bazim,
+                    wavelet_type
     """
     st = obs_read(filepath)
     tr = st[0]
@@ -917,84 +945,155 @@ def cwt_ftan(filepath: str,
     else:
         dist_km, azim, bazim = extract_distance(tr)
 
+    wt_label = wavelet_type.lower().strip()
     print(f"[CWT-FTAN]  {os.path.basename(filepath)}")
-    print(f"            dist={dist_km:.2f} km  az={azim:.1f}  branch='{branch}'")
+    print(f"            dist={dist_km:.2f} km  az={azim:.1f}  "
+          f"branch='{branch}'  wavelet='{wt_label}'")
 
     # --- branch ---
-    raw = tr.data.astype(np.float64)
+    raw  = tr.data.astype(np.float64)
     raw -= np.mean(raw)
     sei  = prepare_branch(raw, branch)
     n    = len(sei)
     t_arr = np.arange(n) * dt
 
-    # --- phase-match filter ---
+    # --- phase-match filter (both paths) ---
     if use_pmf and pmf_ref_periods is not None and pmf_ref_vel is not None:
         print(f"            PMF  sigma={filter_parameter} s")
         sei = phase_matched_filter(sei, dt, dist_km,
                                    pmf_ref_periods, pmf_ref_vel,
                                    filter_parameter=filter_parameter)
 
-    # --- CWT ---
     fmin = 1.0 / tmax
     fmax = 1.0 / tmin
-    tt   = int(fs / fmin)   # kernel half-length, matches GUI
 
-    print(f"            CWT  T={tmin}-{tmax} s  nf={nf}  "
-          f"w={w}  kernel_half={tt} s")
+    # ================================================================== #
+    # PATH A — Complex Morlet CWT  (default)                             #
+    # ================================================================== #
+    if wt_label == 'morlet':
+        tt  = int(fs / fmin)
+        print(f"            CWT  T={tmin}-{tmax} s  nf={nf}  "
+              f"w={w}  kernel_half={tt} s")
 
-    cwt_obj = MorletCWT(sei, fs, fmin, fmax, nf=nf, wmin=w, wmax=w, tt=tt)
-    tf      = cwt_obj.compute_tf()
-    phase_raw, ifreq_hz = cwt_obj.compute_phase_and_inst_freq(tf)
+        cwt_obj = MorletCWT(sei, fs, fmin, fmax, nf=nf, wmin=w, wmax=w, tt=tt)
+        tf      = cwt_obj.compute_tf()
+        phase_raw, ifreq_hz = cwt_obj.compute_phase_and_inst_freq(tf)
 
-    # drop first column (mirrors GUI [:, 1:])
-    tf_abs2   = np.abs(tf[:, 1:]).astype(np.float64) ** 2
-    phase_raw = phase_raw[:, 1:]
-    ifreq_hz  = ifreq_hz[:, 1:]
+        # drop first column (mirrors GUI [:, 1:])
+        tf_abs2   = np.abs(tf[:, 1:]).astype(np.float64) ** 2
+        phase_raw = phase_raw[:, 1:]
+        ifreq_hz  = ifreq_hz[:, 1:]
 
-    # --- velocity grid ---
-    amp_img, vel_axis, per_axis, phase_grid, ifreq_grid, t_grid = build_velocity_grid(
-        tf_abs2, phase_raw, ifreq_hz,
-        cwt_obj.frequencies, t_arr, dist_km, vmin, vmax,
-        n_vel=300, min_db=min_db)
+        # velocity grid
+        amp_img, vel_axis, per_axis, phase_grid, ifreq_grid, t_grid = \
+            build_velocity_grid(
+                tf_abs2, phase_raw, ifreq_hz,
+                cwt_obj.frequencies, t_arr, dist_km, vmin, vmax,
+                n_vel=300, min_db=min_db)
 
-    # --- ridge ---
-    # Without reference: picks highest-amplitude peak per period.
-    # With pmf_ref_grvel supplied: picks peak closest to reference group velocity.
-    group_vel, peak_db = find_ridges(
-        amp_img, vel_axis,
-        height_db         = min_db * 0.5,
-        min_dist_kms      = min_dist_kms,
-        num_ridges        = num_ridges,
-        ref_group_vel     = pmf_ref_grvel,
-        ref_periods       = pmf_ref_periods,
-        per_axis          = per_axis,
-        ref_tolerance_kms = ref_tolerance_kms,
-    )
+    # ================================================================== #
+    # PATH B — Original AFTAN filter bank                                #
+    # ================================================================== #
+    elif wt_label == 'aftan':
+        print(f"            AFTAN  T={tmin}-{tmax} s  nf={nf}  "
+              f"ffact={ffact}  α={ffact*20*np.sqrt(dist_km/1000):.3f}")
+        aw     = AFTANWavelet(sei, dist_km=dist_km, t0=0.0, dt=dt,
+                               fmin=fmin, fmax=fmax, nf=nf,
+                               ffact=ffact, piover4=-1.0,
+                               vmin=vmin, vmax=vmax)
+        res_aw = aw.compute()
+
+        # convert AFTANWavelet output to the same grid format as Morlet path
+        sc     = aw.scalogram_db(res_aw, vmin=vmin, vmax=vmax, n_vel=300, min_db=min_db)
+        amp_img  = sc['amp_img']      # (n_vel, nf)  dB, 0 at peak, clipped -5
+        vel_axis = sc['vel_axis']     # (n_vel,) ascending [km/s]
+        per_axis = sc['per_axis']     # (nf,)    ascending [s]
+
+        # AFTAN gives group velocity directly from Trick 3 (parabolic peak).
+        # res_aw arrays are in SAME order as per_axis (per[0]=shortest period).
+        # Do NOT reverse — scalogram_db now outputs col j ↔ per[j].
+        _grvel_aw = res_aw['grvel']      # per[0]=shortest period, no reversal
+        _per_aw   = res_aw['per']
+        _phase_aw = res_aw['phase']
+        _amp_aw   = res_aw['amp_db']
+
+        # build phase/ifreq/t grids on (n_vel, n_per) layout
+        n_vel = len(vel_axis)
+        n_per = len(per_axis)
+        phase_grid = np.full((n_vel, n_per), np.nan)
+        ifreq_grid = np.full((n_vel, n_per), np.nan)
+        t_grid     = np.full((n_vel, n_per), np.nan)
+
+        for j in range(min(n_per, len(_grvel_aw))):
+            T = _per_aw[j]
+            U = _grvel_aw[j]
+            ph = _phase_aw[j]
+            if U <= 0 or not np.isfinite(U):
+                continue
+            t_g   = dist_km / U
+            idx_v = int(np.abs(vel_axis - U).argmin())
+            phase_grid[idx_v, j] = ph
+            ifreq_grid[idx_v, j] = 1.0 / T
+            t_grid[idx_v, j]     = t_g
+
+        # pre-fill group_vel from AFTAN ridge
+        _group_vel_aftan = np.full((max(num_ridges, 1), n_per), np.nan)
+        _peak_db_aftan   = np.full((max(num_ridges, 1), n_per), np.nan)
+        for j in range(min(n_per, len(_grvel_aw))):
+            u = _grvel_aw[j]
+            _group_vel_aftan[0, j] = u if (np.isfinite(u) and u > 0) else np.nan
+            _peak_db_aftan[0, j]   = _amp_aw[j]
+
+        group_vel = _group_vel_aftan
+        peak_db   = _peak_db_aftan
+
+    else:
+        raise ValueError(
+            f"wavelet_type must be 'morlet' or 'aftan', got '{wavelet_type}'.\n"
+            "  'morlet' — Complex Morlet CWT (default, standard time-frequency)\n"
+            "  'aftan'  — Original FORTRAN AFTAN ratio-based Gaussian filter bank"
+        )
+
+    # ================================================================== #
+    # Common downstream: ridge (Morlet only), jump correction,           #
+    # phase velocity estimation, branch selection                        #
+    # ================================================================== #
+
+    if wt_label == 'morlet':
+        # ridge extraction (AFTAN path already has group_vel filled above)
+        group_vel, peak_db = find_ridges(
+            amp_img, vel_axis,
+            height_db         = min_db * 0.5,
+            min_dist_kms      = min_dist_kms,
+            num_ridges        = num_ridges,
+            ref_group_vel     = pmf_ref_grvel,
+            ref_periods       = pmf_ref_periods,
+            per_axis          = per_axis,
+            ref_tolerance_kms = ref_tolerance_kms)
 
     mean_u = np.nanmean(group_vel[0])
     print(f"            Ridge: U_mean={mean_u:.3f} km/s"
           if np.isfinite(mean_u) else "            Ridge: NOT FOUND")
 
-    # --- AFTAN-style jump correction on the primary ridge ---
+    # AFTAN-style jump correction (both paths)
     group_vel[0] = apply_jump_correction(
         group_vel[0], per_axis,
         tresh=tresh, npoints=npoints)
 
-    # --- phase velocity ---
+    # phase velocity estimation (both paths — same formula)
     phase_vel_array, k_values = estimate_phase_velocity(
         group_vel[0], per_axis, vel_axis,
         phase_grid, ifreq_grid, t_grid,
         dist_km, n_branches=n_branches)
 
-    # --- automatic branch selection ---
+    # automatic branch selection (both paths)
     best_phase_vel, best_k = select_phase_velocity_branch(
-        phase_vel_array=phase_vel_array,
-        k_values=k_values,
-        per_axis=per_axis,
-        group_vel_ridge=group_vel[0],
-        ref_periods=pmf_ref_periods,
-        ref_phase_vel=pmf_ref_vel,
-
+        phase_vel_array  = phase_vel_array,
+        k_values         = k_values,
+        per_axis         = per_axis,
+        group_vel_ridge  = group_vel[0],
+        ref_periods      = pmf_ref_periods,
+        ref_phase_vel    = pmf_ref_vel,
     )
 
     return dict(
@@ -1013,8 +1112,9 @@ def cwt_ftan(filepath: str,
         trace           = tr,
         azim            = azim,
         bazim           = bazim,
-        best_phase_vel=best_phase_vel,
-        best_k=best_k,
+        best_phase_vel  = best_phase_vel,
+        best_k          = best_k,
+        wavelet_type    = wt_label,
     )
 
 # ===========================================================================
@@ -1076,11 +1176,12 @@ def plot_cwt_ftan(result: dict,
     vmin_p, vmax_p = vel_axis[0], vel_axis[-1]
     per_min, per_max = per_axis[0], per_axis[-1]
 
+    wt_label = result.get('wavelet_type', 'morlet')
     if title is None:
         name  = tr.id if tr is not None else ''
         title = (f"{name}   Δ={delta:.1f} km"
                  + (f"  az={azim:.1f}°" if not np.isnan(azim) else "")
-                 + f"  branch={branch}")
+                 + f"  branch={branch}  [{wt_label}]")
 
     fig = plt.figure(figsize=(20, 7))
     gs  = gridspec.GridSpec(1, 4, width_ratios=[3, 2.5, 2.5, 1.2],
@@ -1247,6 +1348,7 @@ def plot_cwt_ftan(result: dict,
     return fig
 
 
+
 # ===========================================================================
 # 10.  CLI argument parser
 # ===========================================================================
@@ -1321,6 +1423,13 @@ Parameter guide:
                    choices=['rayleigh', 'love'])
     p.add_argument('--plot',               action='store_true')
     p.add_argument('--force_dist_km',      type=float, default=None)
+    p.add_argument('--wavelet',            type=str,   default='morlet',
+                   choices=['morlet', 'aftan'],
+                   help="Filter bank: 'morlet' (default) = Complex Morlet CWT; "
+                        "'aftan' = original FORTRAN ratio-based Gaussian filter bank.")
+    p.add_argument('--ffact',              type=float, default=1.0,
+                   help="AFTAN filter width factor α=ffact·20·√(Δ/1000). "
+                        "Only used when --wavelet aftan. Default: 1.0.")
     return p
 
 
@@ -1390,6 +1499,8 @@ def _run(args):
                 tresh            = args.tresh,
                 npoints          = args.npoints,
                 force_dist_km    = args.force_dist_km,
+                wavelet_type     = args.wavelet,
+                ffact            = args.ffact,
             )
 
             gv     = result['group_vel']
