@@ -268,7 +268,7 @@ def build_velocity_grid(tf_abs2: np.ndarray,
                         t_arr: np.ndarray,
                         dist_km: float,
                         vmin: float, vmax: float,
-                        n_vel: int = 300,
+                        n_vel: int = 400,
                         min_db: float = -15.0
                         ) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
                                    np.ndarray, np.ndarray, np.ndarray]:
@@ -664,8 +664,9 @@ def estimate_phase_velocity(group_vel_ridge: np.ndarray,
                              t_grid: np.ndarray,
                              dist_km: float,
                              n_branches: int = 10,
-                             piover4: float = -1.0,
-                             ) -> Tuple[np.ndarray, np.ndarray]:
+                             piover4: float = -1.0) \
+        -> Tuple[np.ndarray, np.ndarray]:
+
     """
     Estimate phase velocity for all 2pi cycle branches.
 
@@ -789,7 +790,19 @@ def select_phase_velocity_branch(phase_vel_array: np.ndarray,
        Choose the branch where:
          a) c(T) > U(T)  at all valid periods  (phase > group always)
          b) c(T) is smooth  (minimise RMS of second differences)
-         c) c(T) is in a physically plausible range  [U*1.0 ... U*1.6]
+         c) c(T) is in a physically plausible range  [U*1.0 ... U*1.35]
+
+    Improvements added here
+    -----------------------
+    - Stronger physical constraint using the ratio c/U.
+      This prevents selecting very smooth but unrealistic high-velocity
+      branches, such as c ~ 4.5 km/s when U ~ 2.7 km/s.
+    - The same cleaning is applied before scoring and again after selecting
+      the best branch.
+    - Without a reference curve, the score now combines:
+        1) smoothness of c(T)
+        2) proximity to group velocity
+        3) preference for c/U close to about 1.10
 
     Parameters
     ----------
@@ -805,8 +818,25 @@ def select_phase_velocity_branch(phase_vel_array: np.ndarray,
     best_branch : (n_per,) selected phase velocity [km/s], NaN where invalid
     best_k      : integer k of the selected branch
     """
+
     n_branches, n_per = phase_vel_array.shape
     valid_ridge = np.isfinite(group_vel_ridge)
+
+    # ---------------------------------------------------------
+    # Physical c/U constraints.
+    #
+    # For fundamental-mode Rayleigh waves, phase velocity should usually
+    # be only moderately larger than group velocity. A very high c/U ratio
+    # is often just the wrong 2π branch.
+    #
+    # You can tune max_ratio:
+    #   1.25 = strict
+    #   1.35 = good default
+    #   1.50 = permissive
+    # ---------------------------------------------------------
+    min_ratio = 1.10 #strictly above the group velocity
+    max_ratio = 1.35
+    target_ratio = 1.50
 
     # ---- build reference interpolated to per_axis ----
     if ref_periods is not None and ref_phase_vel is not None:
@@ -816,65 +846,270 @@ def select_phase_velocity_branch(phase_vel_array: np.ndarray,
         ref_c = None
 
     best_score = np.inf
-    best_ki    = 0
+    best_ki = None
+    best_clean_branch = np.full(n_per, np.nan)
 
     for ki in range(n_branches):
-        row = phase_vel_array[ki, :]
 
-        # require finite values where ridge is valid
-        valid = valid_ridge & np.isfinite(row)
+        # Work on a copy so we do not modify phase_vel_array in place.
+        branch = phase_vel_array[ki, :].copy()
+
+        # ---------------------------------------------------------
+        # IMPROVEMENT 1:
+        # Apply hard physical cleaning BEFORE scoring.
+        # This is the part that prevents the selector from choosing
+        # a very smooth but far-away branch.
+        # ---------------------------------------------------------
+        ratio = branch / group_vel_ridge
+
+        bad = (
+            ~np.isfinite(branch)
+            | ~np.isfinite(group_vel_ridge)
+            | ~np.isfinite(ratio)
+            | (ratio < min_ratio)
+            | (ratio > max_ratio)
+        )
+
+        branch[bad] = np.nan
+
+        valid = valid_ridge & np.isfinite(branch)
+
+        # Need enough valid periods to judge the branch.
         if valid.sum() < 3:
             continue
 
-        c = row[valid]
+        c = branch[valid]
         u = group_vel_ridge[valid]
+        ratio_valid = c / u
 
-        # --- hard constraint: c must be > U everywhere ---
-        if np.any(c <= u):
-            continue
-
-        # --- hard constraint: c must be in plausible range [U, U*1.8] ---
-        if np.any(c > u * 1.8) or np.any(c < u * 0.95):
-            continue
-
-        # --- score 1: distance to reference (if available) ---
+        # ---------------------------------------------------------
+        # Score 1: reference curve available.
+        #
+        # If a reference phase-velocity curve exists, use it as the
+        # strongest criterion, but only after the physical c/U cleaning.
+        # ---------------------------------------------------------
         if ref_c is not None:
             ref_valid = valid & np.isfinite(ref_c)
-            if ref_valid.sum() < 2:
-                score = np.inf
-            else:
-                score = np.sqrt(np.mean((row[ref_valid] - ref_c[ref_valid]) ** 2))
+
+            if ref_valid.sum() < 3:
+                continue
+
+            misfit_ref = np.sqrt(
+                np.mean((branch[ref_valid] - ref_c[ref_valid]) ** 2)
+            )
+
+            # Small extra penalty to avoid branches far from group velocity,
+            # even if the reference is sparse or imperfect.
+            ratio_penalty = np.sqrt(
+                np.mean((ratio_valid - target_ratio) ** 2)
+            )
+
+            score = misfit_ref + 0.25 * ratio_penalty
+
+        # ---------------------------------------------------------
+        # Score 2: no reference curve.
+        #
+        # In this case the 2π ambiguity is not truly solved. We choose
+        # the most plausible branch using:
+        #   - smoothness
+        #   - closeness to group velocity
+        #   - c/U close to target_ratio
+        # ---------------------------------------------------------
         else:
-            # --- score 2: smoothness (second derivative) + proximity to U*1.1 ----
             if len(c) < 3:
                 continue
-            smoothness = np.sqrt(np.mean(np.diff(c, n=2) ** 2))
-            proximity  = np.sqrt(np.mean((c - u * 1.1) ** 2))
-            score = smoothness + 0.5 * proximity
+
+            # Smoothness of the selected branch.
+            # Lower is better.
+            smoothness = np.sqrt(
+                np.mean(np.diff(c, n=2) ** 2)
+            )
+
+            # Proximity to group velocity.
+            # Use relative distance so the score is scale-independent.
+            proximity = np.sqrt(
+                np.mean(((c - u) / u) ** 2)
+            )
+
+            # Ratio preference.
+            # This strongly discourages branches like c/U = 1.7.
+            ratio_penalty = np.sqrt(
+                np.mean((ratio_valid - target_ratio) ** 2)
+            )
+
+            # Number of valid samples.
+            # Prefer branches that survive the physical filter over many periods.
+            coverage = valid.sum() / max(valid_ridge.sum(), 1)
+
+            # Final score.
+            # The weights are empirical but robust:
+            #   smoothness keeps the curve stable
+            #   proximity keeps c close to U
+            #   ratio_penalty avoids unrealistically high branches
+            #   coverage rewards branches that work over more periods
+            score = (
+                smoothness
+                + 1.0 * proximity
+                + 2.0 * ratio_penalty
+                - 0.25 * coverage
+            )
 
         if score < best_score:
             best_score = score
-            best_ki    = ki
+            best_ki = ki
+            best_clean_branch = branch.copy()
 
-    best_branch = phase_vel_array[best_ki, :].copy()
-    best_k      = int(k_values[best_ki])
+    # ---------------------------------------------------------
+    # Fallback if no branch survived the strict c/U filter.
+    # This avoids crashing, but returns NaNs so the problem is visible.
+    # ---------------------------------------------------------
+    if best_ki is None:
+        best_branch = np.full(n_per, np.nan)
+        best_k = int(k_values[0])
 
-    # zero out physically impossible values
-    valid_ridge_full = np.isfinite(group_vel_ridge)
-    for j in range(n_per):
-        if not valid_ridge_full[j]:
-            best_branch[j] = np.nan
-            continue
-        c = best_branch[j]
-        u = group_vel_ridge[j]
-        if not np.isfinite(c) or c <= u or c > u * 1.8:
-            best_branch[j] = np.nan
+        print("            Phase vel. branch selected: none  "
+              "all branches failed physical c/U constraints")
+
+        return best_branch, best_k
+
+    best_branch = best_clean_branch.copy()
+    best_k = int(k_values[best_ki])
+
+    # ---------------------------------------------------------
+    # IMPROVEMENT 2:
+    # Apply the same physical mask again after branch selection.
+    # This guarantees the returned curve cannot contain impossible points.
+    # ---------------------------------------------------------
+    ratio = best_branch / group_vel_ridge
+
+    bad = (
+        ~np.isfinite(best_branch)
+        | ~np.isfinite(group_vel_ridge)
+        | ~np.isfinite(ratio)
+        | (ratio < min_ratio)
+        | (ratio > max_ratio)
+    )
+
+    best_branch[bad] = np.nan
+
+    # ---------------------------------------------------------
+    # IMPROVEMENT 3:
+    # Reject sharp jumps inside the selected branch.
+    # ---------------------------------------------------------
+    max_abs_jump = 0.20
+    max_rel_jump = 0.08
+
+    valid_idx = np.where(np.isfinite(best_branch))[0]
+
+    if len(valid_idx) >= 2:
+        for n in range(1, len(valid_idx)):
+            j_prev = valid_idx[n - 1]
+            j = valid_idx[n]
+
+            c_prev = best_branch[j_prev]
+            c_now = best_branch[j]
+
+            abs_jump = abs(c_now - c_prev)
+            rel_jump = abs_jump / max(abs(c_prev), 1e-6)
+
+            if abs_jump > max_abs_jump and rel_jump > max_rel_jump:
+                best_branch[j] = np.nan
 
     print(f"            Phase vel. branch selected: k={best_k}  "
           f"score={best_score:.4f}  "
+          f"valid={np.isfinite(best_branch).sum()}/{n_per}  "
           f"c_mean={np.nanmean(best_branch):.3f} km/s")
 
     return best_branch, best_k
+
+
+def aftan_phase_velocity_branches(res_aw, dist_km, n_branches=10):
+    per = np.asarray(res_aw["per"])
+    grvel = np.asarray(res_aw["grvel"])
+    ph = np.asarray(res_aw["phase"])
+
+    omega = 2.0 * np.pi / per
+    t_g = dist_km / grvel
+
+    k_values = np.arange(-n_branches // 2, n_branches // 2)
+    phase_vel_array = np.full((len(k_values), len(per)), np.nan)
+
+    for i, k in enumerate(k_values):
+        denom = omega * t_g + ph + 2.0 * np.pi * k
+        valid = np.isfinite(denom) & (np.abs(denom) > 1e-10)
+        phase_vel_array[i, valid] = omega[valid] * dist_km / denom[valid]
+
+    return phase_vel_array, k_values
+
+
+def estimate_phase_velocity_with_reference(group_vel_ridge: np.ndarray,
+                                            per_axis: np.ndarray,
+                                            vel_axis: np.ndarray,
+                                            phase_grid: np.ndarray,
+                                            t_grid: np.ndarray,
+                                            dist_km: float,
+                                            ref_periods: np.ndarray,
+                                            ref_phase_vel: np.ndarray,
+                                            piover4: float = -1.0,
+                                            ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """
+    Morlet phase velocity using AFTAN-style reference-curve cycle resolution.
+
+    Instead of generating many k branches and selecting one later, this computes
+    the integer cycle number directly from the reference phase velocity:
+
+        n = round((omega*Delta/c_ref - omega*t_group - phi - pi/4) / 2pi)
+
+        c = omega*Delta / (omega*t_group + phi + pi/4 + 2pi*n)
+
+    This is the Morlet equivalent of AFTANWavelet.phase_velocity(), but using
+    the Morlet/CWT phase measured on the selected group-velocity ridge.
+    """
+
+    n_per = len(per_axis)
+    best_phase_vel = np.full(n_per, np.nan)
+    k_values = np.array([0])
+    phase_vel_array = np.full((1, n_per), np.nan)
+
+    ref_c = np.interp(per_axis, ref_periods, ref_phase_vel,
+                      left=np.nan, right=np.nan)
+
+    phase_corr = piover4 * np.pi / 4.0
+
+    for j in range(n_per):
+        U = group_vel_ridge[j]
+        T = per_axis[j]
+        cref = ref_c[j]
+
+        if not (np.isfinite(U) and np.isfinite(T) and np.isfinite(cref)):
+            continue
+
+        omega = 2.0 * np.pi / T
+        t0 = dist_km / U
+
+        idx_vel = np.abs(vel_axis - U).argmin()
+        phi = phase_grid[idx_vel, j]
+
+        if not (np.isfinite(phi) and np.isfinite(t0) and t0 > 0):
+            continue
+
+        n_cycle = np.round(
+            (omega * dist_km / cref - omega * t0 - phi - phase_corr)
+            / (2.0 * np.pi)
+        )
+
+        denom = omega * t0 + phi + phase_corr + 2.0 * np.pi * n_cycle
+
+        if abs(denom) > 1e-10:
+            c = omega * dist_km / denom
+
+            if np.isfinite(c):
+                best_phase_vel[j] = c
+
+    phase_vel_array[0, :] = best_phase_vel
+    best_k = 0
+
+    return phase_vel_array, k_values, best_phase_vel, best_k
 
 # ===========================================================================
 # 9.  Main pipeline
@@ -901,7 +1136,7 @@ def cwt_ftan(filepath: str,
              force_dist_km: Optional[float] = None,
              wavelet_type: str = 'morlet',
              ffact: float = 1.0,
-             ) -> dict:
+             piover4: float = -1.0) -> dict:
     """
     Full CWT/AFTAN-FTAN pipeline.
 
@@ -989,7 +1224,7 @@ def cwt_ftan(filepath: str,
             build_velocity_grid(
                 tf_abs2, phase_raw, ifreq_hz,
                 cwt_obj.frequencies, t_arr, dist_km, vmin, vmax,
-                n_vel=300, min_db=min_db)
+                n_vel=400, min_db=min_db)
 
     # ================================================================== #
     # PATH B — Original AFTAN filter bank                                #
@@ -999,12 +1234,12 @@ def cwt_ftan(filepath: str,
               f"ffact={ffact}  α={ffact*20*np.sqrt(dist_km/1000):.3f}")
         aw     = AFTANWavelet(sei, dist_km=dist_km, t0=0.0, dt=dt,
                                fmin=fmin, fmax=fmax, nf=nf,
-                               ffact=ffact, piover4=-1.0,
+                               ffact=ffact, piover4=piover4,
                                vmin=vmin, vmax=vmax)
         res_aw = aw.compute()
 
         # convert AFTANWavelet output to the same grid format as Morlet path
-        sc     = aw.scalogram_db(res_aw, vmin=vmin, vmax=vmax, n_vel=300, min_db=min_db)
+        sc     = aw.scalogram_db(res_aw, vmin=vmin, vmax=vmax, n_vel=400, min_db=min_db)
         amp_img  = sc['amp_img']      # (n_vel, nf)  dB, 0 at peak, clipped -5
         vel_axis = sc['vel_axis']     # (n_vel,) ascending [km/s]
         per_axis = sc['per_axis']     # (nf,)    ascending [s]
@@ -1063,7 +1298,7 @@ def cwt_ftan(filepath: str,
         # ridge extraction (AFTAN path already has group_vel filled above)
         group_vel, peak_db = find_ridges(
             amp_img, vel_axis,
-            height_db         = min_db * 0.5,
+            height_db         = min_db*0.5,
             min_dist_kms      = min_dist_kms,
             num_ridges        = num_ridges,
             ref_group_vel     = pmf_ref_grvel,
@@ -1080,21 +1315,101 @@ def cwt_ftan(filepath: str,
         group_vel[0], per_axis,
         tresh=tresh, npoints=npoints)
 
-    # phase velocity estimation (both paths — same formula)
-    phase_vel_array, k_values = estimate_phase_velocity(
-        group_vel[0], per_axis, vel_axis,
-        phase_grid, ifreq_grid, t_grid,
-        dist_km, n_branches=n_branches)
+    # ================================================================== #
+    # Phase velocity                                                     #
+    # ================================================================== #
 
-    # automatic branch selection (both paths)
-    best_phase_vel, best_k = select_phase_velocity_branch(
-        phase_vel_array  = phase_vel_array,
-        k_values         = k_values,
-        per_axis         = per_axis,
-        group_vel_ridge  = group_vel[0],
-        ref_periods      = pmf_ref_periods,
-        ref_phase_vel    = pmf_ref_vel,
-    )
+    if wt_label == "aftan":
+
+        if pmf_ref_periods is not None and pmf_ref_vel is not None:
+            best_phase_vel = aw.phase_velocity(
+                res_aw,
+                np.asarray(pmf_ref_periods),
+                np.asarray(pmf_ref_vel))
+
+            phase_vel_array = best_phase_vel[np.newaxis, :]
+            k_values = np.array([0])
+            best_k = 0
+
+            u = group_vel[0]
+            bad = (
+                    ~np.isfinite(best_phase_vel)
+                    | ~np.isfinite(u)
+                    | (best_phase_vel <= u)
+                    | (best_phase_vel > 2.0 * u)
+            )
+
+            best_phase_vel[bad] = np.nan
+            phase_vel_array[0, :] = best_phase_vel
+
+        else:
+            phase_vel_array, k_values = aftan_phase_velocity_branches(
+                res_aw,
+                dist_km,
+                n_branches=n_branches,
+            )
+
+            best_phase_vel, best_k = select_phase_velocity_branch(
+                phase_vel_array=phase_vel_array,
+                k_values=k_values,
+                per_axis=per_axis,
+                group_vel_ridge=group_vel[0],
+                ref_periods=None,
+                ref_phase_vel=None,
+            )
+
+    else:
+        # Morlet phase velocity
+
+        if pmf_ref_periods is not None and pmf_ref_vel is not None:
+            phase_vel_array, k_values, best_phase_vel, best_k = \
+                estimate_phase_velocity_with_reference(
+                    group_vel_ridge=group_vel[0],
+                    per_axis=per_axis,
+                    vel_axis=vel_axis,
+                    phase_grid=phase_grid,
+                    t_grid=t_grid,
+                    dist_km=dist_km,
+                    ref_periods=np.asarray(pmf_ref_periods),
+                    ref_phase_vel=np.asarray(pmf_ref_vel),
+                    piover4=piover4,
+                )
+
+            u = group_vel[0]
+            bad = (
+                    ~np.isfinite(best_phase_vel)
+                    | ~np.isfinite(u)
+                    | (best_phase_vel <= u)
+                    | (best_phase_vel > 1.35 * u)
+            )
+
+            best_phase_vel[bad] = np.nan
+            phase_vel_array[0, :] = best_phase_vel
+
+            print(f"            Morlet phase vel. with reference: "
+                  f"valid={np.isfinite(best_phase_vel).sum()}/{len(per_axis)}  "
+                  f"c_mean={np.nanmean(best_phase_vel):.3f} km/s")
+
+        else:
+            phase_vel_array, k_values = estimate_phase_velocity(
+                group_vel[0],
+                per_axis,
+                vel_axis,
+                phase_grid,
+                ifreq_grid,
+                t_grid,
+                dist_km,
+                n_branches=n_branches,
+            )
+
+            best_phase_vel, best_k = select_phase_velocity_branch(
+                phase_vel_array=phase_vel_array,
+                k_values=k_values,
+                per_axis=per_axis,
+                group_vel_ridge=group_vel[0],
+                ref_periods=None,
+                ref_phase_vel=None,
+            )
 
     return dict(
         scalogram_db    = amp_img,
@@ -1206,7 +1521,7 @@ def plot_cwt_ftan(result: dict,
     valid = amp[np.isfinite(amp)]
     v_lo  = valid.min() if len(valid) else -15
     pcm = ax_map.contourf(per_axis, vel_axis, amp,
-                          levels=60, cmap=cmap, vmin=v_lo, vmax=0)
+                          levels=120, cmap=cmap, vmin=v_lo, vmax=0)
     fig.colorbar(pcm, ax=ax_map, pad=0.02, shrink=0.85).set_label('Power [dB]', fontsize=8)
 
     # ridge dots

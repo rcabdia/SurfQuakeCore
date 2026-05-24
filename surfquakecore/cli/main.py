@@ -2977,8 +2977,12 @@ Usage Examples:
                       --ffact 1.0 --ref ak135_earth --plot
 
   # Side-by-side comparison: run twice, change only --wavelet
-  surfquake cwt_aftan -i ./stack/ -o ./morlet_out/ --wavelet morlet
-  surfquake cwt_aftan -i ./stack/ -o ./aftan_out/  --wavelet aftan --ffact 1.0
+  surfquake cwt_aftan -i ./data/ -o ./output/ --tmin 6 --tmax 28 \
+                     --vmin 2.0 --vmax 5.0 --plot --ref_tolerance_kms 1.0 --min_db -10.0 
+                     --wavelet morlet --num_ridges 1
+  surfquake cwt_aftan -i ./data/ -o ./output/ --tmin 6 --tmax 28 \
+                     --vmin 2.0 --vmax 5.0 --plot --ref_tolerance_kms 1.0 
+                     --min_db -10.0 --wavelet aftan --ffact 0.20
 
 Key Arguments:
   -i  --input            [REQUIRED] Input folder (H5 batch) or single file
@@ -2989,7 +2993,7 @@ Key Arguments:
   --vmax                 [OPTIONAL] Max group velocity [km/s]         (default: 5.0)
   --nf                   [OPTIONAL] Number of log-spaced frequencies  (default: 100)
   --w                    [OPTIONAL] Morlet wavelet cycles             (default: 6.0)
-  --ffact               [OPTIONAL] AFTAN filter width factor         (default: 1.0)
+  --ffact               [OPTIONAL] AFTAN filter width factor          (default: 0.2)
   --wavelet              [OPTIONAL] Filter bank                       (default: Complex Morlet CWT)
   --branch               [OPTIONAL] EGF branch: fold|causal|acausal   (default: fold)
   --pattern              [OPTIONAL] Glob pattern for batch mode       (default: *.H5)
@@ -3004,11 +3008,11 @@ Key Arguments:
   --n_branches           [OPTIONAL] 2pi cycle branches for phase vel  (default: 10)
   --ref                  [OPTIONAL] Reference model name or CSV path
   --wave                 [OPTIONAL] rayleigh|love                     (default: rayleigh)
-  --plot                 [OPTIONAL] Save CWT map + dispersion PNG per pair
+  --plot                 [OPTIONAL] Save Frequency-Time map + dispersion curves in a PNG file for each pair
   --force_dist_km        [OPTIONAL] Override inter-station distance [km]
 
 Parameter guide:
-  --w              Morlet wavelet cycles. Lower (4-6) = better time resolution.
+  --w              Morlet wavelet cycles. Lower (5-6) = better time resolution.
                    Higher (8-16) = better frequency resolution. Default 6.
   --tresh          Jump detection threshold. Lower = more aggressive correction.
                    Default 3.0 for CWT (noisier than AFTAN's 10.0).
@@ -3017,15 +3021,47 @@ Parameter guide:
                    Increase to 1.0 for noisy data, decrease to 0.3 for clean.
   --filter_param   PMF Gaussian window width [s]. Controls mode isolation width.
                    Larger = broader window, less strict isolation.
+  
+  Built-in models are loaded with --ref. Available shorthand names include:
+
+    ak135_earth
+    ak135_earth_first
+    ak135_ocean_deep
+    ak135_ocean_deep_first
+    ak135_ocean_intermediate
+    ak135_ocean_intermediate_first
+    ak135_ocean_shallow
+    ak135_ocean_shallow_first
+
+  Defaults:
+    --ref ak135_earth fundamental mode dispersion from ak135f.
+    --wave rayleigh uses Rayleigh phase/group columns.
+    --wave love uses Love phase/group columns.
+
+  Users may also pass a full path to a custom CSV/TXT file with columns comma separated:
+    
+    period,phase_velocity_rayleigh,phase_velocity_love,group_velocity_rayleigh,group_velocity_love
+    1.0,3.1425,3.2721,1.6231,3.0846
+    1.1,3.3333,3.2941,2.6703,3.0435
+    1.2,3.3896,3.3214,2.8773,2.9913
+
+Source type / pi-over-four convention:
+  --source_type egf
+      Use for empirical Green's functions, ambient-noise correlations,
+      earthquake-coda cross-correlations, and station-station interferometry.
+
+  --source_type earthquake
+      Use for ordinary event-to-station earthquake seismograms.
 
 Reference:
-  Torrence & Compo (1998). A Practical Guide to Wavelet Analysis.
-  BAMS 79(1), 61-78.
+  
+  Torrence & Compo (1998). A Practical Guide to Wavelet Analysis. BAMS 79(1), 61-78.
+  
   Levshin & Ritzwoller (2001). Automated Detection, Extraction and Measurement
   of Regional Surface Waves. Pure and Applied Geophysics.
-  Bensen et al. (2007). Processing seismic ambient noise data to obtain
-  reliable broad-band surface wave dispersion measurements.
-  Geophys. J. Int. 169, 1239-1260.
+  
+  Bensen et al. (2007). Processing seismic ambient noise data to obtain reliable broad-band surface wave dispersion 
+  measurements. Geophys. J. Int. 169, 1239-1260.
 
 Documentation:
   https://projectisp.github.io/surfquaketutorial.github.io/
@@ -3042,11 +3078,10 @@ Documentation:
     arg_parse.add_argument("--vmax",                 type=float, default=5.0,    help="Max group velocity [km/s]")
     arg_parse.add_argument("--nf",                   type=int,   default=100,    help="Number of log-spaced frequencies")
     arg_parse.add_argument("--w",                    type=float, default=6.0,    help="Morlet wavelet cycles")
-    arg_parse.add_argument("--wavelet", type=str, default="morlet",
-                           choices=["morlet", "aftan"],
+    arg_parse.add_argument("--wavelet", type=str, default="morlet", choices=["morlet", "aftan"],
                            help="Filter bank: 'morlet' (default) = Complex Morlet CWT; "
                                 "'aftan' = original FORTRAN ratio-based Gaussian filter bank.")
-    arg_parse.add_argument("--ffact", type=float, default=1.0,
+    arg_parse.add_argument("--ffact", type=float, default=0.20,
                            help="AFTAN filter width factor α=ffact·20·√(Δ/1000). "
                                 "Only used with --wavelet aftan. Default: 1.0.")
     arg_parse.add_argument("--branch",               type=str,   default="fold",
@@ -3065,15 +3100,28 @@ Documentation:
     arg_parse.add_argument("--filter_param",         type=float, default=15.0,   help="PMF Gaussian window width [s]")
     arg_parse.add_argument("--n_branches",           type=int,   default=10,     help="Number of 2pi cycle branches for phase velocity")
     arg_parse.add_argument("--ref",                  type=str,   default=None,
-                           help="Reference model name (e.g. ak135_earth) or full CSV path. "
+                           help="Reference model name (e.g. ak135_earth) or full CSV model path. "
                                 "Guides ridge picking and enables phase velocity output.")
     arg_parse.add_argument("--wave",                 type=str,   default="rayleigh",
                            choices=["rayleigh", "love"],
                            help="Wave type for reference curve (default: rayleigh)")
     arg_parse.add_argument("--plot",                 action="store_true",
-                           help="Save CWT amplitude map + dispersion PNG for each pair")
+                           help="Save Frequency-Time map + dispersion curves in a PNG file for each pair")
     arg_parse.add_argument("--force_dist_km",        type=float, default=None,
                            help="Override inter-station distance [km]")
+    arg_parse.add_argument(
+        "--source_type",
+        type=str,
+        default="egf",
+        choices=["egf", "earthquake"],
+        help=(
+            "Phase convention for the input waveform. "
+            "'egf' = empirical Green's function / ambient-noise or earthquake-coda "
+            "cross-correlation, uses piover4=-1. "
+            "'earthquake' = ordinary event-to-station seismogram, uses piover4=+1. "
+            "Default: egf."
+        )
+    )
 
     parsed      = arg_parse.parse_args()
     input_path  = make_abs(parsed.input)
@@ -3087,6 +3135,18 @@ Documentation:
     pmf_ref_vel     = None
     ref_group_vel   = None
     ref_group_per   = None
+
+    # ------------------------------------------------------------------ #
+    # Phase convention                                                    #
+    # ------------------------------------------------------------------ #
+    if parsed.source_type == "egf":
+        piover4 = -1.0
+    elif parsed.source_type == "earthquake":
+        piover4 = +1.0
+    else:
+        raise ValueError(f"Invalid source_type: {parsed.source_type}")
+
+    print(f"[CWT-AFTAN] Source type: {parsed.source_type}  piover4={piover4:+.1f}")
 
     if parsed.ref:
         try:
@@ -3128,7 +3188,8 @@ Documentation:
         npoints           = parsed.npoints,
         force_dist_km     = parsed.force_dist_km,
         wavelet_type=parsed.wavelet,
-        ffact=parsed.ffact)
+        ffact=parsed.ffact,
+        piover4           = piover4)
 
     # ------------------------------------------------------------------ #
     # Collect files: folder → batch, file → single                        #
