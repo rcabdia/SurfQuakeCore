@@ -2993,7 +2993,7 @@ Key Arguments:
   --vmax                 [OPTIONAL] Max group velocity [km/s]         (default: 5.0)
   --nf                   [OPTIONAL] Number of log-spaced frequencies  (default: 100)
   --w                    [OPTIONAL] Morlet wavelet cycles             (default: 6.0)
-  --ffact               [OPTIONAL] AFTAN filter width factor          (default: 0.2)
+  --ffact                [OPTIONAL] AFTAN filter width factor         (default: 0.2)
   --wavelet              [OPTIONAL] Filter bank                       (default: Complex Morlet CWT)
   --branch               [OPTIONAL] EGF branch: fold|causal|acausal   (default: fold)
   --pattern              [OPTIONAL] Glob pattern for batch mode       (default: *.H5)

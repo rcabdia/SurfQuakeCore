@@ -44,17 +44,15 @@ Dependencies:  numpy, scipy, obspy, matplotlib  (no PyQt5 / ISP required)
 """
 
 from __future__ import annotations
-
 import argparse
 import glob
 import os
-import sys
 from typing import Optional, Tuple
-
 import numpy as np
 import scipy.signal
 import scipy.interpolate
 from obspy import read as obs_read, Trace
+from scipy.signal import medfilt
 
 from surfquakecore.data_processing.wavelet import AFTANWavelet
 
@@ -559,36 +557,36 @@ def find_ridges(scalogram_db: np.ndarray,
     --------------
     Among all local maxima above height_db, pick the one whose
     velocity is CLOSEST to the reference group velocity at that period.
+    Reject if the closest peak exceeds ref_tolerance_kms.
 
-    Tolerance (ref_tolerance_kms)
-    ------------------------------
-    When a reference is provided, if the closest candidate peak is
-    farther than ref_tolerance_kms [km/s] from the reference value,
-    that period is marked as NaN (outlier rejected).
+    Parabolic sub-sample interpolation (AFTAN Trick 3)
+    ---------------------------------------------------
+    Once the integer-sample peak index pk is identified, a parabola is
+    fitted through the three adjacent scalogram values:
 
-    This prevents the picker from latching onto spurious energy blobs
-    that happen to be local maxima but are clearly unrelated to the
-    mode tracked by the reference curve.
+        a0 = col[pk-1],  a1 = col[pk],  a2 = col[pk+1]
+        v_offset = 0.5 * (a0 - a2) / (a0 - 2*a1 + a2)   ∈ (-0.5, +0.5)
+        v_interp = vel_axis[pk] + v_offset * dv
+
+    This gives sub-grid velocity resolution without any resampling,
+    exactly as the original AFTAN does in the time domain (Trick 3).
+    The result is a smooth group-velocity curve free of quantisation steps.
 
     Parameters
     ----------
     scalogram_db      : (n_vel, n_per)  power [dB]
-    vel_axis          : (n_vel,)  velocity [km/s] ascending
+    vel_axis          : (n_vel,)  velocity [km/s] ascending, uniform spacing
     height_db         : minimum peak height [dB]
     min_dist_kms      : minimum separation between candidate peaks [km/s]
     num_ridges        : number of ridges to return
     ref_group_vel     : (N,) reference group velocities [km/s]  (optional)
     ref_periods       : (N,) reference periods [s]              (optional)
-    per_axis          : (n_per,) period axis [s]                (required if ref given)
+    per_axis          : (n_per,) period axis [s]  (required if ref given)
     ref_tolerance_kms : maximum allowed distance from reference [km/s].
-                        Peaks farther than this are rejected as outliers.
                         Only used when a reference is provided.
-                        Default: 0.5 km/s  (reasonable for most crust models).
-                        Increase to 1.0 for noisy data or large model uncertainty.
-                        Decrease to 0.2–0.3 for well-constrained paths.
     """
     n_vel, n_per = scalogram_db.shape
-    dv = abs(vel_axis[1] - vel_axis[0]) if n_vel > 1 else 0.1
+    dv           = abs(vel_axis[1] - vel_axis[0]) if n_vel > 1 else 0.1
     min_dist_samp = max(1, int(min_dist_kms / dv))
 
     group_vel = np.full((num_ridges, n_per), np.nan)
@@ -603,6 +601,22 @@ def find_ridges(scalogram_db: np.ndarray,
             ref_periods, ref_group_vel,
             kind='linear', bounds_error=False,
             fill_value=(ref_group_vel[0], ref_group_vel[-1]))
+
+    def _parabolic_interp(col, pk):
+        """
+        Sub-sample parabolic interpolation around integer peak pk.
+        Returns fractional velocity offset within ±0.5 grid cells.
+        """
+        if 0 < pk < n_vel - 1:
+            a0 = col[pk - 1]
+            a1 = col[pk]
+            a2 = col[pk + 1]
+            denom = a0 - 2.0 * a1 + a2
+            if abs(denom) > 1e-10:
+                v_off = 0.5 * (a0 - a2) / denom
+                v_off = float(np.clip(v_off, -0.5, 0.5))
+                return vel_axis[pk] + v_off * dv
+        return vel_axis[pk]
 
     for j in range(n_per):
         col = scalogram_db[:, j]
@@ -619,34 +633,37 @@ def find_ridges(scalogram_db: np.ndarray,
 
         if use_ref:
             # --- WITH REFERENCE: pick peak closest to reference ---
-            T_j    = per_axis[j]
-            u_ref  = float(ref_interp(T_j))
+            T_j   = per_axis[j]
+            u_ref = float(ref_interp(T_j))
 
             peak_vels     = vel_axis[peaks]
             dist_from_ref = np.abs(peak_vels - u_ref)
 
-            # sort peaks by distance from reference (closest first)
+            # sort by distance from reference (closest first)
             order = np.argsort(dist_from_ref)
 
-            # assign ridges — reject if closest peak exceeds tolerance
             for k in range(num_ridges):
-                if k < len(order):
-                    pk  = peaks[order[k]]
-                    dv_from_ref = dist_from_ref[order[k]]
-                    if dv_from_ref <= ref_tolerance_kms:
-                        group_vel[k, j] = vel_axis[pk]
-                        peak_db[k, j]   = col[pk]
-                    # else: leave as NaN — outlier rejected
+                if k >= len(order):
+                    break
+                pk          = peaks[order[k]]
+                dv_from_ref = dist_from_ref[order[k]]
+                if dv_from_ref <= ref_tolerance_kms:
+                    # parabolic sub-sample interpolation
+                    group_vel[k, j] = _parabolic_interp(col, pk)
+                    peak_db[k, j]   = col[pk]
+                # else: leave as NaN — outlier rejected
 
         else:
             # --- WITHOUT REFERENCE: pick peak with highest amplitude ---
-            order = np.argsort(props['peak_heights'])[::-1]  # strongest first
+            order = np.argsort(props['peak_heights'])[::-1]
 
             for k in range(num_ridges):
-                if k < len(order):
-                    pk = peaks[order[k]]
-                    group_vel[k, j] = vel_axis[pk]
-                    peak_db[k, j]   = col[pk]
+                if k >= len(order):
+                    break
+                pk = peaks[order[k]]
+                # parabolic sub-sample interpolation
+                group_vel[k, j] = _parabolic_interp(col, pk)
+                peak_db[k, j]   = col[pk]
 
     return group_vel, peak_db
 
@@ -1051,65 +1068,246 @@ def estimate_phase_velocity_with_reference(group_vel_ridge: np.ndarray,
                                             ref_periods: np.ndarray,
                                             ref_phase_vel: np.ndarray,
                                             piover4: float = -1.0,
+                                            n_branches: int = 10,
                                             ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """
-    Morlet phase velocity using AFTAN-style reference-curve cycle resolution.
+    Compute all 2π cycle branches, select the best by minimum RMS to the
+    reference curve, then clean the winner using the physical constraints
+    from select_phase_velocity_branch():
 
-    Instead of generating many k branches and selecting one later, this computes
-    the integer cycle number directly from the reference phase velocity:
+    Step 1 — Compute all branches
+        c_k(T) = ω·Δ / (ω·t_group + φ + piover4·π/4 + k·2π)
+        for k in {-n_branches/2 ... +n_branches/2}
 
-        n = round((omega*Delta/c_ref - omega*t_group - phi - pi/4) / 2pi)
+    Step 2 — Select best k by minimum RMS to reference
+        best_k = argmin_k  RMS( c_k(T) - c_ref(T) )
+        evaluated only at periods where c_k > U and c_k < 2·U
 
-        c = omega*Delta / (omega*t_group + phi + pi/4 + 2pi*n)
+    Step 3 — Clean the winner (physical point-by-point masking)
+        a) Hard c/U ratio filter: min_ratio=1.01, max_ratio=1.35
+           Masks individual points outside the physical range.
+        b) Jump rejection: masks points that jump > 0.20 km/s absolute
+           AND > 0.08 relative to the previous valid point.
+           Removes residual 2π glitches that survived the global selection.
 
-    This is the Morlet equivalent of AFTANWavelet.phase_velocity(), but using
-    the Morlet/CWT phase measured on the selected group-velocity ridge.
+    This combines the robustness of global RMS selection (Step 2)
+    with the point-level physical cleaning of select_phase_velocity_branch
+    (Step 3), giving the best of both methods.
     """
+    n_per      = len(per_axis)
+    phase_corr = piover4 * np.pi / 4.0
+    k_values   = np.arange(-n_branches // 2, n_branches // 2)
 
-    n_per = len(per_axis)
-    best_phase_vel = np.full(n_per, np.nan)
-    k_values = np.array([0])
-    phase_vel_array = np.full((1, n_per), np.nan)
+    # physical cleaning parameters (from select_phase_velocity_branch)
+    min_ratio    = 1.01   # c must be strictly above U
+    max_ratio    = 1.35   # c must not be unrealistically fast
+    max_abs_jump = 0.20   # km/s
+    max_rel_jump = 0.08   # relative
 
+    # reference interpolated onto per_axis
     ref_c = np.interp(per_axis, ref_periods, ref_phase_vel,
                       left=np.nan, right=np.nan)
 
-    phase_corr = piover4 * np.pi / 4.0
+    # --- Step 1: extract phi and t0 at the ridge ---
+    phi_arr = np.full(n_per, np.nan)
+    t0_arr  = np.full(n_per, np.nan)
 
     for j in range(n_per):
         U = group_vel_ridge[j]
-        T = per_axis[j]
-        cref = ref_c[j]
+        if not np.isfinite(U) or U <= 0:
+            continue
+        idx_vel    = int(np.abs(vel_axis - U).argmin())
+        phi_arr[j] = phase_grid[idx_vel, j]
+        t0_arr[j]  = dist_km / U
 
-        if not (np.isfinite(U) and np.isfinite(T) and np.isfinite(cref)):
+    # --- Step 1: compute all branches ---
+    phase_vel_array = np.full((len(k_values), n_per), np.nan)
+
+    for ki, k in enumerate(k_values):
+        for j in range(n_per):
+            phi = phi_arr[j]
+            t0  = t0_arr[j]
+            T   = per_axis[j]
+            if not (np.isfinite(phi) and np.isfinite(t0) and t0 > 0):
+                continue
+            omega = 2.0 * np.pi / T
+            denom = omega * t0 + phi + phase_corr + k * 2.0 * np.pi
+            if abs(denom) > 1e-10:
+                c = omega * dist_km / denom
+                if np.isfinite(c):
+                    phase_vel_array[ki, j] = c
+
+    # --- Step 2: select best branch by minimum RMS to reference ---
+    best_score = np.inf
+    best_ki    = 0
+
+    for ki in range(len(k_values)):
+        row = phase_vel_array[ki, :]
+        U   = group_vel_ridge
+
+        # physical pre-filter before scoring
+        valid = (np.isfinite(row) & np.isfinite(U) &
+                 (row / np.where(U > 0, U, np.nan) >= min_ratio) &
+                 (row / np.where(U > 0, U, np.nan) <= max_ratio) &
+                 np.isfinite(ref_c))
+
+        if valid.sum() < 3:
             continue
 
-        omega = 2.0 * np.pi / T
-        t0 = dist_km / U
+        rms = np.sqrt(np.mean((row[valid] - ref_c[valid]) ** 2))
 
-        idx_vel = np.abs(vel_axis - U).argmin()
-        phi = phase_grid[idx_vel, j]
+        if rms < best_score:
+            best_score = rms
+            best_ki    = ki
 
-        if not (np.isfinite(phi) and np.isfinite(t0) and t0 > 0):
-            continue
+    best_k         = int(k_values[best_ki])
+    best_phase_vel = phase_vel_array[best_ki, :].copy()
 
-        n_cycle = np.round(
-            (omega * dist_km / cref - omega * t0 - phi - phase_corr)
-            / (2.0 * np.pi)
-        )
+    # --- Step 3a: hard c/U ratio mask on winner ---
+    U     = group_vel_ridge
+    ratio = np.where(np.isfinite(U) & (U > 0), best_phase_vel / U, np.nan)
 
-        denom = omega * t0 + phi + phase_corr + 2.0 * np.pi * n_cycle
+    bad = (~np.isfinite(best_phase_vel) | ~np.isfinite(U) |
+           ~np.isfinite(ratio) |
+           (ratio < min_ratio) | (ratio > max_ratio))
+    best_phase_vel[bad] = np.nan
 
-        if abs(denom) > 1e-10:
-            c = omega * dist_km / denom
+    # --- Step 3b: jump rejection on winner ---
+    valid_idx = np.where(np.isfinite(best_phase_vel))[0]
 
-            if np.isfinite(c):
-                best_phase_vel[j] = c
+    if len(valid_idx) >= 2:
+        for idx in range(1, len(valid_idx)):
+            j_prev = valid_idx[idx - 1]
+            j_now  = valid_idx[idx]
+            c_prev = best_phase_vel[j_prev]
+            c_now  = best_phase_vel[j_now]
+            abs_jump = abs(c_now - c_prev)
+            rel_jump = abs_jump / max(abs(c_prev), 1e-6)
+            if abs_jump > max_abs_jump and rel_jump > max_rel_jump:
+                best_phase_vel[j_now] = np.nan
 
-    phase_vel_array[0, :] = best_phase_vel
-    best_k = 0
+    phase_vel_array[best_ki, :] = best_phase_vel
+
+    print(f"            Phase vel. with reference: "
+          f"k={best_k}  RMS={best_score:.4f} km/s  "
+          f"valid={np.isfinite(best_phase_vel).sum()}/{n_per}  "
+          f"c_mean={np.nanmean(best_phase_vel):.3f} km/s")
 
     return phase_vel_array, k_values, best_phase_vel, best_k
+
+def refine_aftan_ridge(grvel: np.ndarray,
+                       per: np.ndarray,
+                       amp_map: np.ndarray,
+                       vel_axis_raw: np.ndarray,
+                       dist_km: float,
+                       ref_periods: np.ndarray,
+                       ref_group_vel: np.ndarray,
+                       ref_tolerance_kms: float = 0.5,
+                       min_db: float = -5.0,
+                       ) -> np.ndarray:
+    """
+    Refine the AFTAN group-velocity ridge using a reference curve.
+
+    For each frequency ki, three conditions are checked in order:
+
+    1. min_db gate (both with and without reference):
+       The amplitude at the current pick must be within min_db of the
+       column maximum. If not → NaN regardless of reference.
+
+    2. Reference proximity check:
+       If the current pick is already within ref_tolerance_kms of the
+       reference → keep it (it is fine).
+
+    3. Reference-guided search:
+       If the current pick is outside tolerance, search for the highest-
+       amplitude sample within [u_ref ± ref_tolerance_kms] that also
+       passes the min_db gate. If found → replace. If not → NaN.
+
+    Parameters
+    ----------
+    grvel             : (nf,) group velocity from AFTANWavelet.compute()
+    per               : (nf,) period axis [s]
+    amp_map           : (nf, ncol) raw amplitude map from compute()
+                        Values in FORTRAN dB convention (normalised to 100).
+    vel_axis_raw      : (ncol,) velocity at each time column [km/s]
+    dist_km           : inter-station distance [km]
+    ref_periods       : reference group velocity periods [s]
+    ref_group_vel     : reference group velocities [km/s]
+    ref_tolerance_kms : acceptance window around reference [km/s]
+    min_db            : amplitude floor relative to column max [dB].
+                        Samples below this are rejected.
+                        Default -5.0 — consistent with display clip.
+
+    Returns
+    -------
+    grvel_refined : (nf,) refined group velocity [km/s], NaN where rejected
+    """
+    ref_interp = scipy.interpolate.interp1d(
+        ref_periods, ref_group_vel,
+        kind='linear', bounds_error=False,
+        fill_value=(ref_group_vel[0], ref_group_vel[-1]))
+
+    nf, ncol      = amp_map.shape
+    grvel_refined = grvel.copy()
+
+    # normalise amp_map to display scale once — 0 dB at global max
+    amp_norm = amp_map - np.nanmax(amp_map)   # shape (nf, ncol)
+
+    for ki in range(nf):
+        T       = per[ki]
+        u_ref   = float(ref_interp(T))
+        u_cur   = grvel[ki]
+
+        row_amp  = amp_norm[ki, :]     # display dB, 0 at global peak
+        row_vel  = vel_axis_raw        # km/s
+
+        # --- condition 1: min_db gate on current pick ---
+        # find the amplitude at the current pick velocity
+        if np.isfinite(u_cur) and u_cur > 0:
+            idx_cur = int(np.abs(row_vel - u_cur).argmin())
+            amp_cur = row_amp[idx_cur]
+        else:
+            amp_cur = -np.inf
+
+        if amp_cur < min_db:
+            # current pick is below the floor — reject regardless
+            grvel_refined[ki] = np.nan
+            continue
+
+        # --- condition 2: already within tolerance — keep ---
+        if np.isfinite(u_cur) and abs(u_cur - u_ref) <= ref_tolerance_kms:
+            continue
+
+        # --- condition 3: search within tolerance window ---
+        # only samples above min_db AND within velocity window
+        amp_ok   = row_amp >= min_db
+        vel_ok   = (np.isfinite(row_vel) &
+                    (row_vel >= u_ref - ref_tolerance_kms) &
+                    (row_vel <= u_ref + ref_tolerance_kms))
+        combined = amp_ok & vel_ok
+
+        if combined.sum() < 1:
+            # nothing valid near reference — reject
+            grvel_refined[ki] = np.nan
+            continue
+
+        # pick highest amplitude within the window
+        best_idx          = int(np.argmax(row_amp[combined]))
+        grvel_refined[ki] = row_vel[combined][best_idx]
+
+    n_nan     = int(np.isnan(grvel_refined).sum())
+    n_changed = int(np.sum(
+        np.isfinite(grvel_refined) &
+        np.isfinite(grvel) &
+        (np.abs(grvel_refined - grvel) > 1e-6)
+    ))
+    print(f"            AFTAN ridge refined: "
+          f"{n_changed}/{nf} periods updated  "
+          f"{n_nan}/{nf} rejected by min_db or tolerance  "
+          f"tol={ref_tolerance_kms} km/s  min_db={min_db} dB")
+
+    return grvel_refined
+
 
 # ===========================================================================
 # 9.  Main pipeline
@@ -1274,12 +1472,72 @@ def cwt_ftan(filepath: str,
         # pre-fill group_vel from AFTAN ridge
         _group_vel_aftan = np.full((max(num_ridges, 1), n_per), np.nan)
         _peak_db_aftan   = np.full((max(num_ridges, 1), n_per), np.nan)
+
+        # normalise AFTAN amplitudes to display scale (0 dB at peak)
+        # so the min_db threshold is consistent with the Morlet path
+        _amp_norm = _amp_aw - np.nanmax(_amp_aw)
+
         for j in range(min(n_per, len(_grvel_aw))):
             u = _grvel_aw[j]
-            _group_vel_aftan[0, j] = u if (np.isfinite(u) and u > 0) else np.nan
-            _peak_db_aftan[0, j]   = _amp_aw[j]
+            adb = _amp_norm[j]
+            if np.isfinite(u) and u > 0 and adb >= min_db:
+                _group_vel_aftan[0, j] = u
+                _peak_db_aftan[0, j] = adb
+            else:
+                _group_vel_aftan[0, j] = np.nan
+                _peak_db_aftan[0, j] = np.nan
 
         group_vel = _group_vel_aftan
+
+        # normalise raw amp_map once for peak_db updates after refinement
+        _amp_map_norm = res_aw['amp_map'] - np.nanmax(res_aw['amp_map'])
+
+        # --- optional reference-guided ridge refinement ---
+        if pmf_ref_grvel is not None and pmf_ref_periods is not None:
+            grvel_refined = refine_aftan_ridge(
+                grvel             = _grvel_aw,
+                per               = _per_aw,
+                amp_map           = res_aw['amp_map'],
+                vel_axis_raw      = res_aw['vel_axis'],
+                dist_km           = dist_km,
+                ref_periods       = pmf_ref_periods,
+                ref_group_vel     = pmf_ref_grvel,
+                ref_tolerance_kms = ref_tolerance_kms,
+                min_db            = min_db,
+            )
+
+            # update group_vel and peak_db with refined ridge
+            for j in range(min(n_per, len(grvel_refined))):
+                u = grvel_refined[j]
+                if np.isfinite(u) and u > 0:
+                    _group_vel_aftan[0, j] = u
+                    # find amplitude at refined velocity in normalised map
+                    idx_v = int(np.abs(res_aw['vel_axis'] - u).argmin())
+                    _peak_db_aftan[0, j]   = _amp_map_norm[j, idx_v]
+                else:
+                    _group_vel_aftan[0, j] = np.nan
+                    _peak_db_aftan[0, j]   = np.nan
+
+
+            group_vel = _group_vel_aftan
+
+            # also update phase_grid and t_grid with refined velocities
+            phase_grid = np.full((n_vel, n_per), np.nan)
+            ifreq_grid = np.full((n_vel, n_per), np.nan)
+            t_grid = np.full((n_vel, n_per), np.nan)
+
+            for j in range(min(n_per, len(grvel_refined))):
+                T = _per_aw[j]
+                U = grvel_refined[j]
+                ph = _phase_aw[j]
+                if not (np.isfinite(U) and U > 0):
+                    continue
+                t_g = dist_km / U
+                idx_v = int(np.abs(vel_axis - U).argmin())
+                phase_grid[idx_v, j] = ph
+                ifreq_grid[idx_v, j] = 1.0 / T
+                t_grid[idx_v, j] = t_g
+
         peak_db   = _peak_db_aftan
 
     else:
@@ -1321,33 +1579,65 @@ def cwt_ftan(filepath: str,
 
     if wt_label == "aftan":
 
-        if pmf_ref_periods is not None and pmf_ref_vel is not None:
-            best_phase_vel = aw.phase_velocity(
-                res_aw,
-                np.asarray(pmf_ref_periods),
-                np.asarray(pmf_ref_vel))
+        # if pmf_ref_periods is not None and pmf_ref_vel is not None:
+        #     best_phase_vel = aw.phase_velocity(
+        #         res_aw,
+        #         np.asarray(pmf_ref_periods),
+        #         np.asarray(pmf_ref_vel))
+        #
+        #     phase_vel_array = best_phase_vel[np.newaxis, :]
+        #     k_values = np.array([0])
+        #     best_k = 0
+        #
+        #     u = group_vel[0]
+        #     bad = (
+        #             ~np.isfinite(best_phase_vel)
+        #             | ~np.isfinite(u)
+        #             | (best_phase_vel <= u)
+        #             | (best_phase_vel > 1.5 * u)
+        #     )
+        #
+        #     best_phase_vel[bad] = np.nan
+        #     phase_vel_array[0, :] = best_phase_vel
 
-            phase_vel_array = best_phase_vel[np.newaxis, :]
-            k_values = np.array([0])
-            best_k = 0
+        # USING REFERENCE
+        if pmf_ref_periods is not None and pmf_ref_vel is not None:
+            # Use RMS branch selection — same as Morlet path with reference.
+            # More robust than per-period round() because it averages
+            # phase noise across all valid periods.
+            # The AFTAN phase grid is already populated above in phase_grid.
+            phase_vel_array, k_values, best_phase_vel, best_k = \
+                estimate_phase_velocity_with_reference(
+                    group_vel_ridge=group_vel[0],
+                    per_axis=per_axis,
+                    vel_axis=vel_axis,
+                    phase_grid=phase_grid,
+                    t_grid=t_grid,
+                    dist_km=dist_km,
+                    ref_periods=np.asarray(pmf_ref_periods),
+                    ref_phase_vel=np.asarray(pmf_ref_vel),
+                    piover4=piover4,
+                    n_branches=n_branches,
+                )
 
             u = group_vel[0]
             bad = (
                     ~np.isfinite(best_phase_vel)
                     | ~np.isfinite(u)
                     | (best_phase_vel <= u)
-                    | (best_phase_vel > 2.0 * u)
+                    | (best_phase_vel > 1.5 * u)
             )
 
             best_phase_vel[bad] = np.nan
             phase_vel_array[0, :] = best_phase_vel
 
+            print(f"            AFTAN phase vel. with reference: "
+                  f"valid={np.isfinite(best_phase_vel).sum()}/{len(per_axis)}  "
+                  f"c_mean={np.nanmean(best_phase_vel):.3f} km/s")
+
         else:
-            phase_vel_array, k_values = aftan_phase_velocity_branches(
-                res_aw,
-                dist_km,
-                n_branches=n_branches,
-            )
+            # Compute all branches of phase velocity
+            phase_vel_array, k_values = aftan_phase_velocity_branches(res_aw, dist_km, n_branches=n_branches)
 
             best_phase_vel, best_k = select_phase_velocity_branch(
                 phase_vel_array=phase_vel_array,
@@ -1380,7 +1670,7 @@ def cwt_ftan(filepath: str,
                     ~np.isfinite(best_phase_vel)
                     | ~np.isfinite(u)
                     | (best_phase_vel <= u)
-                    | (best_phase_vel > 1.35 * u)
+                    | (best_phase_vel > 1.5 * u)
             )
 
             best_phase_vel[bad] = np.nan
@@ -1661,215 +1951,3 @@ def plot_cwt_ftan(result: dict,
     if show:
         plt.show()
     return fig
-
-
-
-# ===========================================================================
-# 10.  CLI argument parser
-# ===========================================================================
-
-def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        prog='surfquake cwt_ftan',
-        description='CWT-based FTAN: group and phase velocity dispersion from EGFs.',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Group velocity only, batch H5 EGFs
-  surfquake cwt_ftan -i ./stack/ -o ./out/ --tmin 5 --tmax 80 --vmin 2 --vmax 5
-
-  # With phase-match filter + reference model
-  surfquake cwt_ftan -i ./stack/ -o ./out/ --tmin 5 --tmax 80 \\
-      --use_pmf --ref ak135f --wave rayleigh --plot
-
-  # Single SAC, causal branch, tight band
-  surfquake cwt_ftan -i file.sac -o ./out/ \\
-      --branch causal --tmin 10 --tmax 40 --wmin 8 --wmax 16 --plot
-
-Parameter guide:
-  --wmin / --wmax   Morlet cycle range.
-                    Low  (4-6)  = better time resolution, broader freq smearing.
-                    High (12-20) = better freq resolution, longer wavelet kernel.
-                    Default: wmin=6  wmax=12.
-  --nf              Log-spaced period nodes.  Default: 64.
-  --min_db          dB floor for display and ridge detection.  Default: -15.
-  --min_dist_kms    Min velocity separation between ridges [km/s].  Default: 0.2.
-  --num_ridges      1 = fundamental mode only.  2 = also first overtone.
-  --filter_param    PMF Gaussian window width [s].  Default: 2.0.
-  --n_branches      2pi cycle branches for phase velocity.  Default: 10.
-  --ref             Reference model name (e.g. ak135f) or CSV path.
-  --wave            rayleigh (default) or love.
-"""
-    )
-    p.add_argument('-i', '--input',        required=True)
-    p.add_argument('-o', '--output',       required=True)
-    p.add_argument('--pattern',            default='*.H5')
-    p.add_argument('--tmin',               type=float, default=5.0,    help='Min period [s]')
-    p.add_argument('--tmax',               type=float, default=150.0,  help='Max period [s]')
-    p.add_argument('--vmin',               type=float, default=2.0,    help='Min group vel [km/s]')
-    p.add_argument('--vmax',               type=float, default=5.0,    help='Max group vel [km/s]')
-    p.add_argument('--wmin',               type=float, default=6.0,    help='Min Morlet cycles')
-    p.add_argument('--wmax',               type=float, default=12.0,   help='Max Morlet cycles')
-    p.add_argument('--nf',                 type=int,   default=64,     help='Number of frequencies')
-    p.add_argument('--min_db',             type=float, default=-15.0,  help='dB floor')
-    p.add_argument('--min_dist_kms',       type=float, default=0.2,    help='Min ridge sep [km/s]')
-    p.add_argument('--ref_tolerance_kms',  type=float, default=0.5,
-                   help='Max distance from reference for ridge acceptance [km/s] '
-                        '(default: 0.5). Only used when --ref is given. '
-                        'Increase for noisy data, decrease for well-constrained paths.')
-    p.add_argument('--num_ridges',         type=int,   default=1,      help='Ridges to extract')
-    p.add_argument('--branch',             default='fold',
-                   choices=['fold', 'causal', 'acausal'])
-    p.add_argument('--use_pmf',            action='store_true',
-                   help='Apply phase-match filter (requires --ref)')
-    p.add_argument('--filter_param',       type=float, default=2.0,
-                   help='PMF Gaussian window width [s]')
-    p.add_argument('--n_branches',         type=int,   default=10,
-                   help='2pi cycle branches for phase velocity')
-    p.add_argument('--tresh',              type=float, default=3.0,
-                   help='Jump detection threshold for group velocity correction '
-                        '(default: 3.0 for CWT; lower = more aggressive). '
-                        'AFTAN uses 10.0 for its cleaner Gaussian-filtered ridges.')
-    p.add_argument('--npoints',            type=int,   default=5,
-                   help='Max correctable jump length in period bins (default: 5)')
-    p.add_argument('--ref',                type=str,   default=None,
-                   help='Reference model name or CSV path')
-    p.add_argument('--wave',               type=str,   default='rayleigh',
-                   choices=['rayleigh', 'love'])
-    p.add_argument('--plot',               action='store_true')
-    p.add_argument('--force_dist_km',      type=float, default=None)
-    p.add_argument('--wavelet',            type=str,   default='morlet',
-                   choices=['morlet', 'aftan'],
-                   help="Filter bank: 'morlet' (default) = Complex Morlet CWT; "
-                        "'aftan' = original FORTRAN ratio-based Gaussian filter bank.")
-    p.add_argument('--ffact',              type=float, default=1.0,
-                   help="AFTAN filter width factor α=ffact·20·√(Δ/1000). "
-                        "Only used when --wavelet aftan. Default: 1.0.")
-    return p
-
-
-# ===========================================================================
-# 11.  Shared run logic
-# ===========================================================================
-
-def _run(args):
-    os.makedirs(args.output, exist_ok=True)
-
-    # load reference
-    pmf_ref_periods = pmf_ref_vel = ref_group_vel = ref_group_per = None
-
-    if args.ref:
-        try:
-            from surfquakecore.ant.ant_refs import ref_for_aftan
-            ref_data        = ref_for_aftan(args.ref, wave=args.wave,
-                                            tmin=args.tmin, tmax=args.tmax)
-            pmf_ref_periods = ref_data['phprper']
-            pmf_ref_vel     = ref_data['phprvel']
-            ref_group_vel   = ref_data['pred'][:, 1]
-            ref_group_per   = ref_data['pred'][:, 0]
-            print(f"[CWT-FTAN] Reference '{args.ref}' ({args.wave})  "
-                  f"T={pmf_ref_periods[0]:.1f}-{pmf_ref_periods[-1]:.1f} s")
-        except Exception as exc:
-            print(f"[CWT-FTAN][WARN] Could not load reference '{args.ref}': {exc}")
-
-    # collect files
-    inp = args.input
-    if os.path.isdir(inp):
-        files = sorted(glob.glob(os.path.join(inp, args.pattern)))
-        if not files:
-            print(f"[CWT-FTAN] No files matching '{args.pattern}' in {inp}")
-            return
-        print(f"[CWT-FTAN] Found {len(files)} file(s)")
-    else:
-        files = [inp] if os.path.isfile(inp) else []
-        if not files:
-            print(f"[CWT-FTAN] File not found: {inp}")
-            return
-
-    n_ok = n_skip = 0
-
-    for filepath in files:
-        basename = os.path.splitext(os.path.basename(filepath))[0]
-        try:
-            result = cwt_ftan(
-                filepath,
-                vmin             = args.vmin,
-                vmax             = args.vmax,
-                tmin             = args.tmin,
-                tmax             = args.tmax,
-                wmin             = args.wmin,
-                wmax             = args.wmax,
-                nf               = args.nf,
-                min_db           = args.min_db,
-                min_dist_kms     = args.min_dist_kms,
-                ref_tolerance_kms = args.ref_tolerance_kms,
-                num_ridges       = args.num_ridges,
-                branch           = args.branch,
-                use_pmf          = args.use_pmf and (pmf_ref_periods is not None),
-                pmf_ref_periods  = pmf_ref_periods,
-                pmf_ref_vel      = pmf_ref_vel,
-                pmf_ref_grvel    = ref_group_vel,
-                filter_parameter = args.filter_param,
-                n_branches       = args.n_branches,
-                tresh            = args.tresh,
-                npoints          = args.npoints,
-                force_dist_km    = args.force_dist_km,
-                wavelet_type     = args.wavelet,
-                ffact            = args.ffact,
-            )
-
-            gv     = result['group_vel']
-            pv_arr = result['phase_vel_array']
-            k_vals = result['k_values']
-            per    = result['per_axis']
-            delta  = result['delta']
-
-            # group velocity table
-            with open(os.path.join(args.output, basename + '.grp.disp'), 'w') as fh:
-                fh.write(f"# CWT-FTAN group vel  file={basename}  "
-                         f"delta={delta:.3f} km  branch={args.branch}\n")
-                fh.write(f"# {'Period_s':>10}  {'GroupVel_kms':>14}  {'Power_dB':>10}\n")
-                for j in range(len(per)):
-                    if np.isfinite(gv[0, j]):
-                        fh.write(f"  {per[j]:>10.4f}  {gv[0,j]:>14.4f}  "
-                                 f"{result['peak_db'][0,j]:>10.2f}\n")
-
-            # phase velocity branches table
-            with open(os.path.join(args.output, basename + '.phv.disp'), 'w') as fh:
-                fh.write(f"# CWT-FTAN phase vel branches  file={basename}  "
-                         f"delta={delta:.3f} km  branch={args.branch}\n")
-                fh.write(f"# {'Period_s':>10}  {'k':>5}  {'PhaseVel_kms':>14}\n")
-                for j in range(len(per)):
-                    for ki, k in enumerate(k_vals):
-                        v = pv_arr[ki, j]
-                        if np.isfinite(v) and args.vmin * 0.5 < v < args.vmax * 2.5:
-                            fh.write(f"  {per[j]:>10.4f}  {int(k):>5}  {v:>14.4f}\n")
-
-            print(f"[OK]  {basename}  delta={delta:.1f} km")
-
-            if args.plot:
-                import matplotlib
-                matplotlib.use('Agg')
-                fig = plot_cwt_ftan(
-                    result, show=False,
-                    ref_periods   = ref_group_per,
-                    ref_group_vel = ref_group_vel,
-                    ref_phase_vel = pmf_ref_vel,
-                )
-                if fig is not None:
-                    import matplotlib.pyplot as plt
-                    png = os.path.join(args.output, basename + '.png')
-                    fig.savefig(png, dpi=150, bbox_inches='tight')
-                    plt.close(fig)
-                    print(f"       plot -> {png}")
-
-            n_ok += 1
-
-        except Exception as exc:
-            import traceback
-            print(f"[ERROR] {basename}: {exc}")
-            traceback.print_exc()
-            n_skip += 1
-
-    print(f"\n[CWT-FTAN] Done.  OK={n_ok}  Skipped={n_skip}")
-    print(f"[CWT-FTAN] Output: {args.output}")
