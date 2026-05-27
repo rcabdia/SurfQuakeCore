@@ -31,6 +31,7 @@ class _CliActions:
     run: callable
     description: str = ""
 
+
 # Add this helper somewhere near main() (e.g., above main)
 def _print_main_help(actions: dict):
     print(f"Usage: {__entry_point_name} <command> [options]\n")
@@ -45,6 +46,7 @@ def _print_main_help(actions: dict):
 
     print("\nRun `surfquake <command> -h` for command-specific help.")
 
+
 def resolve_path(path: Optional[str]) -> Optional[str]:
     if path is None:
         return None
@@ -56,6 +58,7 @@ def resolve_path(path: Optional[str]) -> Optional[str]:
 def make_abs(path: Optional[str]) -> Optional[str]:
     return os.path.abspath(path) if path else None
 
+
 def parse_datetime(dt_str: str):
     # try with microseconds, fall back if not present
     from datetime import datetime
@@ -66,6 +69,7 @@ def parse_datetime(dt_str: str):
         except ValueError:
             continue
     raise ValueError(f"Date string not in expected format: {dt_str}")
+
 
 def _create_actions():
     _actions = {
@@ -161,7 +165,6 @@ def _create_actions():
             name="ant_create_dict", run=_ant_create_dict,
             description="Create ANT Project"),
 
-
         "ant_process_matrix": _CliActions(
             name="ant_process_matrix", run=_ant_process_matrix,
             description="Create Frequency Domain Noise matrix"),
@@ -171,14 +174,75 @@ def _create_actions():
             description="Cross Correlate and Stack Noise matrix"),
 
         "cwt_aftan": _CliActions(
-            name="cwt_ftan", run=_cwt_aftan,
-            description="CWT-based FTAN: group and phase velocity dispersion from EGFs"),
+            name="cwt_aftan", run=_cwt_aftan,
+            description="Automatic Frequency-Time Analysis of group and phase velocity dispersion from EGFs or Earthquakes"),
 
     }
     return _actions
 
 
-def main(argv: Optional[str] = None):
+def _print_main_help(actions: dict):
+    print("Avilable Commands:\n")
+
+    width = max((len(k) for k in actions.keys()), default=0)
+    groups = _command_groups()
+    already_printed = set()
+
+    for group_name, command_names in groups.items():
+        print(f"{group_name}:")
+        for name in command_names:
+            action = actions.get(name)
+            if action is None:
+                continue
+
+            desc = (action.description or "").strip()
+            print(f"  {name:<{width}}  {desc}")
+            already_printed.add(name)
+
+        print()
+
+    remaining = [
+        name for name in actions.keys()
+        if name not in already_printed
+    ]
+
+    if remaining:
+        print("Other:")
+        for name in remaining:
+            action = actions[name]
+            desc = (action.description or "").strip()
+            print(f"  {name:<{width}}  {desc}")
+        print()
+
+    print(f"Usage: {__entry_point_name} <command> [options]")
+    print(f"Usage: {__entry_point_name} <command> -h command-specific help, for example >> surfquake project -h\n")
+
+
+def _command_groups():
+    return {
+        "Section 1: Project / Metadata": [
+            "project", "csv2xml", "buildcatalog", "buildmticonfig",
+        ],
+        "Section 2: Detection, Picking / Association": [
+            "pick", "associate", "trigg",
+        ],
+        "Section 3: Location/  Source / Mechanism": [
+            "locate", "source", "polarity", "focmec", "plotmec", "mti",
+        ],
+        "Section 4: Waveform Processing / Inspection": [
+            "processing", "processing_daily", "quick", "info", "explore"
+        ],
+        "Section 5: Time-Frequency and Array processing Plotting": [
+            "specplot", "beamplot",
+        ],
+        "Section 6: PPSD / Ambient Noise": [
+            "ppsdDB", "ppsdPlot", "ant_create_dict",
+            "ant_process_matrix", "ant_cross_stack", "cwt_aftan",
+        ],
+    }
+
+
+def main():
     actions = _create_actions()
 
     try:
@@ -449,7 +513,6 @@ def _focmec():
                         type=float, default=1.0)
     parser.add_argument("-o", "--output_folder", required=True, help="output folder", type=str)
 
-
     args = parser.parse_args()
 
     hyp_folder = make_abs(args.hyp_folder)
@@ -559,7 +622,6 @@ def _plotmec():
         else:
             solution_collection = None
 
-
         #
         first_polarity_results = {"First_Polarity": ["Strike", "Dip", "Rake", "misfit_first_polarity", "azimuthal_gap",
                                                      "number_of_polarities", "P_axis_Trend", "P_axis_Plunge",
@@ -569,7 +631,7 @@ def _plotmec():
 
         FirstPolarity.print_first_polarity_info(file_output_name, first_polarity_results)
         FirstPolarity.drawFocMec(strike_A, dip_A, rake_A, Station, Az, Dip, Motion, P_Trend, P_Plunge,
-            T_Trend, T_Plunge, output_folder_file, plot_polarities=args.plot_polarities,
+                                 T_Trend, T_Plunge, output_folder_file, plot_polarities=args.plot_polarities,
                                  solution_collection=solution_collection)
 
 
@@ -698,7 +760,8 @@ def _locate():
                            action="store_true")
 
     arg_parse.add_argument('-n', '--number_iterations', type=int, metavar='N', help='an integer for the '
-                            'number of iterations', required=False)
+                                                                                    'number of iterations',
+                           required=False)
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
@@ -936,7 +999,8 @@ def _csv2xml():
     )
 
     arg_parse.add_argument("-c", "--csv_file_path", help="file containing Net Station Lat Lon elevation "
-        "start_date starttime end_date endtime, single spacing", type=str, required=True)
+                                                         "start_date starttime end_date endtime, single spacing",
+                           type=str, required=True)
 
     arg_parse.add_argument("-r", "--resp_files_path", help="Path to the folder containing the response files",
                            type=str, required=False)
@@ -1362,7 +1426,6 @@ def _processing():
 
 
 def _trigg():
-
     from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
     from surfquakecore.project.surf_project import SurfProject
     from datetime import timedelta
@@ -1423,7 +1486,7 @@ def _trigg():
     arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'",
                            type=str)
 
-    arg_parse.add_argument("--plot", help="plot events & CFs",  action="store_true")
+    arg_parse.add_argument("--plot", help="plot events & CFs", action="store_true")
 
     arg_parse.add_argument("--picking_file", help="picking file to split", type=str)
 
@@ -1445,7 +1508,6 @@ def _trigg():
     if filters:
         print(f"[INFO] Filtering project by: {filters}")
         sp.filter_project_keys(**filters)
-
 
     # --- Decide between time segment or split ---
     info = sp.get_project_basic_info()
@@ -1474,6 +1536,7 @@ def _trigg():
 
     ct = CoincidenceTrigger(subprojects, config_file, picking_file, output_folder, parsed_args.plot)
     ct.optimized_project_processing()
+
 
 def _processing_daily():
     from surfquakecore.data_processing.analysis_events import AnalysisEvents
@@ -1622,7 +1685,7 @@ def _processing_daily():
     ae = AnalysisEvents(
         output=make_abs(parsed_args.output_folder),
         inventory_file=make_abs(parsed_args.inventory_file),
-        config_file= make_abs(parsed_args.config_file),
+        config_file=make_abs(parsed_args.config_file),
         surf_projects=subprojects,
         plot_config_file=make_abs(parsed_args.plot_config),
         time_segment_start=parsed_args.min_date,
@@ -1632,6 +1695,7 @@ def _processing_daily():
         time_segment=parsed_args.time_segment
     )
     ae.run_waveform_analysis(auto=parsed_args.auto)
+
 
 def _quickproc():
     from surfquakecore.data_processing.analysis_events import AnalysisEvents
@@ -1714,7 +1778,7 @@ def _quickproc():
         # Wildcard path
         wave_paths = make_abs(parsed_args.wave_files)
 
-     # Build project on-the-fly using wildcard path
+    # Build project on-the-fly using wildcard path
     data_files = SurfProject.collect_files(root_path=wave_paths)
 
     # --- Run processing workflow ---
@@ -1729,6 +1793,7 @@ def _quickproc():
     )
 
     ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto)
+
 
 def _specplot():
     from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
@@ -1864,6 +1929,7 @@ def _beamplot():
 
         beam_obj.plot_beam(save_path=make_abs(args.save_path) if args.save_path else None)
 
+
 def _info():
     from surfquakecore.data_processing.processing_methods import print_surfquake_trace_headers
     from surfquakecore.project.surf_project import SurfProject
@@ -1905,7 +1971,7 @@ def _info():
     else:
         # Wildcard path
         wave_paths = make_abs(args.wave_files)
-     # Build project on-the-fly using wildcard path
+    # Build project on-the-fly using wildcard path
 
     data_files = SurfProject.collect_files(root_path=wave_paths)
     print_surfquake_trace_headers(data_files, max_columns=args.columns)
@@ -1996,7 +2062,7 @@ def _explore():
         else:
             # Wildcard path
             wave_paths = make_abs(args.wave_files)
-         # Build project on-the-fly using wildcard path
+        # Build project on-the-fly using wildcard path
 
         data_files = SurfProject.collect_files(root_path=wave_paths)
     PlotExplore.data_availability_new(data_files)
@@ -2908,6 +2974,7 @@ def _ant_cross_stack():
 
     print(f"\nDone. Results written under: {input_path}")
 
+
 def _cwt_aftan():
     """
     CLI for CWT-based Frequency-Time ANalysis.
@@ -2926,7 +2993,7 @@ def _cwt_aftan():
 Overview:
   CWT-AFTAN measures surface-wave group (and optionally phase) velocity dispersion
   curves from Empirical Green's Functions (EGFs) produced by ant_cross_stack,
-  or from earthquake seismograms (SAC format).
+  or from earthquake seismograms (H5 or SAC format).
 
   Uses Complex Morlet wavelets instead of Gaussian narrow-band filters (AFTAN).
   Optionally applies a phase-match filter before the CWT to isolate the
@@ -3068,46 +3135,48 @@ Documentation:
 """
     )
 
-    arg_parse.add_argument("-i", "--input",          required=True, type=str,
-                           help="Input: folder of H5 EGFs or path to a single waveform file")
-    arg_parse.add_argument("-o", "--output",         required=True, type=str,
+    arg_parse.add_argument("-i", "--input", required=True, type=str,
+                           help="Input: folder of H5 or SAC files wuth EGFs or path to a single waveform file")
+    arg_parse.add_argument("-o", "--output", required=True, type=str,
                            help="Output folder for dispersion tables and plots")
-    arg_parse.add_argument("--tmin",                 type=float, default=5.0,    help="Min period [s]")
-    arg_parse.add_argument("--tmax",                 type=float, default=150.0,  help="Max period [s]")
-    arg_parse.add_argument("--vmin",                 type=float, default=2.0,    help="Min group velocity [km/s]")
-    arg_parse.add_argument("--vmax",                 type=float, default=5.0,    help="Max group velocity [km/s]")
-    arg_parse.add_argument("--nf",                   type=int,   default=100,    help="Number of log-spaced frequencies")
-    arg_parse.add_argument("--w",                    type=float, default=6.0,    help="Morlet wavelet cycles")
+    arg_parse.add_argument("--tmin", type=float, default=5.0, help="Min period [s]")
+    arg_parse.add_argument("--tmax", type=float, default=150.0, help="Max period [s]")
+    arg_parse.add_argument("--vmin", type=float, default=2.0, help="Min group velocity [km/s]")
+    arg_parse.add_argument("--vmax", type=float, default=5.0, help="Max group velocity [km/s]")
+    arg_parse.add_argument("--nf", type=int, default=100, help="Number of log-spaced frequencies")
+    arg_parse.add_argument("--w", type=float, default=6.0, help="Morlet wavelet cycles")
     arg_parse.add_argument("--wavelet", type=str, default="morlet", choices=["morlet", "aftan"],
                            help="Filter bank: 'morlet' (default) = Complex Morlet CWT; "
                                 "'aftan' = original FORTRAN ratio-based Gaussian filter bank.")
     arg_parse.add_argument("--ffact", type=float, default=0.20,
                            help="AFTAN filter width factor α=ffact·20·√(Δ/1000). "
                                 "Only used with --wavelet aftan. Default: 1.0.")
-    arg_parse.add_argument("--branch",               type=str,   default="fold",
+    arg_parse.add_argument("--branch", type=str, default="fold",
                            choices=["fold", "causal", "acausal"],
                            help="EGF branch to analyse (ignored for SAC)")
-    arg_parse.add_argument("--pattern",              type=str,   default="*.H5",
+    arg_parse.add_argument("--pattern", type=str, default="*.H5",
                            help="Glob pattern for batch folder mode (default: *.H5)")
-    arg_parse.add_argument("--min_db",               type=float, default=-25.0,  help="dB floor for display and ridge detection")
-    arg_parse.add_argument("--min_dist_kms",         type=float, default=0.5,    help="Min separation between ridge candidates [km/s]")
-    arg_parse.add_argument("--ref_tolerance_kms",    type=float, default=0.5,    help="Max distance from reference for ridge acceptance [km/s]")
-    arg_parse.add_argument("--num_ridges",           type=int,   default=3,      help="Number of ridges to extract")
-    arg_parse.add_argument("--tresh",                type=float, default=3.0,    help="Jump detection threshold (default: 3.0)")
-    arg_parse.add_argument("--npoints",              type=int,   default=5,      help="Max correctable jump length in period bins")
-    arg_parse.add_argument("--use_pmf",              action="store_true",
+    arg_parse.add_argument("--min_db", type=float, default=-25.0, help="dB floor for display and ridge detection")
+    arg_parse.add_argument("--min_dist_kms", type=float, default=0.5,
+                           help="Min separation between ridge candidates [km/s]")
+    arg_parse.add_argument("--ref_tolerance_kms", type=float, default=0.5,
+                           help="Max distance from reference for ridge acceptance [km/s]")
+    arg_parse.add_argument("--num_ridges", type=int, default=3, help="Number of ridges to extract")
+    arg_parse.add_argument("--tresh", type=float, default=3.0, help="Jump detection threshold (default: 3.0)")
+    arg_parse.add_argument("--npoints", type=int, default=5, help="Max correctable jump length in period bins")
+    arg_parse.add_argument("--use_pmf", action="store_true",
                            help="Apply phase-match filter before CWT (requires --ref)")
-    arg_parse.add_argument("--filter_param",         type=float, default=15.0,   help="PMF Gaussian window width [s]")
-    arg_parse.add_argument("--n_branches",           type=int,   default=10,     help="Number of 2pi cycle branches for phase velocity")
-    arg_parse.add_argument("--ref",                  type=str,   default=None,
+    arg_parse.add_argument("--filter_param", type=float, default=15.0, help="PMF Gaussian window width [s]")
+    arg_parse.add_argument("--n_branches", type=int, default=10, help="Number of 2pi cycle branches for phase velocity")
+    arg_parse.add_argument("--ref", type=str, default=None,
                            help="Reference model name (e.g. ak135_earth) or full CSV model path. "
                                 "Guides ridge picking and enables phase velocity output.")
-    arg_parse.add_argument("--wave",                 type=str,   default="rayleigh",
+    arg_parse.add_argument("--wave", type=str, default="rayleigh",
                            choices=["rayleigh", "love"],
                            help="Wave type for reference curve (default: rayleigh)")
-    arg_parse.add_argument("--plot",                 action="store_true",
-                           help="Save Frequency-Time map + dispersion curves in a PNG file for each pair")
-    arg_parse.add_argument("--force_dist_km",        type=float, default=None,
+    arg_parse.add_argument("--plot", action="store_true",
+                           help="Save Frequency-Time map + dispersion curves in a PDF file for each pair")
+    arg_parse.add_argument("--force_dist_km", type=float, default=None,
                            help="Override inter-station distance [km]")
     arg_parse.add_argument(
         "--source_type",
@@ -3118,13 +3187,13 @@ Documentation:
             "Phase convention for the input waveform. "
             "'egf' = empirical Green's function / ambient-noise or earthquake-coda "
             "cross-correlation, uses piover4=-1. "
-            "'earthquake' = ordinary event-to-station seismogram, uses piover4=+1. "
+            "'earthquake' = ordinary event-to-station seismogram "
             "Default: egf."
         )
     )
 
-    parsed      = arg_parse.parse_args()
-    input_path  = make_abs(parsed.input)
+    parsed = arg_parse.parse_args()
+    input_path = make_abs(parsed.input)
     output_path = make_abs(parsed.output)
     os.makedirs(output_path, exist_ok=True)
 
@@ -3132,9 +3201,9 @@ Documentation:
     # Load reference model if requested                                   #
     # ------------------------------------------------------------------ #
     pmf_ref_periods = None
-    pmf_ref_vel     = None
-    ref_group_vel   = None
-    ref_group_per   = None
+    pmf_ref_vel = None
+    ref_group_vel = None
+    ref_group_per = None
 
     # ------------------------------------------------------------------ #
     # Phase convention                                                    #
@@ -3151,12 +3220,12 @@ Documentation:
     if parsed.ref:
         try:
             from surfquakecore.ant.ant_refs import ref_for_aftan
-            ref_data        = ref_for_aftan(parsed.ref, wave=parsed.wave,
-                                            tmin=parsed.tmin, tmax=parsed.tmax)
+            ref_data = ref_for_aftan(parsed.ref, wave=parsed.wave,
+                                     tmin=parsed.tmin, tmax=parsed.tmax)
             pmf_ref_periods = ref_data['phprper']
-            pmf_ref_vel     = ref_data['phprvel']
-            ref_group_vel   = ref_data['pred'][:, 1]
-            ref_group_per   = ref_data['pred'][:, 0]
+            pmf_ref_vel = ref_data['phprvel']
+            ref_group_vel = ref_data['pred'][:, 1]
+            ref_group_per = ref_data['pred'][:, 0]
             print(f"[CWT-AFTAN] Reference model '{parsed.ref}' loaded  "
                   f"({parsed.wave}, {len(pmf_ref_periods)} points, "
                   f"T={pmf_ref_periods[0]:.1f}–{pmf_ref_periods[-1]:.1f} s)")
@@ -3167,34 +3236,40 @@ Documentation:
     use_pmf = parsed.use_pmf and (pmf_ref_periods is not None)
 
     common_kw = dict(
-        vmin              = parsed.vmin,
-        vmax              = parsed.vmax,
-        tmin              = parsed.tmin,
-        tmax              = parsed.tmax,
-        w                 = parsed.w,
-        nf                = parsed.nf,
-        min_db            = parsed.min_db,
-        min_dist_kms      = parsed.min_dist_kms,
-        ref_tolerance_kms = parsed.ref_tolerance_kms,
-        num_ridges        = parsed.num_ridges,
-        branch            = parsed.branch,
-        use_pmf           = use_pmf,
-        pmf_ref_periods   = pmf_ref_periods,
-        pmf_ref_vel       = pmf_ref_vel,
-        pmf_ref_grvel     = ref_group_vel,
-        filter_parameter  = parsed.filter_param,
-        n_branches        = parsed.n_branches,
-        tresh             = parsed.tresh,
-        npoints           = parsed.npoints,
-        force_dist_km     = parsed.force_dist_km,
+        vmin=parsed.vmin,
+        vmax=parsed.vmax,
+        tmin=parsed.tmin,
+        tmax=parsed.tmax,
+        w=parsed.w,
+        nf=parsed.nf,
+        min_db=parsed.min_db,
+        min_dist_kms=parsed.min_dist_kms,
+        ref_tolerance_kms=parsed.ref_tolerance_kms,
+        num_ridges=parsed.num_ridges,
+        branch=parsed.branch,
+        use_pmf=use_pmf,
+        pmf_ref_periods=pmf_ref_periods,
+        pmf_ref_vel=pmf_ref_vel,
+        pmf_ref_grvel=ref_group_vel,
+        filter_parameter=parsed.filter_param,
+        n_branches=parsed.n_branches,
+        tresh=parsed.tresh,
+        npoints=parsed.npoints,
+        force_dist_km=parsed.force_dist_km,
         wavelet_type=parsed.wavelet,
         ffact=parsed.ffact,
-        piover4           = piover4)
+        piover4=piover4)
 
     # ------------------------------------------------------------------ #
     # Collect files: folder → batch, file → single                        #
     # ------------------------------------------------------------------ #
     import glob
+
+    if parsed.plot:
+        import matplotlib
+        import matplotlib.pyplot as plt
+        matplotlib.use("Agg")
+
     if os.path.isdir(input_path):
         files = sorted(glob.glob(os.path.join(input_path, parsed.pattern)))
         if not files:
@@ -3217,9 +3292,9 @@ Documentation:
         try:
             result = cwt_ftan(filepath, **common_kw)
 
-            delta  = result['delta']
-            per    = result['per_axis']
-            gv     = result['group_vel']
+            delta = result['delta']
+            per = result['per_axis']
+            gv = result['group_vel']
             pv_arr = result['phase_vel_array']
             k_vals = result['k_values']
             branch_used = result.get('branch', parsed.branch)
@@ -3235,8 +3310,8 @@ Documentation:
             for j in range(len(per)):
                 if np.isfinite(gv[0, j]):
                     rows_grp.append(
-                        f"  {per[j]:>10.4f} {gv[0,j]:>14.4f} "
-                        f"{result['peak_db'][0,j]:>10.2f}"
+                        f"  {per[j]:>10.4f} {gv[0, j]:>14.4f} "
+                        f"{result['peak_db'][0, j]:>10.2f}"
                     )
             with open(out_grp, "w") as fh:
                 fh.write(header_grp)
@@ -3255,8 +3330,8 @@ Documentation:
                     v = pv_arr[ki, j]
                     if np.isfinite(v) and parsed.vmin * 0.5 < v < parsed.vmax * 2.5:
                         rows_phv.append(
-                            f"  {per[j]:>10.4f} {int(k):>5} {v:>14.4f}"
-                        )
+                            f"  {per[j]:>10.4f} {int(k):>5} {v:>14.4f}")
+
             with open(out_phv, "w") as fh:
                 fh.write(header_phv)
                 fh.write("\n".join(rows_phv) + "\n")
@@ -3267,19 +3342,15 @@ Documentation:
 
             # ---- optionally save plot ----
             if parsed.plot:
-                import matplotlib
-                matplotlib.use("Agg")
-                fig = plot_cwt_ftan(
-                    result, show=False,
+                fig = plot_cwt_ftan(result, show=False,
                     title=f"{basename}  Δ={delta:.1f} km  branch={branch_used}",
-                    ref_periods   = ref_group_per,
-                    ref_group_vel = ref_group_vel,
-                    ref_phase_vel = pmf_ref_vel,
-                )
+                    ref_periods=ref_group_per,
+                    ref_group_vel=ref_group_vel,
+                    ref_phase_vel=pmf_ref_vel)
+
                 if fig is not None:
-                    png_path = os.path.join(output_path, basename + ".png")
+                    png_path = os.path.join(output_path, basename + ".pdf")
                     fig.savefig(png_path, dpi=150, bbox_inches="tight")
-                    import matplotlib.pyplot as plt
                     plt.close(fig)
 
             n_ok += 1
