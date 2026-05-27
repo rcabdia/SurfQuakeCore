@@ -325,9 +325,11 @@ class PlotProj:
         if self.enable_command_prompt:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
-            plt.pause(0.5)
-
-            print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' return to picking mode")
+            plt.pause(0.25)
+            print("\n" + "=" * 55)
+            print(" Command Line Interface Activated")
+            print("=" * 55)
+            print("[INFO] Type 'help' to see command line options or 'p' return to picking mode")
 
             while True:
                 prompt = PlotCommandPrompt(self)
@@ -446,7 +448,10 @@ class PlotProj:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
             plt.pause(0.5)
-            print("[INFO] Type 'command parameter', 'help', 'exit' or 'p' to return to picking mode")
+            print("\n" + "=" * 55)
+            print(" Command Line Interface Activated")
+            print("=" * 55)
+            print("[INFO] Type 'help' to see command line options or 'p' return to picking mode")
             prompt = PlotCommandPrompt(self)
             result = prompt.run()
             if result == "p":
@@ -704,14 +709,19 @@ class PlotProj:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
             plt.pause(0.1)
-            print("[INFO] Type 'command parameter', 'help', 'n' to next, 'b' to previous, 'p' return to picking mode")
+            print("\n" + "=" * 55)
+            print(" Command Line Interface Activated")
+            print("=" * 55)
+            print("[INFO] Type 'help' to see command line options or 'p' return to picking mode")
             prompt = PlotCommandPrompt(self)
             result = prompt.run()
             if result == "p":
                 self._register_span_selector()
                 plt.show(block=True)
             elif result == "replot":
-                self.enable_command_prompt = True
+                # if we want bak to picking style set to False
+                print("Backing to picking mode, press 'v' to reopen a prompt")
+                self.enable_command_prompt = False
                 self.plot(page=self.current_page)
             elif result == "exit":
                 plt.close(self.fig)

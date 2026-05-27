@@ -2991,13 +2991,13 @@ def _cwt_aftan():
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
 Overview:
-  CWT-AFTAN measures surface-wave group (and optionally phase) velocity dispersion
+  CWT-AFTAN measures surface-wave group and phase velocity dispersion
   curves from Empirical Green's Functions (EGFs) produced by ant_cross_stack,
   or from earthquake seismograms (H5 or SAC format).
 
-  Uses Complex Morlet wavelets instead of Gaussian narrow-band filters (AFTAN).
-  Optionally applies a phase-match filter before the CWT to isolate the
-  fundamental mode, and estimates phase velocity from the instantaneous phase
+  Uses Complex Morlet wavelets (Morlet Wavelet) or Gaussian narrow-band filters (AFTAN),
+  to estimate group velocity. Optionally applies a phase-match filter before processing to isolate the
+  different modes. Then, it estimates phase velocity from the instantaneous phase
   along the group-velocity ridge.
 
   After ridge extraction, an AFTAN-style jump correction is applied:
@@ -3007,17 +3007,16 @@ Overview:
   longer ones are set to NaN.
 
   For H5 EGFs the inter-station distance and geometry are read automatically
-  from the tr.stats.geodetic header written by crossstack.py.
-  For SAC files the distance is read from tr.stats.sac.dist.
+  from the tr.stats.geodetic. For SAC files the distance is read from tr.stats.sac.dist.
 
   Output per pair:
     <pair>.grp.disp  — group velocity table: period, U, power [dB]
     <pair>.phv.disp  — all phase velocity branches: period, k, c [km/s]
-    <pair>.png       — CWT map + dispersion curves (if --plot)
+    <pair>.pdf       — Time -Frequency map + dispersion curves (if --plot)
 
 Usage Examples:
   # Process all H5 EGFs in a folder, fold branch, group velocity only:
-  surfquake cwt_aftan -i ./stack/ -o ./cwt_out/
+  surfquake cwt_aftan -i ./stack/ -o ./cwt_out/ --pattern *.H5  --plot (H5 extension is the default search of files)
 
   # With reference model (guides ridge picking + enables phase velocity):
   surfquake cwt_aftan -i ./stack/ -o ./cwt_out/ --tmin 5 --tmax 80 \\
@@ -3043,7 +3042,7 @@ Usage Examples:
   surfquake cwt_aftan -i ./stack/ -o ./cwt_out/ --wavelet aftan \\
                       --ffact 1.0 --ref ak135_earth --plot
 
-  # Side-by-side comparison: run twice, change only --wavelet
+  # Side-by-side comparison: run twice, change only --wavelet and specific parameters
   surfquake cwt_aftan -i ./data/ -o ./output/ --tmin 6 --tmax 28 \
                      --vmin 2.0 --vmax 5.0 --plot --ref_tolerance_kms 1.0 --min_db -10.0 
                      --wavelet morlet --num_ridges 1
@@ -3075,12 +3074,12 @@ Key Arguments:
   --n_branches           [OPTIONAL] 2pi cycle branches for phase vel  (default: 10)
   --ref                  [OPTIONAL] Reference model name or CSV path
   --wave                 [OPTIONAL] rayleigh|love                     (default: rayleigh)
-  --plot                 [OPTIONAL] Save Frequency-Time map + dispersion curves in a PNG file for each pair
+  --plot                 [OPTIONAL] Save Frequency-Time map + dispersion curves in a PDF file for each pair
   --force_dist_km        [OPTIONAL] Override inter-station distance [km]
 
 Parameter guide:
   --w              Morlet wavelet cycles. Lower (5-6) = better time resolution.
-                   Higher (8-16) = better frequency resolution. Default 6.
+                   Higher (8-16) = better frequency resolution. Default adn recommended 6.
   --tresh          Jump detection threshold. Lower = more aggressive correction.
                    Default 3.0 for CWT (noisier than AFTAN's 10.0).
   --npoints        Max periods in a correctable jump. Longer segments → NaN.

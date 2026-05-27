@@ -1331,10 +1331,10 @@ class PlotCommandPrompt:
         Cross-correlate current traces with respect to a reference.
 
         Usage:
-            xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--strict True|False]
+            xcorr [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--trim True|False]
 
         Example:
-            >> xcorr --ref 0 --mode full --normalize full --strict True
+            >> xcorr --ref 0 --mode full --normalize full --trim True
         """
 
         from surfquakecore.data_processing.processing_methods import apply_cross_correlation
@@ -1377,6 +1377,75 @@ class PlotCommandPrompt:
             print(f"[INFO] Cross-correlation complete. {len(cc_stream)} traces plotted.")
         except Exception as e:
             print(f"[ERROR] Cross-correlation failed: {e}")
+
+    def _help_groups(self):
+        return {
+            "Navigation": [
+                ("n", "Next trace page"),
+                ("b", "Previous trace page"),
+                ("p", "Return to picking mode"),
+                ("exit", "Close interactive session"),
+            ],
+
+            "Signal Processing": [
+                ("filter", "Apply signal filtering"),
+                ("cut", "Trim traces using picks or UTC times"),
+                ("concat", "Merge trace segments, no parameters needed"),
+                ("rotate", "Rotate seismic components"),
+                ("shift", "Align traces by phase arrivals"),
+                ("write", "Export traces to HDF5, write --folder_path <path> [--all]"),
+            ],
+
+            "Spectral Analysis": [
+                ("spectrum / sp", "Plot amplitude spectrum"),
+                ("spectrogram / spec", "Plot multitaper spectrogram"),
+                ("cwt", "Continuous wavelet transform"),
+            ],
+
+            "Array Processing": [
+                ("beam", "FK beamforming analysis"),
+                ("smap", "Slowness map estimation"),
+                ("stack", "Trace stacking"),
+                ("xcorr", "Cross-correlation analysis"),
+            ],
+
+            "Polarization & Picking": [
+                ("pm", "Particle motion analysis"),
+                ("load_picks", "Import picks from file (NLL file format, load_picks --file <file_path>"),
+                ("plot_type", "Change plotting mode (standard, record, overlay)"),
+            ],
+
+            "Seismogram Information": [
+                ("info", "Show trace headers"),
+            ],
+        }
+    def _print_general_help(self):
+
+        title = "SurfQuake Interactive Plot Console"
+
+        print()
+        print("╔" + "═" * 62 + "╗")
+        print(f"║ {title:^60} ║")
+        print("╚" + "═" * 62 + "╝")
+
+        print()
+
+
+        width = 22
+
+        for section, commands in self._help_groups().items():
+
+            print(f"▸ {section}")
+            print("  " + "─" * 58)
+
+            for cmd, desc in commands:
+                print(f"  {cmd:<{width}} {desc}")
+
+            print()
+
+        print()
+        print(" >> help <command> , Show detailed command usage information: e.g >> help filter")
+        print()
 
     def _cmd_help(self, args):
         """
@@ -1481,7 +1550,7 @@ class PlotCommandPrompt:
                     --ref         Reference trace index (default: 0)
                     --mode        Correlation mode: full, same, valid (default: full)
                     --normalize   Normalization mode: full, partial, etc. (default: full)
-                    --strict      True: enforce same start/end times (default: False)
+                    --trim      True: enforce same start/end times (default: False)
 
                 Example:
                     >> xcorr --ref 0 --mode full --normalize full --trim False
@@ -1591,30 +1660,32 @@ class PlotCommandPrompt:
             return
 
         # General summary
-        print(" Available commands:")
-        print(" p                                               Return to interactive picking mode")
-        print(" n                                               Next set of traces / exit prompt")
-        print(" b                                               Previous set of traces")
-        print(" load_picks --file <file_path>                   Load picks from nlloc pick file")
-        print(" filter <type> <fmin> <fmax>                     Filter traces (type: help filter for details)")
-        print(" spectrum|sp <index>|all [type]                  Plot amplitude spectrum (loglog, xlog, ylog)")
-        print(" spectrogram|spec <idx> [win overlap]            Plot multitaper-spectrogram of trace, (help spectrogram)")
-        print(" cwt <idx> <wavelet> <param>                     Continuous wavelet transform (help cwt)")
-        print(" beam [--fmin --fmax --overlap ....]             Beamforming analysis (type: help beam for options)")
-        print(" smap [--method --fmin --fmax ....]              Slowness map (type: help smap for options)")
-        print(" stack [all|idxs]                                Stack traces  (type: help stack)")
-        print(" xcorr [--ref <index>] [--mode <mode>] \n"
-              "[--normalize <normalize>] [--trim True|False]    (type: help xcorr)")
-        print(" pm                                              Run Particle motion analysis, (type: help pm)")
-        print(" plot_type <type>                                Change plot mode: standard, record, overlay")
-        print(" concat                                          Merge/concatenate traces")
-        print(" shift --phase <name>  ...                       Shift by pick (type: help shift for info)")
-        print(" cut --phase <name> ...                          Trim traces (type: help cut for usage)")
-        print(" rotate NE->RT <back_azimuth> ...                Rotate traces (type: help rotate for usage)")
-        print(" write --folder_path <path> [--all]              Export displayed traces or all traces in memory to HDF5")
-        print(" info                                            Print header information from displayed traces")
-        print(" exit                                            Close command line and exit to interactive picking mode")
-        print(" help [command]                                  Show general or detailed help")
+        self._print_general_help()
+
+        # print(" Available commands:")
+        # print(" p                                               Return to interactive picking mode")
+        # print(" n                                               Next set of traces / exit prompt")
+        # print(" b                                               Previous set of traces")
+        # print(" load_picks --file <file_path>                   Load picks from nlloc pick file")
+        # print(" filter <type> <fmin> <fmax>                     Filter traces (type: help filter for details)")
+        # print(" spectrum|sp <index>|all [type]                  Plot amplitude spectrum (loglog, xlog, ylog)")
+        # print(" spectrogram|spec <idx> [win overlap]            Plot multitaper-spectrogram of trace, (help spectrogram)")
+        # print(" cwt <idx> <wavelet> <param>                     Continuous wavelet transform (help cwt)")
+        # print(" beam [--fmin --fmax --overlap ....]             Beamforming analysis (type: help beam for options)")
+        # print(" smap [--method --fmin --fmax ....]              Slowness map (type: help smap for options)")
+        # print(" stack [all|idxs]                                Stack traces  (type: help stack)")
+        # print(" xcorr [--ref <index>] [--mode <mode>] \n"
+        #       "[--normalize <normalize>] [--trim True|False]    (type: help xcorr)")
+        # print(" pm                                              Run Particle motion analysis, (type: help pm)")
+        # print(" plot_type <type>                                Change plot mode: standard, record, overlay")
+        # print(" concat                                          Merge/concatenate traces")
+        # print(" shift --phase <name>  ...                       Shift by pick (type: help shift for info)")
+        # print(" cut --phase <name> ...                          Trim traces (type: help cut for usage)")
+        # print(" rotate NE->RT <back_azimuth> ...                Rotate traces (type: help rotate for usage)")
+        # print(" write --folder_path <path> [--all]              Export displayed traces or all traces in memory to HDF5")
+        # print(" info                                            Print header information from displayed traces")
+        # print(" exit                                            Close command line and exit to interactive picking mode")
+        # print(" help [command]                                  Show general or detailed help")
 
 
 if __name__ == "__main__":
