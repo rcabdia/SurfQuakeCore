@@ -69,8 +69,9 @@ import os
 import re
 from typing import Optional, List, Tuple
 import numpy as np
+from surfquakecore import DISP_REF_CURVES
 
-_MODELS_DIR = os.path.join(os.path.dirname(__file__), "disp_curv_ref")
+
 
 # ---------------------------------------------------------------------------
 # Valid vocabulary
@@ -128,15 +129,15 @@ def _resolve_file(model: str, env: str, mode: str) -> str:
     Raises FileNotFoundError with a helpful message if not found.
     """
     fname = _build_filename(model, env, mode)
-    path  = os.path.join(_MODELS_DIR, fname)
+    path  = os.path.join(DISP_REF_CURVES, fname)
     if os.path.isfile(path):
         return path
 
-    available = [f for f in os.listdir(_MODELS_DIR)
+    available = [f for f in os.listdir(DISP_REF_CURVES)
                  if f.endswith('.txt') or f.endswith('.csv')]
     raise FileNotFoundError(
         f"Reference file not found: {path}\n"
-        f"Available files in {_MODELS_DIR}:\n"
+        f"Available files in {DISP_REF_CURVES}:\n"
         + "\n".join(f"  {f}" for f in sorted(available))
     )
 
@@ -201,7 +202,7 @@ def list_refs() -> List[Tuple[str, str, str]]:
          ('ak135', 'ocean_deep',         'fundamental'),
          ...]
     """
-    if not os.path.isdir(_MODELS_DIR):
+    if not os.path.isdir(DISP_REF_CURVES):
         return []
 
     results = []
@@ -209,7 +210,7 @@ def list_refs() -> List[Tuple[str, str, str]]:
         r'^(.+?)_(earth|ocean_deep|ocean_intermediate|ocean_shallow)'
         r'_velocity_(fundamental|first)_mode\.txt$'
     )
-    for f in sorted(os.listdir(_MODELS_DIR)):
+    for f in sorted(os.listdir(DISP_REF_CURVES)):
         m = pattern.match(f)
         if m:
             results.append((m.group(1), m.group(2), m.group(3)))

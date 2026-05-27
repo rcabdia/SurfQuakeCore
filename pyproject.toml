@@ -45,6 +45,8 @@ where = ["."]
 
 "surfquakecore.first_polarity" = ["focmec_bash/*"]
 
+"surfquakecore.ant" = ["disp_curv_ref/*"]
+
 [project.scripts]
 surfquake = "surfquakecore.cli:main"
 
