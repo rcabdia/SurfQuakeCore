@@ -1,5 +1,7 @@
 from obspy import Stream, Trace, UTCDateTime, Inventory
 import numpy as np
+
+
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
@@ -270,7 +272,7 @@ class StreamProcessing:
     """
 
     STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis", "cut_stream"}
+                      "kurtosis", "cut_stream", "algebra"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -315,9 +317,25 @@ class StreamProcessing:
                     self.apply_kurtosis(step)
                 elif method_name == "cut_stream":
                     self.apply_cut(step)
+                elif method_name == "algebra":
+                    self.apply_algebra(step)
 
             return self.stream
 
+    def apply_algebra(self, step_config):
+        """
+        Apply algebraic expression to the stream traces
+        result = ta.evaluate("exp(tr1) + sin(tr2) * sqrt(abs(tr3))")
+        result = ta.evaluate("tr1 + tr2, tr1 - tr2")
+        """
+
+        from surfquakecore.algebra.trace_algebra import TraceAlgebra
+        ta = TraceAlgebra(self.stream, output_label="ALG", trim=step_config.get("trim"),
+            fill_gaps=step_config.get("fill_gaps"), resample=step_config.get("resample"))
+
+        self.stream = ta.evaluate(step_config["expression"])
+
+        return self.stream
 
     def apply_cut(self, step_config):
 

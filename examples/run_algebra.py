@@ -1,5 +1,5 @@
 from obspy import read
-from examples.trace_algebra import TraceAlgebra
+from surfquakecore.algebra.trace_algebra import TraceAlgebra
 
 path = "/Users/roberto/Desktop/test_input/*"
 st = read(path)

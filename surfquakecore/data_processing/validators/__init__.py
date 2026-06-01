@@ -33,7 +33,7 @@ from .rotate import validate_rotate
 from .cross_correlate import validate_cross_correlate
 from .envelope import validate_envelope
 from .kurtosis import validate_kurtosis
-
+from .algebra import validate_algebra
 
 CHECK_DISPATCH = {
     'rmean': validate_rmean,
@@ -70,8 +70,8 @@ CHECK_DISPATCH = {
     'concat': validate_concat,
     'particle_motion': validate_particle,
     'rename': validate_rename,
-    'kurtosis': validate_kurtosis
-}
+    'kurtosis': validate_kurtosis,
+    'algebra': validate_algebra}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

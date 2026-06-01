@@ -3,12 +3,13 @@
 """
 constants
 """
+from typing import Dict
 
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
                  'cross_correlate', 'stack', 'synch', 'envelope', 'cut', 'cut_stream', 'concat', 'spectrum', 'spectrogram', 'cwt',
-                 'entropy', 'snr', 'raw', 'beam', 'particle_motion', 'rename', 'kurtosis']
+                 'entropy', 'snr', 'raw', 'beam', 'particle_motion', 'rename', 'kurtosis', 'algebra']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 
@@ -50,3 +51,11 @@ SPECTRUM_METHODS = ["multitaper", "fft"]
 CWT_WAVELETS = ["cm", "mh", "pa"]
 
 CUT_TYPES = ["absolute", "phase", "reference"]
+
+# Note: 'diff' reduces array length by 1 per call — ensure downstream
+# processing handles variable-length traces if this is used.
+ALGEBRA_FUNCTIONS = ["abs", "sqrt", "exp", "log", "log2", "log10", "sin", "cos", "tan",
+    "arcsin", "arccos", "arctan", "arctan2", "sinh", "cosh", "tanh", "ceil", "floor", "round",
+    "sign", "diff", "cumsum", "gradient", "real", "imag", 'power', 'mod']
+
+ALGEBRA_CONSTANTS: Dict = ['pi', 'e', 'inf', 'nan']
