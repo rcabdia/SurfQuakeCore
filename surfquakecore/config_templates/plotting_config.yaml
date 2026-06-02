@@ -1,0 +1,18 @@
+plotting:
+  traces_per_fig: 3
+  sort_by: distance
+  vspace: 0.05
+  show_legend: true
+  title_fontsize: 9
+  plot_type: standard
+  record_option: dates
+  scale_factor: 1
+  sharey: False
+  show_arrivals: False
+  pick_output_file: ./picks.csv
+  auto_load_pick_file: False
+  show_info_picks: False
+  show_crosshair: False
+  backend: TkAgg
+
+#backend: TkAgg (maximum robustness, default), MacOSX (only for mac, fully recommended), Qt5Agg (fast but picking  & interactive commands raise problems)
