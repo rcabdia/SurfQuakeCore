@@ -2,7 +2,7 @@
 # ------------------------------------------------------------------
 # Filename: main.py
 # Program: surfQuake CLI runner
-# Date: March 2026
+# Date: June 2026
 # Purpose: Command Line Interface Core
 # Author: Roberto Cabieces & Thiago C. Junqueira
 # Email: rcabdia@roa.es // Roberto.Cabieces@cmre.nato.int
@@ -177,7 +177,9 @@ def _create_actions():
             name="cwt_aftan", run=_cwt_aftan,
             description="Automatic Frequency-Time Analysis of group and phase velocity dispersion from EGFs or Earthquakes"),
 
-    }
+        "make_config": _CliActions(name="make_config",  run=_make_config,
+        description="Generate Sample Config files")}
+
     return _actions
 
 
@@ -221,7 +223,7 @@ def _print_main_help(actions: dict):
 def _command_groups():
     return {
         "Section 1: Project / Metadata": [
-            "project", "csv2xml", "buildcatalog", "buildmticonfig",
+            "project", "make_config", "csv2xml", "buildcatalog", "buildmticonfig",
         ],
         "Section 2: Detection, Picking / Association": [
             "pick", "associate", "trigg",
@@ -267,6 +269,77 @@ def main():
         _print_main_help(actions)
         sys.exit(1)
 
+
+def _make_config():
+    """
+    Command-line interface for create sample config files
+    """
+    from surfquakecore import SAMPLE_CONFIGS
+    import shutil
+    from pathlib import Path
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} make_config",
+        description="Make a sample config file",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+
+        Overview:
+            This command generate different types of config files to be used in surfquake tools.
+
+        Usage Example:
+            > surfquake make_config -c config_type -o output_folder
+
+        Key Arguments:
+            -c, --config_type    [REQUIRED]         Config type 
+            -o, --output_folder  [REQUIRED]         Output_folder for saving configuration
+        
+        Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+        
+        List of available configuration templates
+        ----------------------------------------------------------------------------------------
+        1. Configurations to be used with commands: quick, processing and processing_daily.
+        
+        typical_config   ->  Slim template for basic signal processing
+        config_all       ->  Template containing all seismic processing
+        stream_config    ->  Template containing processing steps dedicated for a stream of traces
+        spectral_config  ->  Template for generate spectrograms/continuous wavelet transform) 
+        events           ->  Event file template
+        plotting_config  ->  Template for plotting 
+        
+        ----------------------------------------------------------------------------------------
+        2. Configurations to be used with commands: associate, locate and mti.
+        
+        real_config      -> Template to associate picks
+        nll_config       -> Template for locate events
+        mti_config       -> Template for Moment Tensor Inversion
+        ----------------------------------------------------------------------------------------
+        """
+    )
+    available_configs = ["typical_config", "config_all", "stream_config", "spectral config", "events",
+                         "plotting_config", "real_config", "nll_config", "mti_config"]
+
+    arg_parse.add_argument("-c", "--config_type", help="Config type name", type=str, required=True)
+
+    arg_parse.add_argument("-o", "--output_folder", help="Output folder to be saved the configuration",
+                           type=str, required=True)
+    parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+    output_folder = make_abs(parsed_args.output_folder)
+    input_folder = Path(SAMPLE_CONFIGS)
+
+    if parsed_args.config_type in available_configs:
+        for file in input_folder.iterdir():
+            if file.is_file() and file.stem == parsed_args.config_type:
+                print(file.name)
+                input = os.path.join(SAMPLE_CONFIGS, file.name)
+                print("Input path", input)
+                print("Output folder", output_folder)
+                shutil.copy2(input, output_folder)
+                break
+    else:
+        print("Configuration type doesn't match any available config, please review the available config types")
 
 def _project():
     """

@@ -10,6 +10,7 @@ FOC_MEC_BASH_PATH = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "fi
 nll_templates = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "earthquake_location/loc_structure/run")
 nll_ak135 = os.path.join(os.path.dirname(ROOT_DIR), "surfquakecore", "earthquake_location/loc_structure/ak135")
 DISP_REF_CURVES = os.path.join(ROOT_DIR, 'ant/disp_curv_ref')
+SAMPLE_CONFIGS = os.path.join(ROOT_DIR, 'config_templates')
 
 def create_logger():
 
