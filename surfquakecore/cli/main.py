@@ -288,7 +288,7 @@ def _make_config():
             This command generate different types of config files to be used in surfquake tools.
 
         Usage Example:
-            > surfquake make_config -c config_type -o output_folder
+            > surfquake make_config -c stream_config -o ./configs
 
         Key Arguments:
             -c, --config_type    [REQUIRED]         Config type 
@@ -304,10 +304,9 @@ def _make_config():
         typical_config   ->  Slim template for basic signal processing
         config_all       ->  Template containing all seismic processing
         stream_config    ->  Template containing processing steps dedicated for a stream of traces
-        spectral_config  ->  Template for generate spectrograms/continuous wavelet transform) 
+        spectral_config  ->  Template for generate spectrogram and continuous wavelet transform 
         events           ->  Event file template
         plotting_config  ->  Template for plotting 
-        
         ----------------------------------------------------------------------------------------
         2. Configurations to be used with commands: associate, locate and mti.
         
