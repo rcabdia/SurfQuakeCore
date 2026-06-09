@@ -236,7 +236,7 @@ class TraceSpectrogramResult:
         with open_func(path_output, mode) as f:
             pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        print(f"[INFO] {self.trace.id} - Writing spectrum to {path_output}")
+        print(f"[INFO] {self.trace.id} - Writing spectrogram to {path_output}")
 
     @staticmethod
     def from_pickle(filepath: str, compress: bool = True):

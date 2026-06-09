@@ -845,11 +845,7 @@ def compute_entropy_trace(tr: Trace, win: float = 2.0, overlap: float = 0.5,
     entropy_resampled = interp_func(full_times)
 
     # Create output Trace
-    entropy_trace = Trace(data=entropy_resampled.astype(np.float32),
-                          header={
-                              "starttime": tr.stats.starttime,
-                              "sampling_rate": tr.stats.sampling_rate
-                          })
+    entropy_trace = Trace(data=entropy_resampled.astype(np.float32), header=tr.stats.copy())
 
     return entropy_trace
 
