@@ -25,7 +25,7 @@ Analysis:
     zerophase: True
   process_7:
     name: 'add_noise'
-    noise_type: 'white'
+    noise_type: 'pink'
     SNR_dB: 1
   process_8:
     name: 'wavelet_denoise'
@@ -39,6 +39,8 @@ Analysis:
     method: 'spectral'
   process_11:
     name: 'whitening'
+    fmin: 0.05
+    fmax: 9.5
     freq_width: 0.02
     taper_edge: True
   process_12:
@@ -51,77 +53,48 @@ Analysis:
     method: 'time normalization'
     norm_win: 10
   process_14:
+    name: 'remove_spikes'
+    window_size: 10
+    sigma: 4
+  process_15:
     name: "wiener_filter"
     time_window: 1.0
     noise_power: 0
-  process_15:
+  process_16:
     name: 'shift'
     time_shifts: [-5, 2]
-  process_16:
-    name: 'rotate'
-    type: 'NE->RT'
-    method: 'GAC'
-    angle: 30.0
-    inclination: 0.0
   process_17:
-    name: 'cross_correlate'
-    mode: 'full'
-    normalize: 'full'
-    reference_idx: 1
-    strict: True
-  process_18:
-    name: 'stack'
-    method: 'pw'
-    order: 1
-  process_19:
     name: 'envelope'
     method: 'SMOOTH'
     corner_freq: 0.15
+  process_18:
+    name: 'cut'
+    method: 'absolute'
+    start: 2018-08-21T00:27:15
+    end: 2018-08-21T00:31:45
+  process_19:
+    name: 'rotate'
+    type: 'NE->RT'
+    method: 'FREE'
+    angle: 30.0
+    inclination: 0.0
   process_20:
-    name: 'cwt'
-    wavelet: 'cm'
-    fmin: 0.5
-    fmax: 8.0
-    output_path: /Volumes/LaCie/all_andorra/cris_test/output
+    name: 'cross_correlate'
+    mode: 'full'
+    normalize: 'full'
+    reference_idx: 0
+    strict: True
+    trim: True
   process_21:
-    name: 'entropy'
-    win: 5.0
-    overlap: 50
+    name: 'synch'
+    method: 'MCCC'
   process_22:
-    name: 'snr'
-    method: 'classic'
-    sign_win: 5.0
-    noise_win: 30.0
-  process_23:
-    name: 'raw'
-    factor: 20
-    integers: True
-  process_24:
-    name: 'spectrogram'
-    win: 3
-    overlap: 50
-    linf: 0
-    lsup: 20
-    output_path: "/Users/admin/Desktop/surf_test/cut/spec"
-  process_24:
-    name: 'raw'
-    factor: 20
-    integers: True
-  process_25:
     name: 'concat'
-  process_26:
-    name: 'rename'
-    
-    networks:
-      IM: IH      # Replace network XX → YY
-      IK: IN
-    
-    stations:
-      IL02: XX02
-      ARNO: MELI
-    
-    channels:
-      SHZ: BHZ     # Entire channel replacement
-
-    components:
-      Z: E         # Only the last component letter (Z → E, N → Z, etc.)
+  process_23:
+    name: 'stack'
+    method: 'pw'
+    order: 2
+  process_24:
+    name: 'raw'
+    factor: 2
+    integers: True

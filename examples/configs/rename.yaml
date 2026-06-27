@@ -1,0 +1,12 @@
+Analysis:
+  process_1:
+    name: 'rename'
+    networks:
+      ES: IH
+    stations:
+      EMAZ: ARNO
+    channels:
+      HHZ: BHZ
+    components:
+      N: R
+      E: T
