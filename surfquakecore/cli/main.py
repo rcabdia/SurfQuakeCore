@@ -307,6 +307,8 @@ def _make_config():
         spectral_config  ->  Template for generate spectrogram and continuous wavelet transform 
         events           ->  Event file template
         plotting_config  ->  Template for plotting 
+        rename           ->  Template config to rename seismogram files header (Network, station...)
+        algebra          ->  Template for manipulate traces using basic algebraic expressions
         ----------------------------------------------------------------------------------------
         2. Configurations to be used with commands: associate, locate and mti.
         
@@ -317,7 +319,7 @@ def _make_config():
         """
     )
     available_configs = ["typical_config", "config_all", "stream_config", "spectral config", "events",
-                         "plotting_config", "real_config", "nll_config", "mti_config"]
+                         "plotting_config", "real_config", "nll_config", "mti_config", "rename", "algebra"]
 
     arg_parse.add_argument("-c", "--config_type", help="Config type name", type=str, required=True)
 

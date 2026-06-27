@@ -1512,9 +1512,39 @@ class PlotCommandPrompt:
         # Detailed help content per command
         detailed_help = {
             "algebra": """
-            Apply algebraic expression to the stream traces
+            Apply algebraic expression to the displayed stream traces (tr1, tr2...trN)
+            algebra --expression <python_math_expression>
+            
+            Arithmetic	+, -, *, /, %	tr1 + tr2 * 2
+            Power	**	tr1 ** 2
+            Floor Division	//	tr1 // 2
+            abs(x)	Absolute value
+            sqrt(x)	Square root
+            exp(x)	Exponential
+            log(x)	Natural logarithm
+            log2(x)	Base-2 logarithm
+            log10(x)	Base-10 logarithm
+            sin, cos, tan, arcsin, arccos, arctan, arctan2
+            sinh, cosh, tanh
+            ceil(x)	Round up
+            floor(x)	Round down
+            round(x)	Round to nearest value
+            sign(x)	Sign of the signal
+            diff(x)	First difference
+            cumsum(x)	Cumulative sum
+            gradient(x)	Numerical gradient
+            real(x)	Real component
+            imag(x)	Imaginary component
+            pi	π
+            e	Euler's number
+            
             Examples:
-            algebra --expression tr1 + tr2
+            - Single group
+                algebra --expression tr1 + tr2
+                algebra --expression exp(tr1) + sin(tr2) * sqrt(abs(tr3))
+                algebra --expression cumsum(tr1)
+            - Multiple Groups
+                algebra --expression tr1-tr2,10*tr3,tr4**2
             """,
             "filter": """
     filter <type> <fmin> <fmax> [--corners N] [--zerophase Bool] [--ripple R] [--rp R] [--rs R]
