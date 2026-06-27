@@ -287,9 +287,6 @@ def _make_config():
         Overview:
             This command generate different types of config files to be used in surfquake tools.
 
-        Usage Example:
-            > surfquake make_config -c stream_config -o ./configs
-
         Key Arguments:
             -c, --config_type    [REQUIRED]         Config type 
             -o, --output_folder  [REQUIRED]         Output_folder for saving configuration
@@ -302,11 +299,12 @@ def _make_config():
         1. Configurations to be used with commands: quick, processing and processing_daily.
         
         typical_config   ->  Slim template for basic signal processing
-        config_all       ->  Template containing all seismic processing
+        config_all       ->  Template containing all available seismic processing
         stream_config    ->  Template containing processing steps dedicated for a stream of traces
-        spectral_config  ->  Template for generate spectrogram and continuous wavelet transform 
+        spectral_config  ->  Template for generate spectrum, spectrogram and continuous wavelet transform
+        plotting_config  ->  Template for plotting
+        script_template  ->  Template containing a python template script to perform your own code
         events           ->  Event file template
-        plotting_config  ->  Template for plotting 
         rename           ->  Template config to rename seismogram files header (Network, station...)
         algebra          ->  Template for manipulate traces using basic algebraic expressions
         ----------------------------------------------------------------------------------------
@@ -316,10 +314,14 @@ def _make_config():
         nll_config       -> Template for locate events
         mti_config       -> Template for Moment Tensor Inversion
         ----------------------------------------------------------------------------------------
+        
+        Usage Example:
+            > surfquake make_config -c stream_config -o ./configs
         """
     )
     available_configs = ["typical_config", "config_all", "stream_config", "spectral config", "events",
-                         "plotting_config", "real_config", "nll_config", "mti_config", "rename", "algebra"]
+                         "plotting_config", "script_template", "real_config", "nll_config", "mti_config", "rename",
+                         "algebra"]
 
     arg_parse.add_argument("-c", "--config_type", help="Config type name", type=str, required=True)
 
