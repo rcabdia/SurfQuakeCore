@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 dynamic = ["readme", "dependencies"]
 name = "surfquake"
-version = "1.4.0"
+version = "1.5.0"
 authors = [
   { name="Roberto Cabieces & Thiago Junqueira", email="Roberto.Cabieces@cmre.nato.int"},
 ]
@@ -46,6 +46,8 @@ where = ["."]
 "surfquakecore.first_polarity" = ["focmec_bash/*"]
 
 "surfquakecore.ant" = ["disp_curv_ref/*"]
+
+"surfquakecore.config_templates" = ["*.yaml", "*.csv", "*.ini"]
 
 [project.scripts]
 surfquake = "surfquakecore.cli:main"
