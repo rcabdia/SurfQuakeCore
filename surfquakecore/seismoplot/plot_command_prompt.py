@@ -9,6 +9,7 @@ import os
 import readline
 import atexit
 from typing import Optional
+
 from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers
 
 
@@ -52,6 +53,7 @@ class PlotCommandPrompt:
             "cut": self._cmd_cut,
             "rotate": self._cmd_rotate,
             "concat": self._cmd_concat,
+            "algebra": self._apply_algebra,
             "load_picks": self._cmd_load_picks,
             "shift": self._cmd_shift,
             "write": self._cmd_write,
@@ -1378,6 +1380,58 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Cross-correlation failed: {e}")
 
+    def _apply_algebra(self, args):
+        """
+        Apply algebraic expression to the stream traces
+        result = ta.evaluate("exp(tr1) + sin(tr2) * sqrt(abs(tr3))")
+        result = ta.evaluate("tr1 + tr2, tr1 - tr2")
+        """
+
+        from surfquakecore.algebra.trace_algebra import TraceAlgebra
+        from obspy import Stream
+
+        # Parse arguments: everything after --expression is the formula,
+        # since the formula itself contains spaces (tr1 + tr2) and was
+        # already split into separate tokens by run()'s cmd_line.split().
+        expression = None
+        if "--expression" in args:
+            idx = args.index("--expression")
+            remainder = args[idx + 1:]
+            if not remainder:
+                print("[WARN] No expression argument, set --expression and your formula")
+                return
+            expression = " ".join(remainder).strip()
+            # Defensive: run() tokenizes with plain str.split(), which does not
+            # strip shell-style quotes. If the user wraps the expression in
+            # quotes out of habit (e.g. --expression "tr1 + tr2"), remove them
+            # so the evaluator doesn't choke on a leading/trailing " or '.
+            if len(expression) >= 2 and expression[0] in "\"'" and expression[-1] == expression[0]:
+                expression = expression[1:-1].strip()
+        else:
+            print("[WARN] No expression argument, set --expression and your formula")
+            return
+
+        trace_list = getattr(self.plot_proj, "displayed_traces", [])
+
+        if not trace_list:
+            print("[WARN] No traces currently displayed.")
+            return
+
+        try:
+            st = Stream(trace_list)
+            ta = TraceAlgebra(st, output_label="ALG", trim=True, fill_gaps=True, resample=False)
+
+            self.plot_proj.trace_list = list(ta.evaluate(expression=expression))
+
+            # Reset plot
+            self.plot_proj.current_page = 0
+            self.plot_proj.clear_plot()
+            self.prompt_active = False
+            self._exit_code = "replot"
+
+        except Exception as e:
+            print(f"[ERROR] Failed to apply math expression: {e}")
+
     def _help_groups(self):
         return {
             "Navigation": [
@@ -1388,6 +1442,7 @@ class PlotCommandPrompt:
             ],
 
             "Signal Processing": [
+                ("algebra", "Apply a Math expression on traces"),
                 ("filter", "Apply signal filtering"),
                 ("cut", "Trim traces using picks or UTC times"),
                 ("concat", "Merge trace segments, no parameters needed"),
@@ -1456,6 +1511,11 @@ class PlotCommandPrompt:
         """
         # Detailed help content per command
         detailed_help = {
+            "algebra": """
+            Apply algebraic expression to the stream traces
+            Examples:
+            algebra --expression tr1 + tr2
+            """,
             "filter": """
     filter <type> <fmin> <fmax> [--corners N] [--zerophase Bool] [--ripple R] [--rp R] [--rs R]
         Apply filter to all traces list.
@@ -1661,31 +1721,6 @@ class PlotCommandPrompt:
 
         # General summary
         self._print_general_help()
-
-        # print(" Available commands:")
-        # print(" p                                               Return to interactive picking mode")
-        # print(" n                                               Next set of traces / exit prompt")
-        # print(" b                                               Previous set of traces")
-        # print(" load_picks --file <file_path>                   Load picks from nlloc pick file")
-        # print(" filter <type> <fmin> <fmax>                     Filter traces (type: help filter for details)")
-        # print(" spectrum|sp <index>|all [type]                  Plot amplitude spectrum (loglog, xlog, ylog)")
-        # print(" spectrogram|spec <idx> [win overlap]            Plot multitaper-spectrogram of trace, (help spectrogram)")
-        # print(" cwt <idx> <wavelet> <param>                     Continuous wavelet transform (help cwt)")
-        # print(" beam [--fmin --fmax --overlap ....]             Beamforming analysis (type: help beam for options)")
-        # print(" smap [--method --fmin --fmax ....]              Slowness map (type: help smap for options)")
-        # print(" stack [all|idxs]                                Stack traces  (type: help stack)")
-        # print(" xcorr [--ref <index>] [--mode <mode>] \n"
-        #       "[--normalize <normalize>] [--trim True|False]    (type: help xcorr)")
-        # print(" pm                                              Run Particle motion analysis, (type: help pm)")
-        # print(" plot_type <type>                                Change plot mode: standard, record, overlay")
-        # print(" concat                                          Merge/concatenate traces")
-        # print(" shift --phase <name>  ...                       Shift by pick (type: help shift for info)")
-        # print(" cut --phase <name> ...                          Trim traces (type: help cut for usage)")
-        # print(" rotate NE->RT <back_azimuth> ...                Rotate traces (type: help rotate for usage)")
-        # print(" write --folder_path <path> [--all]              Export displayed traces or all traces in memory to HDF5")
-        # print(" info                                            Print header information from displayed traces")
-        # print(" exit                                            Close command line and exit to interactive picking mode")
-        # print(" help [command]                                  Show general or detailed help")
 
 
 if __name__ == "__main__":
