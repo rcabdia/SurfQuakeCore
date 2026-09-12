@@ -159,8 +159,7 @@ class PlotProj:
         Returns distance (km) and back-azimuth from trace header.
         """
         try:
-            dist, az, baz, incidence_ang = trace.stats.geodetic['geodetic']
-            return dist, baz
+            return trace.stats.geodetic['geodetic'][0], trace.stats.geodetic['geodetic'][2]
         except Exception:
             return float('inf'), float('inf')
 
