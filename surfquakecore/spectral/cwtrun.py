@@ -57,10 +57,15 @@ class TraceCWTResult:
 
         self.cwt_data = (t, f, scalogram2, pred, pred_comp)
 
-    def plot_cwt(self, save_path: str = None, clip: float = None):
+    def plot_cwt(
+            self,
+            save_path: str = None,
+            clip: float = None,
+            plot_date: bool = False):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
+        import matplotlib.dates as mdates
         import platform
         import matplotlib.gridspec as gridspec
         from matplotlib.ticker import ScalarFormatter
@@ -78,8 +83,9 @@ class TraceCWTResult:
             scalogram = np.clip(scalogram, a_min=clip, a_max=0)
 
         self.fig_spec = plt.figure(figsize=(10, 5))
-        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
-                               hspace=0.02, wspace=0.02)
+
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1], hspace=0.02,
+            wspace=0.02)
 
         ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
         ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
@@ -89,38 +95,104 @@ class TraceCWTResult:
         formatter.set_powerlimits((0, 0))
         ax_waveform.yaxis.set_major_formatter(formatter)
 
+        starttime = tr.stats.starttime
+
+        # -------------------------------------------------
+        # X axis: relative seconds OR absolute date/time
+        # -------------------------------------------------
+        if plot_date:
+
+            start_num = mdates.date2num(starttime.datetime)
+
+            waveform_x = start_num + tr.times() / 86400.0
+            cwt_x = start_num + t / 86400.0
+
+            # pred and pred_comp are also times in seconds
+            pred_x = start_num + pred / 86400.0
+            pred_comp_x = start_num + pred_comp / 86400.0
+
+        else:
+
+            waveform_x = tr.times()
+            cwt_x = t
+
+            pred_x = pred
+            pred_comp_x = pred_comp
+
+        # -------------------------------------------------
         # Plot waveform
-        ax_waveform.plot(tr.times(), tr.data, linewidth=0.75)
+        # -------------------------------------------------
+        ax_waveform.plot(waveform_x, tr.data, linewidth=0.75)
+
         ax_waveform.set_title(f"CWT Scalogram for {tr.id}")
         ax_waveform.tick_params(labelbottom=False)
+
         # Annotate with date
-        starttime = tr.stats.starttime
         date_str = starttime.strftime("%Y-%m-%d %H:%M:%S")
-        textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
+        textstr = (f"JD {starttime.julday} / {starttime.year}\n"
+            f"{date_str}")
+
         ax_waveform.text(0.01, 0.95, textstr, transform=ax_waveform.transAxes, fontsize=8,
-                va='top', ha='left',
-                bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+            va='top', ha='left',
+            bbox=dict(
+                boxstyle='round,pad=0.3',
+                fc='lightyellow',
+                ec='gray',
+                alpha=0.5))
 
+        # -------------------------------------------------
         # Plot scalogram
-        x, y = np.meshgrid(t, f)
-        pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow',  vmin=np.min(scalogram), vmax=0)
+        # -------------------------------------------------
+        x, y = np.meshgrid(cwt_x, f)
 
+        pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow',
+            vmin=np.min(scalogram), vmax=0)
 
-        ax_spec.fill_between(pred, f, 0, color="black", edgecolor="red", alpha=0.3)
-        ax_spec.fill_between(pred_comp, f, 0, color="black", edgecolor="red", alpha=0.3)
+        # Predictions / masks
+        ax_spec.fill_between(pred_x, f,0, color="black", edgecolor="red", alpha=0.3)
+
+        ax_spec.fill_between(pred_comp_x, f,0, color="black", edgecolor="red", alpha=0.3)
+
         ax_waveform.set_ylabel('Amplitude')
-        ax_spec.set_ylim([np.min(f), np.max(f)])
-        ax_spec.set_ylabel('Frequency [Hz]')
-        ax_spec.set_xlabel('Time [s]')
 
+        ax_spec.set_ylim([np.min(f), np.max(f)])
+
+        ax_spec.set_ylabel('Frequency [Hz]')
+
+        # -------------------------------------------------
+        # X-axis formatting
+        # -------------------------------------------------
+        if plot_date:
+
+            locator = mdates.AutoDateLocator()
+
+            ax_spec.xaxis.set_major_locator(locator)
+
+            ax_spec.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+
+            ax_spec.set_xlabel('Date / Time [UTC]')
+
+        else:
+
+            ax_spec.set_xlabel('Time [s]')
+
+        # -------------------------------------------------
+        # Colorbar
+        # -------------------------------------------------
         cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
+
         cbar.set_label("Power [dB]")
 
         plt.tight_layout()
+
         if save_path:
+
             self.fig_spec.savefig(save_path, dpi=300)
+
             plt.close(self.fig_spec)
+
         else:
+
             plt.show()
 
 

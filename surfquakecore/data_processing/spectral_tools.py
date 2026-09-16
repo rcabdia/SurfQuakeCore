@@ -91,19 +91,30 @@ class SpectrumTool:
         """
 
         data = np.asarray(data)
-
         # win -- samples
+        win = int(win)
         # Ensure nfft is a power of 2
         nfft = 2 ** math.ceil(math.log2(win))  # Next power to 2
 
-        # Step size as a percentage of window size
-        step_size = max(1, int(nfft * step_percentage))  # Ensure step size is at least 1
-        lim = len(data) - nfft  # Define sliding window limit
-        if lim < 0:
-            raise ValueError("Window length (nfft) is longer than data length.")
-        num_steps = (lim // step_size) + 1  # Total number of steps
+        # ----------------------------------------------------
+        # Step MUST be relative to the original window
+        # ----------------------------------------------------
 
-        S = np.zeros([nfft // 2 + 1, num_steps])  # Adjust output size for reduced steps
+        # Step size as a percentage of window size
+        step_size = max(1,int(round(win * step_percentage)))  # Ensure step size is at least 1
+
+        # Last possible REAL window
+        lim = len(data) - win
+
+        if lim < 0:
+            raise ValueError("Window length is longer than data length.")
+
+        # Exact window starting positions
+        starts = np.arange(0, lim + 1, step_size)
+
+        num_steps = len(starts) # Total number of steps
+
+        S = np.zeros((nfft // 2 + 1, num_steps)) # Adjust output size for reduced steps
 
         # Precompute sampling frequency
         fs = 1.0 / dt  # Sampling frequency
@@ -111,44 +122,55 @@ class SpectrumTool:
         # Precompute taper for conventional method: 5% cosine taper on each side
         taper = None
         if method.lower() == "fft":
-            taper = np.ones(nfft)
-            edge = int(0.05 * nfft)  # 5% of the window at each edge
-            if edge > 0:
-                # cosine ramp up at start
-                ramp = 0.5 * (1 - np.cos(np.linspace(0, np.pi, 2 * edge)))
-                taper[:edge] = ramp[:edge]
-                # cosine ramp down at end
-                taper[-edge:] = ramp[-edge:]
+            # Taper length must also be the REAL window
+            # ----------------------------------------------------
+            # Taper for conventional FFT
+            # 5% cosine taper on EACH side
+            # ----------------------------------------------------
+
+            taper = np.ones(win)
+            edge = int(round(0.05 * win))
+
+            if edge > 1:
+
+                ramp = 0.5 * (1 - np.cos(np.linspace(0, np.pi, edge)))
+
+                # 0 -> 1
+                taper[:edge] = ramp
+
+                # 1 -> 0
+                taper[-edge:] = ramp[::-1]
+
+            elif edge == 1:
+
+                taper[0] = 0.0
+                taper[-1] = 0.0
 
         # Main loop
+        # ----------------------------------------------------
+        # Sliding windows
+        # ----------------------------------------------------
         for idx, n in enumerate(range(0, lim + 1, step_size)):
             # Extract windowed data
-            data1 = data[n:nfft + n]
+            # IMPORTANT: extract 'win' samples, NOT 'nfft'
+            data1 = data[n:n + win]
             # Remove mean
             data1 = data1 - np.mean(data1)
 
             if method.lower() == "multitaper":
                 if nw:
-                    freq, spec, _ = tsa.multi_taper_psd(
-                        data1,
-                        fs,
-                        NW=nw,
-                        jackknife=False,
-                        low_bias=False)
+                    freq, spec, _ = tsa.multi_taper_psd(data1, fs, NW=nw, NFFT=nfft,
+                        jackknife=False, low_bias=False)
                 else:
-                    freq, spec, _ = tsa.multi_taper_psd(
-                        data1,
-                        fs,
-                        adaptive=True,
-                        jackknife=False,
-                        low_bias=True)
+                    freq, spec, _ = tsa.multi_taper_psd(data1, fs, NFFT=nfft, adaptive=True,
+                                                        jackknife=False, low_bias=True)
 
             elif method.lower() == "fft":
                 # Apply 5% taper
                 data1 = data1 * taper
-                # Conventional rFFT-based PSD
-                spec = np.fft.rfft(data1)
-                spec = (np.abs(spec) ** 2) / (fs * nfft)
+                # Conventional rFFT-based PSD, Zero-padding happens HERE
+                spec = np.fft.rfft(data1, n=nfft)
+                spec = (np.abs(spec) ** 2) / (fs * win)
 
             else:
                 raise ValueError("method must be 'multitaper' or 'fft'")
@@ -157,14 +179,24 @@ class SpectrumTool:
 
         # Frequency axis from nfft (for both methods)
         freq = np.fft.rfftfreq(nfft, d=dt)
-        value1, freq1 = SpectrumTool.find_nearest(freq, linf)
-        value2, freq2 = SpectrumTool.find_nearest(freq, lsup)
+        freq_mask = ((freq >= linf) & (freq <= lsup))
 
-        spectrum = S[value1:value2, :]
+        # chop for the desire frequencies
+        f = freq[freq_mask]
+        spectrum = S[freq_mask, :]
 
         # Time axis: keep your original style for now
-        t = np.linspace(0, len(data) * dt, spectrum.shape[1])
-        f = np.linspace(linf, lsup, spectrum.shape[0])
+        #t = np.linspace(0, len(data) * dt, spectrum.shape[1])
+
+        # ----------------------------------------------------
+        # REAL time axis
+        #
+        # Give time at CENTER of every analysis window
+        # ----------------------------------------------------
+        # t = (starts + (win - 1) / 2.0) * dt
+
+        # we prefer starts at beginning
+        t = starts * dt
 
         return spectrum, num_steps, t, f
 

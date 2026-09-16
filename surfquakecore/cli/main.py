@@ -1887,6 +1887,7 @@ def _specplot():
         Key Arguments:
             -f, --file         [REQUIRED] Path to waveform files (.sp, .spec or .cwt)
             -c, --clip         [OPTIONAL] Clipping level in dB for plotting the time-Frequency plane (default -120)
+            -d, --dates         [OPTIONAL] if plot dates at x-asis
                 --save_path    [OPTIONAL] Output file path to automatically save the figure
                 
         Examples:
@@ -1904,6 +1905,7 @@ def _specplot():
 
     parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
     parser.add_argument("--clip", "-c", type=float, required=False)
+    parser.add_argument("-v", "--verbose", help="if plot dates at x-asis",action="store_true")
     parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
 
     args = parser.parse_args()
@@ -1918,11 +1920,11 @@ def _specplot():
 
     elif ext == ".spec":
         obj = TraceSpectrogramResult.from_pickle(filepath)
-        obj.plot_spectrogram(save_path=args.save_path, clip=args.clip)
+        obj.plot_spectrogram(save_path=args.save_path, clip=args.clip, plot_date=args.dates)
 
     elif ext == ".cwt":
         obj = TraceCWTResult.from_pickle(filepath)
-        obj.plot_cwt(save_path=args.save_path, clip=args.clip)
+        obj.plot_cwt(save_path=args.save_path, clip=args.clip, plot_date=args.dates)
 
     else:
         raise ValueError(
