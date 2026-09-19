@@ -478,7 +478,7 @@ class PlotProj:
                 ax.plot(t, tr.data, linewidth=0.8, alpha=0.7, label=tr.id)
 
         ax.set_xlabel("Time (UTC)")
-        ax.set_ylabel("Normalized Amplitude")
+        ax.set_ylabel("Amplitude")
         ax.xaxis_date()
         ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
         ax.set_title("Overlay of All Traces")

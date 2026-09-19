@@ -302,6 +302,7 @@ def _make_config():
         config_all       ->  Template containing all available seismic processing
         stream_config    ->  Template containing processing steps dedicated for a stream of traces
         spectral_config  ->  Template for generate spectrum, spectrogram and continuous wavelet transform
+        ch_functions     ->  Characteristic functions (Kurtosis, SNRs... and so on)
         plotting_config  ->  Template for plotting
         script_template  ->  Template containing a python template script to perform your own code
         events           ->  Event file template
@@ -321,7 +322,7 @@ def _make_config():
     )
     available_configs = ["typical_config", "config_all", "stream_config", "spectral config", "events",
                          "plotting_config", "script_template", "real_config", "nll_config", "mti_config", "rename",
-                         "algebra"]
+                         "algebra", "ch_functions"]
 
     arg_parse.add_argument("-c", "--config_type", help="Config type name", type=str, required=True)
 
