@@ -1896,7 +1896,7 @@ def _specplot():
                 surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp
         
             Plot a saved spectrogram:
-                surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0
+                surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0 --split
         
             Save plot to a file:
                 surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec --save_path output.png
@@ -1905,9 +1905,23 @@ def _specplot():
     )
 
     parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
-    parser.add_argument("--clip", "-c", type=float, required=False)
-    parser.add_argument("-v", "--verbose", help="if plot dates at x-asis",action="store_true")
+
+    parser.add_argument("--clip", "-c", type=float, required=False, default=None,
+        help="Minimum displayed power in dB")
+
+    parser.add_argument("--split", nargs="?", const=1.0, default=None, type=float,
+        help=("Split the plot into low/high frequency panels. "
+            "If used without a value, the default cutoff is 1 Hz. ""Example: --split or --split 0.5"))
+
+    parser.add_argument( "--vmax_db", type=float, default=0.0, required=False,
+        help="Maximum displayed power in dB. Default: 0 dB")
+
+    parser.add_argument("--cmap", type=str, default="rainbow",
+        required=False, help="Matplotlib colormap. Default: rainbow")
+
     parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
+
+    parser.add_argument("-d", "--dates", help="if plot dates at x-asis", action="store_true")
 
     args = parser.parse_args()
     filepath = args.file
@@ -1921,17 +1935,17 @@ def _specplot():
 
     elif ext == ".spec":
         obj = TraceSpectrogramResult.from_pickle(filepath)
-        obj.plot_spectrogram(save_path=args.save_path, clip=args.clip, plot_date=args.dates)
+        obj.plot_spectrogram(save_path=args.save_path, clip=args.clip, plot_date=args.dates,
+                            split=args.split, vmax_db=args.vmax_db, cmap=args.cmap)
 
     elif ext == ".cwt":
         obj = TraceCWTResult.from_pickle(filepath)
-        obj.plot_cwt(save_path=args.save_path, clip=args.clip, plot_date=args.dates)
-
+        obj.plot_cwt(save_path=args.save_path, clip=args.clip, plot_date=args.verbose,
+                     split=args.split, vmax_db=args.vmax_db, cmap=args.cmap)
     else:
         raise ValueError(
             f"Unsupported file extension '{ext}'. "
-            "Expected one of: .sp (spectrum), .spec (spectrogram), .cwt (cwt)."
-        )
+            "Expected one of: .sp (spectrum), .spec (spectrogram), .cwt (cwt).")
 
 
 def _beamplot():

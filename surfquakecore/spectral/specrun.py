@@ -134,102 +134,617 @@ class TraceSpectrogramResult:
                                              self.trace.stats.delta, linf, lsup, step_percentage,
                                              method, nw)
 
-    def plot_spectrogram(self, save_path: str = None, clip: float = None,
-                         plot_date: bool = False):
+    def plot_spectrogram(
+            self,
+            save_path: str = None,
+            clip: float = None,
+            plot_date: bool = False,
+            split=None,
+            vmax_db: float = 0.0,
+            cmap: str = "rainbow"):
 
-        import matplotlib.pyplot as plt
+        import platform
+        import numpy as np
         import matplotlib as mplt
-        import matplotlib.dates as mdates
-        from matplotlib import gridspec
-        from matplotlib.ticker import ScalarFormatter
 
-        if platform.system() == 'Darwin':
+        # Select backend before importing pyplot
+        if platform.system() == "Darwin":
             mplt.use("MacOSX")
         else:
             mplt.use("QtAgg")
 
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+
+        from matplotlib import gridspec
+        from matplotlib.ticker import (
+            ScalarFormatter,
+            FixedLocator,
+            FuncFormatter
+        )
+
+        # ======================================================
+        # Prepare spectrogram in relative dB
+        # ======================================================
+        freq = np.asarray(self.freq)
+        time = np.asarray(self.time)
+
+        max_power = np.nanmax(self.spectrogram)
+
+        if not np.isfinite(max_power) or max_power <= 0:
+            raise ValueError(
+                "Spectrogram maximum must be greater than zero."
+            )
+
+        with np.errstate(
+                divide="ignore",
+                invalid="ignore"):
+
+            spectrogram = 10.0 * np.log10(
+                self.spectrogram / max_power
+            )
+
+        vmax_db = float(vmax_db)
+
+        # ------------------------------------------------------
+        # Lower display limit
+        # ------------------------------------------------------
         if clip is not None:
-            spectrogram = np.clip(10 * np.log10(self.spectrogram / np.max(self.spectrogram)), a_min=clip, a_max=0)
+
+            clip = float(clip)
+
+            if clip >= vmax_db:
+                raise ValueError(
+                    f"clip ({clip:g} dB) must be lower than "
+                    f"vmax_db ({vmax_db:g} dB)."
+                )
+
+            spectrogram = np.maximum(
+                spectrogram,
+                clip
+            )
+
+            vmin_db = clip
+
         else:
-            spectrogram = 10 * np.log10(self.spectrogram / np.max(self.spectrogram))
 
-        self.fig_spec = plt.figure(figsize=(10, 5))
+            finite_values = spectrogram[
+                np.isfinite(spectrogram)
+            ]
 
-        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1], hspace=0.02,
-            wspace=0.02)
+            if finite_values.size == 0:
+                raise ValueError(
+                    "Spectrogram contains no finite values."
+                )
 
-        ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
-        ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
-        ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
+            vmin_db = float(
+                np.min(finite_values)
+            )
 
-        formatter = ScalarFormatter(useMathText=True)
-        formatter.set_powerlimits((0, 0))
-        ax_waveform.yaxis.set_major_formatter(formatter)
+        # Avoid invalid normalization in pathological cases
+        if vmin_db >= vmax_db:
+            vmin_db = vmax_db - 1.0
+
+        # Replace -inf produced by log10(0)
+        spectrogram = np.where(
+            np.isfinite(spectrogram),
+            spectrogram,
+            vmin_db
+        )
+
+        # ======================================================
+        # Interpret split
+        #
+        # None / False -> normal representation
+        # True         -> split at 1 Hz
+        # float        -> user-selected cutoff
+        # ======================================================
+        if isinstance(split, bool):
+
+            split_freq = 1.0 if split else None
+
+        elif split is None:
+
+            split_freq = None
+
+        else:
+
+            split_freq = float(split)
+
+        if split_freq is not None and split_freq <= 0:
+            raise ValueError(
+                "split frequency must be greater than 0 Hz."
+            )
 
         starttime = self.trace.stats.starttime
 
-        # -------------------------------------------------
-        # X axis: seconds OR absolute date/time
-        # -------------------------------------------------
+        # ======================================================
+        # X coordinates
+        # ======================================================
         if plot_date:
-            start_num = mdates.date2num(starttime.datetime)
 
-            waveform_x = start_num + self.trace.times() / 86400.0
-            spec_x = start_num + self.time / 86400.0
+            start_num = mdates.date2num(
+                starttime.datetime
+            )
+
+            waveform_x = (
+                    start_num
+                    + self.trace.times() / 86400.0
+            )
+
+            spec_x = (
+                    start_num
+                    + time / 86400.0
+            )
 
         else:
+
             waveform_x = self.trace.times()
-            spec_x = self.time
+            spec_x = time
 
-        # --- Plot waveform ---
-        ax_waveform.plot(waveform_x, self.trace.data, linewidth=0.75)
+        # ======================================================
+        # NORMAL MODE
+        # ======================================================
+        if split_freq is None:
 
-        ax_waveform.set_title(f"Spectrogram for {self.trace.id}")
-        ax_waveform.tick_params(labelbottom=False)
+            self.fig_spec = plt.figure(
+                figsize=(10, 5)
+            )
 
-        # Annotate with date
-        date_str = starttime.strftime("%Y-%m-%d %H:%M:%S")
-        textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
+            gs = gridspec.GridSpec(
+                2,
+                2,
+                width_ratios=[1, 0.03],
+                height_ratios=[1, 1],
+                hspace=0.02,
+                wspace=0.02
+            )
 
-        ax_waveform.text(0.01, 0.95, textstr,
-            transform=ax_waveform.transAxes, fontsize=8, va='top', ha='left',
-            bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+            ax_waveform = self.fig_spec.add_subplot(
+                gs[0, 0]
+            )
 
-        # --- Plot spectrogram ---
-        if clip is not None:
-            clip = float(clip)
-            spectrogram = np.clip(spectrogram, a_min=clip, a_max=0)
+            ax_spec = self.fig_spec.add_subplot(
+                gs[1, 0],
+                sharex=ax_waveform
+            )
 
-        pcm = ax_spec.pcolormesh(spec_x,self.freq, spectrogram, shading='auto', cmap='rainbow',
-            vmin=np.min(spectrogram), vmax=0)
+            ax_cbar = self.fig_spec.add_subplot(
+                gs[1, 1]
+            )
 
-        ax_waveform.set_ylabel('Amplitude')
-        ax_spec.set_ylabel('Frequency [Hz]')
+            # --------------------------------------------------
+            # Original waveform
+            # --------------------------------------------------
+            ax_waveform.plot(
+                waveform_x,
+                self.trace.data,
+                linewidth=0.75
+            )
 
-        # -------------------------------------------------
-        # Format X axis
-        # -------------------------------------------------
-        if plot_date:
-            locator = mdates.AutoDateLocator()
-            formatter_date = mdates.ConciseDateFormatter(locator)
+            ax_waveform.set_title(
+                f"Spectrogram for {self.trace.id}"
+            )
 
-            ax_spec.xaxis.set_major_locator(locator)
-            ax_spec.xaxis.set_major_formatter(formatter_date)
+            ax_waveform.set_ylabel(
+                "Amplitude"
+            )
 
-            ax_spec.set_xlabel('Date / Time [UTC]')
+            ax_waveform.tick_params(
+                labelbottom=False
+            )
+
+            formatter = ScalarFormatter(
+                useMathText=True
+            )
+
+            formatter.set_powerlimits(
+                (0, 0)
+            )
+
+            ax_waveform.yaxis.set_major_formatter(
+                formatter
+            )
+
+            # --------------------------------------------------
+            # Full spectrogram
+            # --------------------------------------------------
+            pcm = ax_spec.pcolormesh(
+                spec_x,
+                freq,
+                spectrogram,
+                shading="auto",
+                cmap=cmap,
+                vmin=vmin_db,
+                vmax=vmax_db
+            )
+
+            ax_spec.set_ylabel(
+                "Frequency [Hz]"
+            )
+
+            # --------------------------------------------------
+            # X axis
+            # --------------------------------------------------
+            if plot_date:
+
+                locator = mdates.AutoDateLocator()
+
+                ax_spec.xaxis.set_major_locator(
+                    locator
+                )
+
+                ax_spec.xaxis.set_major_formatter(
+                    mdates.ConciseDateFormatter(
+                        locator
+                    )
+                )
+
+                ax_spec.set_xlabel(
+                    "Date / Time [UTC]"
+                )
+
+            else:
+
+                ax_spec.set_xlabel(
+                    "Time [s]"
+                )
+
+            # --------------------------------------------------
+            # Colorbar
+            # --------------------------------------------------
+            cbar = self.fig_spec.colorbar(
+                pcm,
+                cax=ax_cbar,
+                orientation="vertical"
+            )
+
+            cbar.set_label(
+                "Power [dB]"
+            )
+
+            annotation_axis = ax_waveform
+
+        # ======================================================
+        # SPLIT MODE
+        # ======================================================
         else:
-            ax_spec.set_xlabel('Time [s]')
 
-        # --- Colorbar ---
-        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
-        cbar.set_label("Power [dB]")
+            nyquist = (
+                    self.trace.stats.sampling_rate / 2.0
+            )
+
+            if split_freq >= nyquist:
+                raise ValueError(
+                    f"split frequency ({split_freq:g} Hz) "
+                    f"must be below Nyquist "
+                    f"({nyquist:g} Hz)."
+                )
+
+            if split_freq >= np.max(freq):
+                raise ValueError(
+                    f"split frequency ({split_freq:g} Hz) "
+                    f"must be below the maximum plotted "
+                    f"frequency ({np.max(freq):g} Hz)."
+                )
+
+            # --------------------------------------------------
+            # Divide the EXISTING spectrogram.
+            #
+            # 0 Hz is excluded from the lower part because
+            # period = 1/f cannot be defined at f = 0.
+            # --------------------------------------------------
+            low_mask = (
+                    (freq > 0)
+                    & (freq < split_freq)
+            )
+
+            high_mask = (
+                    freq >= split_freq
+            )
+
+            if not np.any(low_mask):
+                raise ValueError(
+                    f"No positive frequency bins below "
+                    f"{split_freq:g} Hz."
+                )
+
+            if not np.any(high_mask):
+                raise ValueError(
+                    f"No frequency bins at or above "
+                    f"{split_freq:g} Hz."
+                )
+
+            # --------------------------------------------------
+            # High-frequency representation remains in Hz
+            # --------------------------------------------------
+            freq_high = freq[high_mask]
+            spec_high = spectrogram[
+                        high_mask, :
+                        ]
+
+            # --------------------------------------------------
+            # Low-frequency representation becomes period
+            # --------------------------------------------------
+            freq_low = freq[low_mask]
+            spec_low = spectrogram[
+                       low_mask, :
+                       ]
+
+            period_low = 1.0 / freq_low
+
+            # pcolormesh behaves best with monotonically
+            # increasing coordinates, so sort the periods.
+            order = np.argsort(period_low)
+
+            period_low = period_low[order]
+
+            spec_low = spec_low[
+                       order, :
+                       ]
+
+            # ==================================================
+            # Figure layout
+            #
+            # waveform     -> height 1
+            # high freq    -> height 1
+            # period panel -> height 2
+            # ==================================================
+            self.fig_spec = plt.figure(
+                figsize=(10, 8)
+            )
+
+            gs = gridspec.GridSpec(
+                3,
+                2,
+                width_ratios=[1, 0.03],
+                height_ratios=[1, 1, 2],
+                hspace=0.04,
+                wspace=0.02
+            )
+
+            # Low-frequency waveform uses LEFT amplitude axis
+            ax_waveform_low = self.fig_spec.add_subplot(
+                gs[0, 0]
+            )
+
+            # High-frequency waveform uses RIGHT amplitude axis
+            ax_waveform_high = (
+                ax_waveform_low.twinx()
+            )
+
+            ax_high = self.fig_spec.add_subplot(
+                gs[1, 0],
+                sharex=ax_waveform_low
+            )
+
+            ax_low = self.fig_spec.add_subplot(
+                gs[2, 0],
+                sharex=ax_waveform_low
+            )
+
+            # One colorbar for both TF panels
+            ax_cbar = self.fig_spec.add_subplot(
+                gs[1:, 1]
+            )
+
+            # ==================================================
+            # FILTERED TIME SERIES
+            # ==================================================
+            tr_low = self.trace.copy()
+            tr_high = self.trace.copy()
+
+            # Zero-phase filtering prevents time shifts
+            tr_low.filter(
+                "lowpass",
+                freq=split_freq,
+                corners=4,
+                zerophase=True
+            )
+
+            tr_high.filter(
+                "highpass",
+                freq=split_freq,
+                corners=4,
+                zerophase=True
+            )
+
+            # Low-frequency signal -> LEFT y axis
+            line_low, = ax_waveform_low.plot(
+                waveform_x,
+                tr_low.data,
+                linewidth=0.8,
+                alpha=0.75,
+                label=f"Low-pass < {split_freq:g} Hz"
+            )
+
+            ax_waveform_low.set_ylabel(
+                "Low-freq amplitude"
+            )
+
+            # High-frequency signal -> RIGHT y axis
+            line_high, = ax_waveform_high.plot(
+                waveform_x,
+                tr_high.data,
+                linewidth=0.65,
+                alpha=0.55,
+                label=f"High-pass > {split_freq:g} Hz"
+            )
+
+            ax_waveform_high.set_ylabel(
+                "High-freq amplitude"
+            )
+
+            # Scientific notation independently on both axes
+            formatter_left = ScalarFormatter(
+                useMathText=True
+            )
+
+            formatter_left.set_powerlimits(
+                (0, 0)
+            )
+
+            ax_waveform_low.yaxis.set_major_formatter(
+                formatter_left
+            )
+
+            formatter_right = ScalarFormatter(
+                useMathText=True
+            )
+
+            formatter_right.set_powerlimits((0, 0))
+
+            ax_waveform_high.yaxis.set_major_formatter(formatter_right)
+
+            ax_waveform_low.set_title(f"Spectrogram for {self.trace.id}")
+
+            ax_waveform_low.tick_params(labelbottom=False)
+
+            # Combined legend for both waveform axes
+            ax_waveform_low.legend(
+                [line_low, line_high],
+                [
+                    line_low.get_label(),
+                    line_high.get_label()
+                ],
+                loc="upper right",
+                fontsize=8,
+                framealpha=0.7)
+
+            # ==================================================
+            # HIGH-FREQUENCY SPECTROGRAM
+            # ==================================================
+            pcm = ax_high.pcolormesh(spec_x, freq_high, spec_high,
+                shading="auto", cmap=cmap, vmin=vmin_db, vmax=vmax_db)
+
+            ax_high.set_ylabel("Frequency [Hz]")
+
+            ax_high.set_ylim(split_freq, np.max(freq_high))
+
+            ax_high.tick_params(labelbottom=False)
+
+            # ==================================================
+            # LOW-FREQUENCY SPECTROGRAM AS PERIOD
+            # ==================================================
+            ax_low.pcolormesh(
+                spec_x, period_low, spec_low, shading="auto",
+                cmap=cmap, vmin=vmin_db, vmax=vmax_db)
+
+            ax_low.set_yscale("log")
+
+            ax_low.set_ylim(np.min(period_low), np.max(period_low))
+
+            # Short periods/high frequencies at the top.
+            # Long periods/low frequencies at the bottom.
+            ax_low.invert_yaxis()
+
+            ax_low.set_ylabel("Period [s]")
+
+            # ==================================================
+            # Useful period annotations:
+            #
+            # 0.1, 0.2, 0.5,
+            # 1, 2, 5,
+            # 10, 20, 50, ...
+            # ==================================================
+            period_min = np.min(period_low)
+            period_max = np.max(period_low)
+
+            exponent_min = int(np.floor(np.log10(period_min)))
+
+            exponent_max = int(
+                np.ceil(np.log10(period_max)))
+
+            period_ticks = []
+
+            for exponent in range(
+                    exponent_min,
+                    exponent_max + 1):
+
+                for multiplier in (1, 2, 5):
+
+                    value = (multiplier * 10.0 ** exponent)
+
+                    if (period_min <= value <= period_max):
+                        period_ticks.append(value)
+
+            if period_ticks:
+                ax_low.yaxis.set_major_locator(
+                    FixedLocator(period_ticks))
+
+                ax_low.yaxis.set_major_formatter(
+                    FuncFormatter(lambda value, _: f"{value:g}"))
+
+            # ==================================================
+            # X axis
+            # ==================================================
+            if plot_date:
+
+                locator = mdates.AutoDateLocator()
+
+                ax_low.xaxis.set_major_locator(locator)
+
+                ax_low.xaxis.set_major_formatter(
+                    mdates.ConciseDateFormatter(locator))
+
+                ax_low.set_xlabel(
+                    "Date / Time [UTC]")
+
+            else:
+
+                ax_low.set_xlabel("Time [s]")
+
+            # --------------------------------------------------
+            # Shared colorbar
+            # --------------------------------------------------
+            cbar = self.fig_spec.colorbar(
+                pcm, cax=ax_cbar, orientation="vertical")
+
+            cbar.set_label("Power [dB]")
+
+            annotation_axis = ax_waveform_low
+
+        # ======================================================
+        # Trace start-time annotation
+        # ======================================================
+        date_str = starttime.strftime(
+            "%Y-%m-%d %H:%M:%S")
+
+        textstr = (
+            f"JD {starttime.julday} / "
+            f"{starttime.year}\n"
+            f"{date_str}"
+        )
+
+        annotation_axis.text(
+            0.01,
+            0.95,
+            textstr,
+            transform=annotation_axis.transAxes,
+            fontsize=8,
+            va="top",
+            ha="left",
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                fc="lightyellow",
+                ec="gray",
+                alpha=0.5
+            )
+        )
 
         plt.tight_layout()
 
+        # ======================================================
+        # Save or display
+        # ======================================================
         if save_path:
+
             self.fig_spec.savefig(save_path, dpi=300)
+
             plt.close(self.fig_spec)
+
         else:
+
             plt.show()
 
     def to_pickle(self, folder_path: str, compress: bool = True):

@@ -61,55 +61,151 @@ class TraceCWTResult:
             self,
             save_path: str = None,
             clip: float = None,
-            plot_date: bool = False):
+            plot_date: bool = False,
+            split=None,
+            vmax_db: float = 0.0,
+            cmap: str = "rainbow"):
 
-        import matplotlib.pyplot as plt
-        import matplotlib as mplt
-        import matplotlib.dates as mdates
         import platform
-        import matplotlib.gridspec as gridspec
-        from matplotlib.ticker import ScalarFormatter
+        import numpy as np
+        import matplotlib as mplt
 
-        if platform.system() == 'Darwin':
+        # Select backend before importing pyplot
+        if platform.system() == "Darwin":
             mplt.use("MacOSX")
         else:
             mplt.use("QtAgg")
 
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        import matplotlib.gridspec as gridspec
+
+        from matplotlib.ticker import (
+            ScalarFormatter,
+            FixedLocator,
+            FuncFormatter
+        )
+
+        # ======================================================
+        # CWT data
+        # ======================================================
         t, f, scalogram, pred, pred_comp = self.cwt_data
+
         tr = self.trace
 
+        t = np.asarray(t)
+        f = np.asarray(f)
+
+        # Copy because plotting options should not modify
+        # the original CWT stored in self.cwt_data.
+        scalogram = np.asarray(
+            scalogram
+        ).copy()
+
+        pred = np.asarray(pred)
+        pred_comp = np.asarray(pred_comp)
+
+        vmax_db = float(vmax_db)
+
+        # ======================================================
+        # Display limits
+        #
+        # The CWT scalogram is assumed to already be in dB,
+        # as in your current implementation.
+        # ======================================================
         if clip is not None:
+
             clip = float(clip)
-            scalogram = np.clip(scalogram, a_min=clip, a_max=0)
 
-        self.fig_spec = plt.figure(figsize=(10, 5))
+            if clip >= vmax_db:
+                raise ValueError(
+                    f"clip ({clip:g} dB) must be lower than "
+                    f"vmax_db ({vmax_db:g} dB)."
+                )
 
-        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1], hspace=0.02,
-            wspace=0.02)
+            scalogram = np.maximum(
+                scalogram,
+                clip
+            )
 
-        ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
-        ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
-        ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
+            vmin_db = clip
 
-        formatter = ScalarFormatter(useMathText=True)
-        formatter.set_powerlimits((0, 0))
-        ax_waveform.yaxis.set_major_formatter(formatter)
+        else:
+
+            finite_values = scalogram[
+                np.isfinite(scalogram)
+            ]
+
+            if finite_values.size == 0:
+                raise ValueError(
+                    "Scalogram contains no finite values."
+                )
+
+            vmin_db = float(
+                np.min(finite_values)
+            )
+
+        if vmin_db >= vmax_db:
+            vmin_db = vmax_db - 1.0
+
+        scalogram = np.where(
+            np.isfinite(scalogram),
+            scalogram,
+            vmin_db
+        )
+
+        # ======================================================
+        # Interpret split
+        # ======================================================
+        if isinstance(split, bool):
+
+            split_freq = 1.0 if split else None
+
+        elif split is None:
+
+            split_freq = None
+
+        else:
+
+            split_freq = float(split)
+
+        if split_freq is not None and split_freq <= 0:
+            raise ValueError(
+                "split frequency must be greater than 0 Hz."
+            )
 
         starttime = tr.stats.starttime
 
-        # -------------------------------------------------
-        # X axis: relative seconds OR absolute date/time
-        # -------------------------------------------------
+        # ======================================================
+        # Time coordinates
+        # ======================================================
         if plot_date:
 
-            start_num = mdates.date2num(starttime.datetime)
+            start_num = mdates.date2num(
+                starttime.datetime
+            )
 
-            waveform_x = start_num + tr.times() / 86400.0
-            cwt_x = start_num + t / 86400.0
+            waveform_x = (
+                    start_num
+                    + tr.times() / 86400.0
+            )
 
-            # pred and pred_comp are also times in seconds
-            pred_x = start_num + pred / 86400.0
-            pred_comp_x = start_num + pred_comp / 86400.0
+            cwt_x = (
+                    start_num
+                    + t / 86400.0
+            )
+
+            # pred and pred_comp represent times
+            # associated with the CWT frequency rows.
+            pred_x = (
+                    start_num
+                    + pred / 86400.0
+            )
+
+            pred_comp_x = (
+                    start_num
+                    + pred_comp / 86400.0
+            )
 
         else:
 
@@ -119,77 +215,674 @@ class TraceCWTResult:
             pred_x = pred
             pred_comp_x = pred_comp
 
-        # -------------------------------------------------
-        # Plot waveform
-        # -------------------------------------------------
-        ax_waveform.plot(waveform_x, tr.data, linewidth=0.75)
+        # ======================================================
+        # NORMAL MODE
+        # ======================================================
+        if split_freq is None:
 
-        ax_waveform.set_title(f"CWT Scalogram for {tr.id}")
-        ax_waveform.tick_params(labelbottom=False)
+            self.fig_spec = plt.figure(
+                figsize=(10, 5)
+            )
 
-        # Annotate with date
-        date_str = starttime.strftime("%Y-%m-%d %H:%M:%S")
-        textstr = (f"JD {starttime.julday} / {starttime.year}\n"
-            f"{date_str}")
+            gs = gridspec.GridSpec(
+                2,
+                2,
+                width_ratios=[1, 0.03],
+                height_ratios=[1, 1],
+                hspace=0.02,
+                wspace=0.02
+            )
 
-        ax_waveform.text(0.01, 0.95, textstr, transform=ax_waveform.transAxes, fontsize=8,
-            va='top', ha='left',
-            bbox=dict(
-                boxstyle='round,pad=0.3',
-                fc='lightyellow',
-                ec='gray',
-                alpha=0.5))
+            ax_waveform = self.fig_spec.add_subplot(
+                gs[0, 0]
+            )
 
-        # -------------------------------------------------
-        # Plot scalogram
-        # -------------------------------------------------
-        x, y = np.meshgrid(cwt_x, f)
+            ax_spec = self.fig_spec.add_subplot(
+                gs[1, 0],
+                sharex=ax_waveform
+            )
 
-        pcm = ax_spec.pcolormesh(x, y, scalogram, shading='auto', cmap='rainbow',
-            vmin=np.min(scalogram), vmax=0)
+            ax_cbar = self.fig_spec.add_subplot(
+                gs[1, 1]
+            )
 
-        # Predictions / masks
-        ax_spec.fill_between(pred_x, f,0, color="black", edgecolor="red", alpha=0.3)
+            # --------------------------------------------------
+            # Original waveform
+            # --------------------------------------------------
+            ax_waveform.plot(
+                waveform_x,
+                tr.data,
+                linewidth=0.75
+            )
 
-        ax_spec.fill_between(pred_comp_x, f,0, color="black", edgecolor="red", alpha=0.3)
+            ax_waveform.set_title(
+                f"CWT Scalogram for {tr.id}"
+            )
 
-        ax_waveform.set_ylabel('Amplitude')
+            ax_waveform.set_ylabel(
+                "Amplitude"
+            )
 
-        ax_spec.set_ylim([np.min(f), np.max(f)])
+            ax_waveform.tick_params(
+                labelbottom=False
+            )
 
-        ax_spec.set_ylabel('Frequency [Hz]')
+            formatter = ScalarFormatter(
+                useMathText=True
+            )
 
-        # -------------------------------------------------
-        # X-axis formatting
-        # -------------------------------------------------
-        if plot_date:
+            formatter.set_powerlimits(
+                (0, 0)
+            )
 
-            locator = mdates.AutoDateLocator()
+            ax_waveform.yaxis.set_major_formatter(
+                formatter
+            )
 
-            ax_spec.xaxis.set_major_locator(locator)
+            # --------------------------------------------------
+            # Full CWT
+            # --------------------------------------------------
+            pcm = ax_spec.pcolormesh(
+                cwt_x,
+                f,
+                scalogram,
+                shading="auto",
+                cmap=cmap,
+                vmin=vmin_db,
+                vmax=vmax_db
+            )
 
-            ax_spec.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+            # Prediction / mask regions
+            ax_spec.fill_between(
+                pred_x,
+                f,
+                0,
+                color="black",
+                edgecolor="red",
+                alpha=0.3
+            )
 
-            ax_spec.set_xlabel('Date / Time [UTC]')
+            ax_spec.fill_between(
+                pred_comp_x,
+                f,
+                0,
+                color="black",
+                edgecolor="red",
+                alpha=0.3
+            )
 
+            ax_spec.set_ylim(
+                np.min(f),
+                np.max(f)
+            )
+
+            ax_spec.set_ylabel(
+                "Frequency [Hz]"
+            )
+
+            # --------------------------------------------------
+            # X axis
+            # --------------------------------------------------
+            if plot_date:
+
+                locator = mdates.AutoDateLocator()
+
+                ax_spec.xaxis.set_major_locator(
+                    locator
+                )
+
+                ax_spec.xaxis.set_major_formatter(
+                    mdates.ConciseDateFormatter(
+                        locator
+                    )
+                )
+
+                ax_spec.set_xlabel(
+                    "Date / Time [UTC]"
+                )
+
+            else:
+
+                ax_spec.set_xlabel(
+                    "Time [s]"
+                )
+
+            # --------------------------------------------------
+            # Colorbar
+            # --------------------------------------------------
+            cbar = self.fig_spec.colorbar(
+                pcm,
+                cax=ax_cbar,
+                orientation="vertical"
+            )
+
+            cbar.set_label(
+                "Power [dB]"
+            )
+
+            annotation_axis = ax_waveform
+
+        # ======================================================
+        # SPLIT MODE
+        # ======================================================
         else:
 
-            ax_spec.set_xlabel('Time [s]')
+            nyquist = (
+                    tr.stats.sampling_rate / 2.0
+            )
 
-        # -------------------------------------------------
-        # Colorbar
-        # -------------------------------------------------
-        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
+            if split_freq >= nyquist:
+                raise ValueError(
+                    f"split frequency ({split_freq:g} Hz) "
+                    f"must be below Nyquist "
+                    f"({nyquist:g} Hz)."
+                )
 
-        cbar.set_label("Power [dB]")
+            if split_freq >= np.max(f):
+                raise ValueError(
+                    f"split frequency ({split_freq:g} Hz) "
+                    f"must be below the maximum CWT frequency "
+                    f"({np.max(f):g} Hz)."
+                )
+
+            # --------------------------------------------------
+            # Split CWT into low/high-frequency components.
+            #
+            # f = 0 must be excluded because T = 1/f.
+            # --------------------------------------------------
+            low_mask = (
+                    (f > 0)
+                    & (f < split_freq)
+            )
+
+            high_mask = (
+                    f >= split_freq
+            )
+
+            if not np.any(low_mask):
+                raise ValueError(
+                    f"No positive CWT frequencies below "
+                    f"{split_freq:g} Hz."
+                )
+
+            if not np.any(high_mask):
+                raise ValueError(
+                    f"No CWT frequencies at or above "
+                    f"{split_freq:g} Hz."
+                )
+
+            # ==================================================
+            # HIGH-FREQUENCY CWT
+            # ==================================================
+            freq_high = f[high_mask]
+
+            scalogram_high = scalogram[
+                             high_mask, :
+                             ]
+
+            pred_high_x = pred_x[
+                high_mask
+            ]
+
+            pred_comp_high_x = pred_comp_x[
+                high_mask
+            ]
+
+            # Ensure increasing-frequency coordinates
+            high_order = np.argsort(
+                freq_high
+            )
+
+            freq_high = freq_high[
+                high_order
+            ]
+
+            scalogram_high = scalogram_high[
+                             high_order, :
+                             ]
+
+            pred_high_x = pred_high_x[
+                high_order
+            ]
+
+            pred_comp_high_x = pred_comp_high_x[
+                high_order
+            ]
+
+            # ==================================================
+            # LOW-FREQUENCY CWT -> PERIOD
+            # ==================================================
+            freq_low = f[low_mask]
+
+            scalogram_low = scalogram[
+                            low_mask, :
+                            ]
+
+            pred_low_x = pred_x[
+                low_mask
+            ]
+
+            pred_comp_low_x = pred_comp_x[
+                low_mask
+            ]
+
+            # Convert frequency to period
+            period_low = (
+                    1.0 / freq_low
+            )
+
+            # Sort period increasingly for pcolormesh
+            order = np.argsort(
+                period_low
+            )
+
+            period_low = period_low[
+                order
+            ]
+
+            scalogram_low = scalogram_low[
+                            order, :
+                            ]
+
+            pred_low_x = pred_low_x[
+                order
+            ]
+
+            pred_comp_low_x = pred_comp_low_x[
+                order
+            ]
+
+            # ==================================================
+            # Figure layout
+            #
+            # waveform     -> height 1
+            # high freq    -> height 1
+            # period panel -> height 2
+            # ==================================================
+            self.fig_spec = plt.figure(
+                figsize=(10, 8)
+            )
+
+            gs = gridspec.GridSpec(
+                3,
+                2,
+                width_ratios=[1, 0.03],
+                height_ratios=[1, 1, 2],
+                hspace=0.04,
+                wspace=0.02
+            )
+
+            ax_waveform_low = self.fig_spec.add_subplot(
+                gs[0, 0]
+            )
+
+            # Independent high-frequency amplitude axis
+            ax_waveform_high = (
+                ax_waveform_low.twinx()
+            )
+
+            ax_high = self.fig_spec.add_subplot(
+                gs[1, 0],
+                sharex=ax_waveform_low
+            )
+
+            ax_low = self.fig_spec.add_subplot(
+                gs[2, 0],
+                sharex=ax_waveform_low
+            )
+
+            ax_cbar = self.fig_spec.add_subplot(
+                gs[1:, 1]
+            )
+
+            # ==================================================
+            # FILTERED WAVEFORMS
+            # ==================================================
+            tr_low = tr.copy()
+            tr_high = tr.copy()
+
+            # Zero-phase filtering prevents shifting
+            # seismic arrivals in time.
+            tr_low.filter(
+                "lowpass",
+                freq=split_freq,
+                corners=4,
+                zerophase=True
+            )
+
+            tr_high.filter(
+                "highpass",
+                freq=split_freq,
+                corners=4,
+                zerophase=True
+            )
+
+            # --------------------------------------------------
+            # Low frequencies -> LEFT amplitude axis
+            # --------------------------------------------------
+            line_low, = ax_waveform_low.plot(
+                waveform_x,
+                tr_low.data,
+                linewidth=0.8,
+                alpha=0.75,
+                label=f"Low-pass < {split_freq:g} Hz"
+            )
+
+            ax_waveform_low.set_ylabel(
+                "Low-freq amplitude"
+            )
+
+            # --------------------------------------------------
+            # High frequencies -> RIGHT amplitude axis
+            # --------------------------------------------------
+            line_high, = ax_waveform_high.plot(
+                waveform_x,
+                tr_high.data,
+                linewidth=0.65,
+                alpha=0.55,
+                label=f"High-pass > {split_freq:g} Hz"
+            )
+
+            ax_waveform_high.set_ylabel(
+                "High-freq amplitude"
+            )
+
+            # Scientific notation independently
+            formatter_left = ScalarFormatter(
+                useMathText=True
+            )
+
+            formatter_left.set_powerlimits(
+                (0, 0)
+            )
+
+            ax_waveform_low.yaxis.set_major_formatter(
+                formatter_left
+            )
+
+            formatter_right = ScalarFormatter(
+                useMathText=True
+            )
+
+            formatter_right.set_powerlimits(
+                (0, 0)
+            )
+
+            ax_waveform_high.yaxis.set_major_formatter(
+                formatter_right
+            )
+
+            ax_waveform_low.set_title(
+                f"CWT Scalogram for {tr.id}"
+            )
+
+            ax_waveform_low.tick_params(
+                labelbottom=False
+            )
+
+            # Combined legend
+            ax_waveform_low.legend(
+                [line_low, line_high],
+                [
+                    line_low.get_label(),
+                    line_high.get_label()
+                ],
+                loc="upper right",
+                fontsize=8,
+                framealpha=0.7
+            )
+
+            # ==================================================
+            # HIGH-FREQUENCY CWT
+            # ==================================================
+            pcm = ax_high.pcolormesh(
+                cwt_x,
+                freq_high,
+                scalogram_high,
+                shading="auto",
+                cmap=cmap,
+                vmin=vmin_db,
+                vmax=vmax_db
+            )
+
+            # Preserve prediction / mask information
+            ax_high.fill_between(
+                pred_high_x,
+                freq_high,
+                split_freq,
+                color="black",
+                edgecolor="red",
+                alpha=0.3
+            )
+
+            ax_high.fill_between(
+                pred_comp_high_x,
+                freq_high,
+                split_freq,
+                color="black",
+                edgecolor="red",
+                alpha=0.3
+            )
+
+            ax_high.set_ylim(
+                split_freq,
+                np.max(freq_high)
+            )
+
+            ax_high.set_ylabel(
+                "Frequency [Hz]"
+            )
+
+            ax_high.tick_params(
+                labelbottom=False
+            )
+
+            # ==================================================
+            # LOW-FREQUENCY CWT AS PERIOD
+            # ==================================================
+            ax_low.pcolormesh(
+                cwt_x,
+                period_low,
+                scalogram_low,
+                shading="auto",
+                cmap=cmap,
+                vmin=vmin_db,
+                vmax=vmax_db
+            )
+
+            # In frequency representation the original mask
+            # extends toward zero frequency. In period space,
+            # f -> 0 corresponds to T -> infinity.
+            max_period = np.max(
+                period_low
+            )
+
+            ax_low.fill_between(
+                pred_low_x,
+                period_low,
+                max_period,
+                color="black",
+                edgecolor="red",
+                alpha=0.3
+            )
+
+            ax_low.fill_between(
+                pred_comp_low_x,
+                period_low,
+                max_period,
+                color="black",
+                edgecolor="red",
+                alpha=0.3
+            )
+
+            ax_low.set_yscale(
+                "log"
+            )
+
+            ax_low.set_ylim(
+                np.min(period_low),
+                np.max(period_low)
+            )
+
+            # Same physical orientation as frequency:
+            #
+            # top    -> high frequency / short period
+            # bottom -> low frequency / long period
+            ax_low.invert_yaxis()
+
+            ax_low.set_ylabel(
+                "Period [s]"
+            )
+
+            # ==================================================
+            # Period annotations
+            #
+            # 0.1, 0.2, 0.5,
+            # 1, 2, 5,
+            # 10, 20, 50, ...
+            # ==================================================
+            period_min = np.min(
+                period_low
+            )
+
+            period_max = np.max(
+                period_low
+            )
+
+            exponent_min = int(
+                np.floor(
+                    np.log10(period_min)
+                )
+            )
+
+            exponent_max = int(
+                np.ceil(
+                    np.log10(period_max)
+                )
+            )
+
+            period_ticks = []
+
+            for exponent in range(
+                    exponent_min,
+                    exponent_max + 1):
+
+                for multiplier in (1, 2, 5):
+
+                    value = (
+                            multiplier
+                            * 10.0 ** exponent
+                    )
+
+                    if (
+                            period_min
+                            <= value
+                            <= period_max
+                    ):
+                        period_ticks.append(
+                            value
+                        )
+
+            if period_ticks:
+                ax_low.yaxis.set_major_locator(
+                    FixedLocator(
+                        period_ticks
+                    )
+                )
+
+                ax_low.yaxis.set_major_formatter(
+                    FuncFormatter(
+                        lambda value, _:
+                        f"{value:g}"
+                    )
+                )
+
+            # ==================================================
+            # X axis
+            # ==================================================
+            if plot_date:
+
+                locator = mdates.AutoDateLocator()
+
+                ax_low.xaxis.set_major_locator(
+                    locator
+                )
+
+                ax_low.xaxis.set_major_formatter(
+                    mdates.ConciseDateFormatter(
+                        locator
+                    )
+                )
+
+                ax_low.set_xlabel(
+                    "Date / Time [UTC]"
+                )
+
+            else:
+
+                ax_low.set_xlabel(
+                    "Time [s]"
+                )
+
+            # --------------------------------------------------
+            # Common colorbar
+            # --------------------------------------------------
+            cbar = self.fig_spec.colorbar(
+                pcm,
+                cax=ax_cbar,
+                orientation="vertical"
+            )
+
+            cbar.set_label(
+                "Power [dB]"
+            )
+
+            annotation_axis = ax_waveform_low
+
+        # ======================================================
+        # Trace start-time annotation
+        # ======================================================
+        date_str = starttime.strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        textstr = (
+            f"JD {starttime.julday} / "
+            f"{starttime.year}\n"
+            f"{date_str}"
+        )
+
+        annotation_axis.text(
+            0.01,
+            0.95,
+            textstr,
+            transform=annotation_axis.transAxes,
+            fontsize=8,
+            va="top",
+            ha="left",
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                fc="lightyellow",
+                ec="gray",
+                alpha=0.5
+            )
+        )
 
         plt.tight_layout()
 
+        # ======================================================
+        # Save or display
+        # ======================================================
         if save_path:
 
-            self.fig_spec.savefig(save_path, dpi=300)
+            self.fig_spec.savefig(
+                save_path,
+                dpi=300
+            )
 
-            plt.close(self.fig_spec)
+            plt.close(
+                self.fig_spec
+            )
 
         else:
 

@@ -327,7 +327,7 @@ class StreamProcessing:
     def apply_chop(self, step_config):
 
         """
-        Chop continuous seismic data into a chuncks of specific lenth,
+        Chop continuous seismic data into a chunks of specific length,
         clock-aligned MiniSEED files.
         """
 
