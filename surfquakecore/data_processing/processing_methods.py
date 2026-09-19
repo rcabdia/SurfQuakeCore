@@ -1118,9 +1118,8 @@ def particle_motion(z, n, e, save_path: str = None):
 
 
 def print_surfquake_trace_headers(
-    sources: Union[str, Trace, Sequence[Union[str, Trace]]],
-    max_columns: int = 3
-) -> None:
+        sources: Union[str, Trace,
+        Sequence[Union[str, Trace]]], max_columns: int = 3) -> None:
     """
     Display one trace per source, side-by-side in columns, for up to `max_columns` at a time.
     Sources can be:
@@ -1242,6 +1241,334 @@ def print_surfquake_trace_headers(
             input("\nPress Enter to continue...\n")
 
 
+def run_chop_data(stream, chunk_length=3600, min_length=3540, max_interpolation_gap=2, output_dir="./"):
 
+    """
+    Chop continuous seismic data into approximately
+    one-hour, clock-aligned MiniSEED files.
+
+    Small gaps are interpolated so that each output
+    MiniSEED contains one continuous Trace.
+
+    Large gaps cause that hour to be rejected.
+
+    Parameters
+    ----------
+    stream : obspy.Stream
+        Input seismic stream.
+
+    chunk_length: float
+        Output window length in seconds.
+
+    min_length: float
+        Minimum amount of REAL recorded data required, in seconds.
+
+    max_interpolation_gap: float
+        Maximum gap that we allow to interpolate, in seconds.
+    Returns
+    -------
+    stream : obspy.Stream
+        Merged input stream.
+    """
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ------------------------------------------------------
+    # Merge traces belonging to the same NSLC.
+    #
+    # IMPORTANT:
+    # fill_value=None preserves gaps as masked samples.
+    # We do NOT interpolate yet because first we want
+    # to inspect the gaps hour by hour.
+    # ------------------------------------------------------
+    stream.merge(method=1, fill_value=None)
+
+    # ------------------------------------------------------
+    # Process every merged channel independently.
+    #
+    # Do NOT stream.split() here.
+    # Otherwise every small gap would create a separate
+    # ~5-minute Trace again.
+    # ------------------------------------------------------
+    for tr in stream:
+
+        chop_data(tr, chunk_length=chunk_length, min_length=min_length,
+                  max_interpolation_gap=max_interpolation_gap, output_dir=output_dir)
+
+    return stream
+
+
+def chop_data(tr, chunk_length=3600.0, min_length=3540.0, max_interpolation_gap=2.0, output_dir="./"):
+
+    """
+    Chop one ObsPy Trace into clock-aligned chunks.
+
+    An output chunk is written only when:
+
+    1. It contains at least `min_length` seconds of
+       actual recorded data.
+
+    2. Every internal gap is smaller than or equal to
+       `max_interpolation_gap`.
+
+    3. After interpolating the small gaps, the output
+       consists of one continuous Trace.
+
+    Parameters
+    ----------
+    tr : obspy.Trace
+        Input trace. It may contain masked gaps.
+
+    chunk_length : float
+        Output window length in seconds.
+
+    min_length : float
+        Minimum amount of real recorded data required
+        inside the window.
+
+    max_interpolation_gap : float
+        Maximum gap duration, in seconds, that may be
+        linearly interpolated.
+    """
+
+    trace_start = tr.stats.starttime
+    trace_end = tr.stats.endtime
+
+    # ------------------------------------------------------
+    # Start from the beginning of the clock hour
+    # containing the first sample.
+    #
+    # Example:
+    #
+    # trace starts 08:24:15
+    # current_start -> 08:00:00
+    # ------------------------------------------------------
+    current_start = UTCDateTime(trace_start.year, trace_start.month,
+                                trace_start.day, trace_start.hour)
+
+    # ------------------------------------------------------
+    # Move through the data one clock hour at a time
+    # ------------------------------------------------------
+    while current_start <= trace_end:
+
+        current_end = (current_start + chunk_length)
+
+        # First available sample inside this hour
+        start = max(current_start, trace_start)
+
+        # Last available sample inside this hour.
+        #
+        # Subtract one sample interval so that, e.g.,
+        #
+        # 10:00:00.000 -> 10:59:59.996
+        #
+        # and the next chunk starts exactly at
+        #
+        # 11:00:00.000
+        end = min(current_end - tr.stats.delta, trace_end)
+
+        if start <= end:
+
+            # --------------------------------------------------
+            # Extract the complete candidate hour.
+            #
+            # This Trace can still contain masked gaps.
+            # --------------------------------------------------
+            chunk = tr.slice(starttime=start, endtime=end, nearest_sample=False)
+
+            if chunk.stats.npts > 0:
+
+                # --------------------------------------------------
+                # Split ONLY this hour around its gaps.
+                #
+                # Example:
+                #
+                # 08:00--08:05
+                # 08:05--08:10
+                # ...
+                #
+                # become individual contiguous traces temporarily.
+                # --------------------------------------------------
+                chunk_stream = Stream(traces=[chunk]).split()
+
+                if len(chunk_stream) == 0:
+
+                    current_start += chunk_length
+                    continue
+
+                # --------------------------------------------------
+                # Calculate amount of REAL recorded data.
+                #
+                # Interpolated samples are not included yet.
+                # --------------------------------------------------
+                available_length = sum(subtr.stats.npts * subtr.stats.delta for subtr in chunk_stream)
+
+                # --------------------------------------------------
+                # Reject hour if too much data are missing
+                # --------------------------------------------------
+                if available_length < min_length:
+
+                    print(
+                        f"{tr.id} - Skipping "
+                        f"{current_start} -- "
+                        f"{current_end}: "
+                        f"{available_length:.1f} s available "
+                        f"< minimum {min_length:.1f} s")
+
+                    current_start += chunk_length
+                    continue
+
+                # --------------------------------------------------
+                # Inspect gaps inside this hour
+                #
+                # get_gaps() returns, among other information,
+                # gap duration at index 6.
+                # --------------------------------------------------
+                gaps = chunk_stream.get_gaps()
+
+                positive_gaps = [gap[6] for gap in gaps if gap[6] > 0]
+
+                if positive_gaps:
+
+                    largest_gap = max(positive_gaps)
+
+                else:
+
+                    largest_gap = 0.0
+
+                # --------------------------------------------------
+                # Reject if any gap is too large.
+                #
+                # We do not want to fabricate several minutes
+                # of seismic data by interpolation.
+                # --------------------------------------------------
+                if (largest_gap > max_interpolation_gap):
+
+                    print(
+                        f"{tr.id} - Skipping "
+                        f"{current_start} -- "
+                        f"{current_end}: "
+                        f"largest gap = "
+                        f"{largest_gap:.3f} s "
+                        f"> maximum allowed "
+                        f"{max_interpolation_gap:.3f} s")
+
+                    current_start += chunk_length
+                    continue
+
+                # --------------------------------------------------
+                # Interpolate ONLY the small gaps.
+                #
+                # After this operation we expect one continuous
+                # Trace for this hour.
+                # --------------------------------------------------
+                chunk_stream.merge(method=1, fill_value="interpolate")
+
+                # --------------------------------------------------
+                # Safety check:
+                # the output must contain exactly one Trace.
+                # --------------------------------------------------
+                if len(chunk_stream) != 1:
+
+                    print(
+                        f"{tr.id} - Skipping "
+                        f"{current_start}: "
+                        f"could not create one continuous Trace.")
+
+                    current_start += chunk_length
+                    continue
+
+                continuous_chunk = (chunk_stream[0])
+
+                # --------------------------------------------------
+                # Final safety check: no masked array should remain.
+                # --------------------------------------------------
+                if (hasattr(continuous_chunk.data, "mask")):
+
+                    print(f"{tr.id} - Skipping " f"{current_start}: "
+                        f"masked samples remain after merge.")
+
+                    current_start += chunk_length
+                    continue
+
+                # --------------------------------------------------
+                # Write the final continuous hourly Trace
+                # --------------------------------------------------
+                write_tr_chop(continuous_chunk, hour_start=current_start,
+                    available_length=available_length, largest_gap=largest_gap,
+                    output_dir=output_dir)
+
+        current_start += chunk_length
+
+
+def write_tr_chop(tr, hour_start, available_length=None, largest_gap=None, output_dir="./"):
+
+    """
+    Write one continuous Trace to MiniSEED.
+
+    Parameters
+    ----------
+    tr : obspy.Trace
+        Continuous output trace.
+
+    hour_start : UTCDateTime
+        Clock-hour start used for the filename.
+
+    available_length : float, optional
+        Amount of original real data before interpolation.
+
+    largest_gap : float, optional
+        Largest interpolated gap in seconds.
+    """
+
+    try:
+
+        # --------------------------------------------------
+        # Filename is based on the CLOCK HOUR rather than
+        # the actual first sample.
+        #
+        # Example:
+        #
+        # NET.STATION.location.CHANNEL.D.YEAR.JULDAY.HOUR.mseed
+        # --------------------------------------------------
+        base_name = (
+            f"{tr.stats.network}."
+            f"{tr.stats.station}."
+            f"{tr.stats.location}."
+            f"{tr.stats.channel}."
+            f"D."
+            f"{hour_start.year}."
+            f"{hour_start.julday:03d}")
+
+        path_output = os.path.join(output_dir, base_name)
+
+        # Check if file exists and append a number if necessary
+        counter = 1
+        while os.path.exists(path_output):
+            path_output = os.path.join(output_dir, f"{base_name}_{counter}")
+            counter += 1
+
+        # --------------------------------------------------
+        # Useful diagnostic information
+        # --------------------------------------------------
+        message = f"{tr.id} - Writing "f"{tr.stats.starttime} -- "f"{tr.stats.endtime}"
+
+        if available_length is not None:
+
+            message += f" | real data: " f"{available_length:.1f} s"
+
+        if largest_gap is not None:
+            message += f" | largest interpolated gap: "f"{largest_gap:.3f} s"
+
+        message += (f" | output: {path_output}")
+        print(message)
+
+        # --------------------------------------------------
+        # Write ONE continuous Trace
+        # --------------------------------------------------
+        tr.write(path_output, format="MSEED")
+
+    except Exception as exc:
+        print(f"Exception while writing "f"{tr.id}: {exc}")
 
 

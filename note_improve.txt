@@ -1,0 +1,22 @@
+Dates in CWT and spectrogram DONE
+
+Correlation --> Picking
+
+Algebra needs deep review
+
+to be included :
+
+    Convolution
+
+    PCC (Phase Cross Correlation)
+
+    Generate synthetic test signals:
+
+        -chirp signals --> TO DO
+
+        -Gaussian signal TO DO
+
+        -Sample wavelet TO DO
+
+    -Included new functionality
+        - Chop continuous data --> data_processing/processing_methods.py  DONE
