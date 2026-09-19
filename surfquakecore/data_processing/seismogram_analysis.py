@@ -7,7 +7,7 @@ from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
-    rename_trace, whiten_new_band_freq_single
+    rename_trace, whiten_new_band_freq_single, run_chop_data
 
 try:
     from surfquakecore.cython_module.hampel import hampel
@@ -272,7 +272,7 @@ class StreamProcessing:
     """
 
     STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis", "cut_stream", "algebra"}
+                      "kurtosis", "cut_stream", "algebra", "chop"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -319,8 +319,21 @@ class StreamProcessing:
                     self.apply_cut(step)
                 elif method_name == "algebra":
                     self.apply_algebra(step)
+                elif method_name == "chop":
+                    self.apply_chop(step)
 
             return self.stream
+
+    def apply_chop(self, step_config):
+
+        """
+        Chop continuous seismic data into a chuncks of specific lenth,
+        clock-aligned MiniSEED files.
+        """
+
+        max_interpolation_gap = step_config.pop('max_interpolation_gap', 2)
+        run_chop_data(self.stream, chunk_length=step_config["chunk_length"], min_length=step_config["min_length"],
+                      max_interpolation_gap=max_interpolation_gap, output_dir=step_config["output_dir"])
 
     def apply_algebra(self, step_config):
         """

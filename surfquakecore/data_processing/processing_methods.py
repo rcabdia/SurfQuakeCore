@@ -1265,6 +1265,7 @@ def run_chop_data(stream, chunk_length=3600, min_length=3540, max_interpolation_
 
     max_interpolation_gap: float
         Maximum gap that we allow to interpolate, in seconds.
+
     Returns
     -------
     stream : obspy.Stream
