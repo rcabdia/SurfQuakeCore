@@ -130,14 +130,16 @@ class TraceSpectrogramResult:
 
         step_percentage = (100 - overlap_percent) * 1E-2
         self.spectrogram, self.num_steps, self.time, self.freq = \
-            SpectrumTool.compute_spectrogram(self.trace.data, int(win * self.trace.stats.sampling_rate),
+            SpectrumTool.compute_spectrogram(self.trace.data, round(win * self.trace.stats.sampling_rate),
                                              self.trace.stats.delta, linf, lsup, step_percentage,
                                              method, nw)
 
-    def plot_spectrogram(self, save_path: str = None, clip: float = None):
+    def plot_spectrogram(self, save_path: str = None, clip: float = None,
+                         plot_date: bool = False):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
+        import matplotlib.dates as mdates
         from matplotlib import gridspec
         from matplotlib.ticker import ScalarFormatter
 
@@ -146,51 +148,82 @@ class TraceSpectrogramResult:
         else:
             mplt.use("QtAgg")
 
-
         if clip is not None:
             spectrogram = np.clip(10 * np.log10(self.spectrogram / np.max(self.spectrogram)), a_min=clip, a_max=0)
         else:
             spectrogram = 10 * np.log10(self.spectrogram / np.max(self.spectrogram))
 
         self.fig_spec = plt.figure(figsize=(10, 5))
-        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
-                               hspace=0.02, wspace=0.02)
+
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1], hspace=0.02,
+            wspace=0.02)
 
         ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
         ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
         ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
+
         formatter = ScalarFormatter(useMathText=True)
-        formatter.set_powerlimits((0, 0))  # Forces scientific notation always
+        formatter.set_powerlimits((0, 0))
         ax_waveform.yaxis.set_major_formatter(formatter)
 
+        starttime = self.trace.stats.starttime
+
+        # -------------------------------------------------
+        # X axis: seconds OR absolute date/time
+        # -------------------------------------------------
+        if plot_date:
+            start_num = mdates.date2num(starttime.datetime)
+
+            waveform_x = start_num + self.trace.times() / 86400.0
+            spec_x = start_num + self.time / 86400.0
+
+        else:
+            waveform_x = self.trace.times()
+            spec_x = self.time
+
         # --- Plot waveform ---
-        ax_waveform.plot(self.trace.times(), self.trace.data, linewidth=0.75)
+        ax_waveform.plot(waveform_x, self.trace.data, linewidth=0.75)
+
         ax_waveform.set_title(f"Spectrogram for {self.trace.id}")
         ax_waveform.tick_params(labelbottom=False)
 
         # Annotate with date
-        starttime = self.trace.stats.starttime
         date_str = starttime.strftime("%Y-%m-%d %H:%M:%S")
         textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
-        ax_waveform.text(0.01, 0.95, textstr, transform=ax_waveform.transAxes, fontsize=8,
-                         va='top', ha='left',
-                         bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+
+        ax_waveform.text(0.01, 0.95, textstr,
+            transform=ax_waveform.transAxes, fontsize=8, va='top', ha='left',
+            bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
 
         # --- Plot spectrogram ---
         if clip is not None:
             clip = float(clip)
             spectrogram = np.clip(spectrogram, a_min=clip, a_max=0)
 
-        pcm = ax_spec.pcolormesh(self.time, self.freq, spectrogram, shading='auto', cmap='rainbow'
-                                 , vmin=np.min(spectrogram), vmax=0)
+        pcm = ax_spec.pcolormesh(spec_x,self.freq, spectrogram, shading='auto', cmap='rainbow',
+            vmin=np.min(spectrogram), vmax=0)
 
         ax_waveform.set_ylabel('Amplitude')
         ax_spec.set_ylabel('Frequency [Hz]')
-        ax_spec.set_xlabel('Time [s]')
 
-        # --- Add colorbar without shifting axes ---
+        # -------------------------------------------------
+        # Format X axis
+        # -------------------------------------------------
+        if plot_date:
+            locator = mdates.AutoDateLocator()
+            formatter_date = mdates.ConciseDateFormatter(locator)
+
+            ax_spec.xaxis.set_major_locator(locator)
+            ax_spec.xaxis.set_major_formatter(formatter_date)
+
+            ax_spec.set_xlabel('Date / Time [UTC]')
+        else:
+            ax_spec.set_xlabel('Time [s]')
+
+        # --- Colorbar ---
         cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
         cbar.set_label("Power [dB]")
+
         plt.tight_layout()
 
         if save_path:
