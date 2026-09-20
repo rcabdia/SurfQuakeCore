@@ -135,7 +135,7 @@ class TraceSpectrogramResult:
                                              method, nw)
 
     def plot_spectrogram(self, save_path: str = None, clip: float = None, plot_date: bool = False, split=None,
-            vmax_db: float = None, vmin_db: float = None, cmap: str = "rainbow"):
+            vmax_db: float = None, cmap: str = "rainbow", smooth: bool = False):
 
         import platform
         import numpy as np
@@ -170,44 +170,45 @@ class TraceSpectrogramResult:
 
 
         if vmax_db is None:
-            #vmax_db = np.percentile(spectrogram, q=99.5, axis=None)
-            vmax_db = 0
-            print(vmax_db)
 
-        vmax_db = float(vmax_db)
+            #vmax_db = np.percentile(spectrogram, q=99.5, axis=None)
+            vmax_db = 0.0
+
+        else:
+            vmax_db = float(vmax_db)
 
         # ------------------------------------------------------
         # Lower display limit
+        #
+        # If clip is given -> use it directly.
+        # Otherwise -> estimate a robust lower limit
+        # from the 1st percentile.
         # ------------------------------------------------------
+        finite_values = spectrogram[np.isfinite(spectrogram)]
+
+        if finite_values.size == 0:
+            raise ValueError(
+                "Spectrogram contains no finite values.")
+
         if clip is not None:
 
-            clip = float(clip)
-
-            if clip >= vmax_db:
-                raise ValueError(f"clip ({clip:g} dB) must be lower than "
-                    f"vmax_db ({vmax_db:g} dB).")
-
-            spectrogram = np.maximum(spectrogram, clip)
-
-            vmin_db = clip
+            vmin_db = float(clip)
 
         else:
 
-            if vmin_db is None:
-                finite_values = spectrogram[np.isfinite(spectrogram)]
+            vmin_db = float(np.percentile(finite_values, q=1))
 
-                if finite_values.size == 0:
-                    raise ValueError("Spectrogram contains no finite values.")
-                vmin_db = np.percentile(finite_values, q=1, axis=None)
-                print(vmin_db)
-
-        # Avoid invalid normalization in pathological cases
+        # ------------------------------------------------------
+        # Validate limits
+        # ------------------------------------------------------
         if vmin_db >= vmax_db:
-            vmin_db = vmax_db - 1.0
+            raise ValueError(f"vmin_db ({vmin_db:g} dB) must be lower than "
+                f"vmax_db ({vmax_db:g} dB).")
 
         # Replace -inf produced by log10(0)
         spectrogram = np.where(np.isfinite(spectrogram), spectrogram, vmin_db)
 
+        levels = np.linspace(vmin_db, vmax_db, 100)
         # ======================================================
         # Interpret split
         #
@@ -278,8 +279,21 @@ class TraceSpectrogramResult:
             # --------------------------------------------------
             # Full spectrogram
             # --------------------------------------------------
-            pcm = ax_spec.pcolormesh(spec_x, freq, spectrogram, shading="auto",
-                cmap=cmap, vmin=vmin_db, vmax=vmax_db)
+            #pcm = ax_spec.pcolormesh(spec_x, freq, spectrogram, shading="auto",
+            #    cmap=cmap, vmin=vmin_db, vmax=vmax_db)
+
+
+            if smooth:
+                # Levels used only by contourf
+
+
+                pcm = ax_spec.contourf(spec_x, freq, spectrogram, levels=levels,
+                    cmap=cmap, vmin=vmin_db, vmax=vmax_db, extend="both")
+
+            else:
+
+                pcm = ax_spec.pcolormesh(spec_x, freq, spectrogram, shading="auto", cmap=cmap,
+                    vmin=vmin_db, vmax=vmax_db)
 
             ax_spec.set_ylabel("Frequency [Hz]")
 
@@ -420,12 +434,8 @@ class TraceSpectrogramResult:
             ax_waveform_low.set_ylabel("Low-freq amplitude")
 
             # High-frequency signal -> RIGHT y axis
-            line_high, = ax_waveform_high.plot(
-                waveform_x,
-                tr_high.data,
-                linewidth=0.65,
-                alpha=0.55,
-                color="black", label=f"High-pass > {split_freq:g} Hz")
+            line_high, = ax_waveform_high.plot(waveform_x, tr_high.data, linewidth=0.65, alpha=0.55, color="black",
+                                               label=f"High-pass > {split_freq:g} Hz")
 
             ax_waveform_high.set_ylabel("High-freq amplitude")
 
@@ -453,8 +463,30 @@ class TraceSpectrogramResult:
             # ==================================================
             # HIGH-FREQUENCY SPECTROGRAM
             # ==================================================
-            pcm = ax_high.pcolormesh(spec_x, freq_high, spec_high,
-                shading="auto", cmap=cmap, vmin=vmin_db, vmax=vmax_db)
+            if smooth:
+
+                pcm = ax_high.contourf(
+                    spec_x,
+                    freq_high,
+                    spec_high,
+                    levels=levels,
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db,
+                    extend="both"
+                )
+
+            else:
+
+                pcm = ax_high.pcolormesh(
+                    spec_x,
+                    freq_high,
+                    spec_high,
+                    shading="auto",
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db
+                )
 
             ax_high.set_ylabel("Frequency [Hz]")
 
@@ -465,8 +497,30 @@ class TraceSpectrogramResult:
             # ==================================================
             # LOW-FREQUENCY SPECTROGRAM AS PERIOD
             # ==================================================
-            ax_low.pcolormesh(spec_x, period_low, spec_low, shading="auto",
-                cmap=cmap, vmin=vmin_db, vmax=vmax_db)
+            if smooth:
+
+                ax_low.contourf(
+                    spec_x,
+                    period_low,
+                    spec_low,
+                    levels=levels,
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db,
+                    extend="both"
+                )
+
+            else:
+
+                ax_low.pcolormesh(
+                    spec_x,
+                    period_low,
+                    spec_low,
+                    shading="auto",
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db
+                )
 
             ax_low.set_yscale("log")
 
@@ -554,21 +608,9 @@ class TraceSpectrogramResult:
             f"{date_str}"
         )
 
-        annotation_axis.text(
-            0.01,
-            0.95,
-            textstr,
-            transform=annotation_axis.transAxes,
-            fontsize=8,
-            va="top",
-            ha="left",
-            bbox=dict(
-                boxstyle="round,pad=0.3",
-                fc="lightyellow",
-                ec="gray",
-                alpha=0.5
-            )
-        )
+        annotation_axis.text(0.01, 0.95, textstr, transform=annotation_axis.transAxes,
+            fontsize=8, va="top", ha="left", bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow",
+                                                       ec="gray", alpha=0.5))
 
         plt.tight_layout()
 

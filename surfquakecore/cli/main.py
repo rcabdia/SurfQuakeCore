@@ -1906,8 +1906,6 @@ def _specplot():
 
     parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
 
-    parser.add_argument("--clip", "-c", type=float, required=False, default=None,
-        help="Minimum displayed power in dB")
 
     parser.add_argument("--split", nargs="?", const=1.0, default=None, type=float,
         help=("Split the plot into low/high frequency panels. "
@@ -1916,11 +1914,13 @@ def _specplot():
     parser.add_argument("--vmax_db", type=float, default=None, required=False,
         help="Maximum displayed power in dB. Default:  0 dB in Normalize Spec ")
 
-    parser.add_argument("--vmin_db", type=float, default=None, required=False,
-        help="Minimum displayed power in dB, Percentile 1 % Normalize Spec in dB")
+    parser.add_argument("--clip", "-c", type=float, required=False, default=None,
+        help="Minimum displayed power in dB")
 
     parser.add_argument("--cmap", type=str, default="rainbow",
         required=False, help="Matplotlib colormap. Default: rainbow")
+
+    parser.add_argument("-s", "--smooth", help="if smooth the Time-Frequency plane", action="store_true")
 
     parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
 
@@ -1939,12 +1939,12 @@ def _specplot():
     elif ext == ".spec":
         obj = TraceSpectrogramResult.from_pickle(filepath)
         obj.plot_spectrogram(save_path=args.save_path, clip=args.clip, plot_date=args.dates,
-                            split=args.split, vmax_db=args.vmax_db, vmin_db=args.vmin_db, cmap=args.cmap)
+                            split=args.split, vmax_db=args.vmax_db,  cmap=args.cmap, smooth=args.smooth)
 
     elif ext == ".cwt":
         obj = TraceCWTResult.from_pickle(filepath)
         obj.plot_cwt(save_path=args.save_path, clip=args.clip, plot_date=args.verbose,
-                     split=args.split, vmax_db=args.vmax_db, cmap=args.cmap)
+                     split=args.split, vmax_db=args.vmax_db, cmap=args.cmap, smooth=args.smooth)
     else:
         raise ValueError(
             f"Unsupported file extension '{ext}'. "

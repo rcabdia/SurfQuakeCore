@@ -45,17 +45,17 @@ class TraceCWTResult:
         cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=fmin, fmax=fmax,
                          nf=nf, use_wavelet=wavelet_type, m=param, decimate=False)
 
-        scalogram2 = cw.scalogram_in_dbs()
-        t = np.linspace(0, tr.stats.delta * scalogram2.shape[1], scalogram2.shape[1])
-        f = np.logspace(np.log10(fmin), np.log10(fmax), scalogram2.shape[0])
+        scalogram_amplitude = cw.scalogram()
+        t = np.linspace(0, tr.stats.delta * scalogram_amplitude.shape[1], scalogram_amplitude.shape[1])
+        f = np.logspace(np.log10(fmin), np.log10(fmax), scalogram_amplitude.shape[0])
 
         # Prediction masks
         c_f = param / (2 * math.pi)
-        ff = np.linspace(fmin, fmax, scalogram2.shape[0])
+        ff = np.linspace(fmin, fmax, scalogram_amplitude.shape[0])
         pred = (math.sqrt(2) * c_f / ff) - (math.sqrt(2) * c_f / fmax)
         pred_comp = t[-1] - pred
 
-        self.cwt_data = (t, f, scalogram2, pred, pred_comp)
+        self.cwt_data = (t, f, scalogram_amplitude, pred, pred_comp)
 
     def plot_cwt(
             self,
@@ -63,8 +63,9 @@ class TraceCWTResult:
             clip: float = None,
             plot_date: bool = False,
             split=None,
-            vmax_db: float = 0.0,
-            cmap: str = "rainbow"):
+            vmax_db: float = None,
+            cmap: str = "rainbow",
+            smooth: bool = False):
 
         import platform
         import numpy as np
@@ -79,12 +80,7 @@ class TraceCWTResult:
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
         import matplotlib.gridspec as gridspec
-
-        from matplotlib.ticker import (
-            ScalarFormatter,
-            FixedLocator,
-            FuncFormatter
-        )
+        from matplotlib.ticker import ScalarFormatter, FixedLocator, FuncFormatter
 
         # ======================================================
         # CWT data
@@ -96,66 +92,93 @@ class TraceCWTResult:
         t = np.asarray(t)
         f = np.asarray(f)
 
-        # Copy because plotting options should not modify
-        # the original CWT stored in self.cwt_data.
-        scalogram = np.asarray(
-            scalogram
-        ).copy()
+        # Copy so plotting modifications do not affect
+        # the original CWT stored in self.cwt_data
+        scalogram = np.asarray(scalogram).copy()
 
         pred = np.asarray(pred)
         pred_comp = np.asarray(pred_comp)
 
-        vmax_db = float(vmax_db)
+        # ======================================================
+        # Convert CWT power to relative dB
+        # ======================================================
+
+        max_power = np.nanmax(scalogram)
+
+        if not np.isfinite(max_power) or max_power <= 0:
+            raise ValueError(
+                "Scalogram maximum must be greater than zero."
+            )
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+
+            scalogram = 10.0 * np.log10(
+                scalogram / max_power
+            )
 
         # ======================================================
         # Display limits
-        #
-        # The CWT scalogram is assumed to already be in dB,
-        # as in your current implementation.
         # ======================================================
-        if clip is not None:
+        if vmax_db is None:
 
-            clip = float(clip)
-
-            if clip >= vmax_db:
-                raise ValueError(
-                    f"clip ({clip:g} dB) must be lower than "
-                    f"vmax_db ({vmax_db:g} dB)."
-                )
-
-            scalogram = np.maximum(
-                scalogram,
-                clip
-            )
-
-            vmin_db = clip
+            # vmax_db = np.percentile(scalogram, q=99.5, axis=None)
+            vmax_db = 0.0
 
         else:
 
-            finite_values = scalogram[
-                np.isfinite(scalogram)
-            ]
+            vmax_db = float(vmax_db)
 
-            if finite_values.size == 0:
-                raise ValueError(
-                    "Scalogram contains no finite values."
-                )
+        # ------------------------------------------------------
+        # Lower display limit
+        #
+        # If clip is given -> use it directly.
+        # Otherwise -> estimate a robust lower limit
+        # from the 1st percentile.
+        # ------------------------------------------------------
+        finite_values = scalogram[np.isfinite(scalogram)]
 
-            vmin_db = float(
-                np.min(finite_values)
+        if finite_values.size == 0:
+            raise ValueError(
+                "Scalogram contains no finite values."
             )
 
-        if vmin_db >= vmax_db:
-            vmin_db = vmax_db - 1.0
+        if clip is not None:
 
+            vmin_db = float(clip)
+
+        else:
+
+            vmin_db = float(
+                np.percentile(
+                    finite_values,
+                    q=1
+                )
+            )
+
+        # ------------------------------------------------------
+        # Validate limits
+        # ------------------------------------------------------
+        if vmin_db >= vmax_db:
+            raise ValueError(
+                f"vmin_db ({vmin_db:g} dB) must be lower than "
+                f"vmax_db ({vmax_db:g} dB)."
+            )
+
+        # Replace invalid / infinite values for plotting
         scalogram = np.where(
             np.isfinite(scalogram),
             scalogram,
             vmin_db
         )
 
+        # Levels used only by contourf
+        levels = np.linspace(vmin_db, vmax_db, 100)
         # ======================================================
         # Interpret split
+        #
+        # None / False -> normal representation
+        # True         -> split at 1 Hz
+        # float        -> user-selected cutoff
         # ======================================================
         if isinstance(split, bool):
 
@@ -177,7 +200,7 @@ class TraceCWTResult:
         starttime = tr.stats.starttime
 
         # ======================================================
-        # Time coordinates
+        # X coordinates
         # ======================================================
         if plot_date:
 
@@ -195,8 +218,7 @@ class TraceCWTResult:
                     + t / 86400.0
             )
 
-            # pred and pred_comp represent times
-            # associated with the CWT frequency rows.
+            # pred and pred_comp are also time coordinates
             pred_x = (
                     start_num
                     + pred / 86400.0
@@ -282,15 +304,32 @@ class TraceCWTResult:
             # --------------------------------------------------
             # Full CWT
             # --------------------------------------------------
-            pcm = ax_spec.pcolormesh(
-                cwt_x,
-                f,
-                scalogram,
-                shading="auto",
-                cmap=cmap,
-                vmin=vmin_db,
-                vmax=vmax_db
-            )
+
+
+            if smooth:
+
+                pcm = ax_spec.contourf(
+                    cwt_x,
+                    f,
+                    scalogram,
+                    levels=levels,
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db,
+                    extend="both"
+                )
+
+            else:
+
+                pcm = ax_spec.pcolormesh(
+                    cwt_x,
+                    f,
+                    scalogram,
+                    shading="auto",
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db
+                )
 
             # Prediction / mask regions
             ax_spec.fill_between(
@@ -386,9 +425,10 @@ class TraceCWTResult:
                 )
 
             # --------------------------------------------------
-            # Split CWT into low/high-frequency components.
+            # Divide the EXISTING CWT.
             #
-            # f = 0 must be excluded because T = 1/f.
+            # 0 Hz is excluded from the lower part because
+            # period = 1/f cannot be defined at f = 0.
             # --------------------------------------------------
             low_mask = (
                     (f > 0)
@@ -411,9 +451,9 @@ class TraceCWTResult:
                     f"{split_freq:g} Hz."
                 )
 
-            # ==================================================
-            # HIGH-FREQUENCY CWT
-            # ==================================================
+            # --------------------------------------------------
+            # High-frequency representation remains in Hz
+            # --------------------------------------------------
             freq_high = f[high_mask]
 
             scalogram_high = scalogram[
@@ -428,30 +468,9 @@ class TraceCWTResult:
                 high_mask
             ]
 
-            # Ensure increasing-frequency coordinates
-            high_order = np.argsort(
-                freq_high
-            )
-
-            freq_high = freq_high[
-                high_order
-            ]
-
-            scalogram_high = scalogram_high[
-                             high_order, :
-                             ]
-
-            pred_high_x = pred_high_x[
-                high_order
-            ]
-
-            pred_comp_high_x = pred_comp_high_x[
-                high_order
-            ]
-
-            # ==================================================
-            # LOW-FREQUENCY CWT -> PERIOD
-            # ==================================================
+            # --------------------------------------------------
+            # Low-frequency representation becomes period
+            # --------------------------------------------------
             freq_low = f[low_mask]
 
             scalogram_low = scalogram[
@@ -466,12 +485,12 @@ class TraceCWTResult:
                 low_mask
             ]
 
-            # Convert frequency to period
             period_low = (
                     1.0 / freq_low
             )
 
-            # Sort period increasingly for pcolormesh
+            # pcolormesh behaves best with monotonically
+            # increasing coordinates, so sort periods.
             order = np.argsort(
                 period_low
             )
@@ -484,6 +503,8 @@ class TraceCWTResult:
                             order, :
                             ]
 
+            # The prediction curves must follow exactly
+            # the same scale reordering.
             pred_low_x = pred_low_x[
                 order
             ]
@@ -512,11 +533,12 @@ class TraceCWTResult:
                 wspace=0.02
             )
 
+            # Low-frequency waveform uses LEFT amplitude axis
             ax_waveform_low = self.fig_spec.add_subplot(
                 gs[0, 0]
             )
 
-            # Independent high-frequency amplitude axis
+            # High-frequency waveform uses RIGHT amplitude axis
             ax_waveform_high = (
                 ax_waveform_low.twinx()
             )
@@ -531,18 +553,44 @@ class TraceCWTResult:
                 sharex=ax_waveform_low
             )
 
+            # One colorbar for both CWT panels
             ax_cbar = self.fig_spec.add_subplot(
                 gs[1:, 1]
             )
 
             # ==================================================
-            # FILTERED WAVEFORMS
+            # FILTERED TIME SERIES
             # ==================================================
             tr_low = tr.copy()
             tr_high = tr.copy()
 
-            # Zero-phase filtering prevents shifting
-            # seismic arrivals in time.
+            # Keep the same preprocessing as your
+            # final spectrogram implementation
+            tr_low.detrend(
+                type="linear"
+            )
+
+            tr_low.detrend(
+                type="simple"
+            )
+
+            tr_high.detrend(
+                type="linear"
+            )
+
+            tr_high.detrend(
+                type="simple"
+            )
+
+            tr_low.taper(
+                max_percentage=0.05
+            )
+
+            tr_high.taper(
+                max_percentage=0.05
+            )
+
+            # Zero-phase filtering prevents time shifts
             tr_low.filter(
                 "lowpass",
                 freq=split_freq,
@@ -557,8 +605,16 @@ class TraceCWTResult:
                 zerophase=True
             )
 
+            tr_low.detrend(
+                type="simple"
+            )
+
+            tr_high.detrend(
+                type="simple"
+            )
+
             # --------------------------------------------------
-            # Low frequencies -> LEFT amplitude axis
+            # Low-frequency signal -> LEFT y axis
             # --------------------------------------------------
             line_low, = ax_waveform_low.plot(
                 waveform_x,
@@ -573,13 +629,14 @@ class TraceCWTResult:
             )
 
             # --------------------------------------------------
-            # High frequencies -> RIGHT amplitude axis
+            # High-frequency signal -> RIGHT y axis
             # --------------------------------------------------
             line_high, = ax_waveform_high.plot(
                 waveform_x,
                 tr_high.data,
                 linewidth=0.65,
                 alpha=0.55,
+                color="black",
                 label=f"High-pass > {split_freq:g} Hz"
             )
 
@@ -587,7 +644,7 @@ class TraceCWTResult:
                 "High-freq amplitude"
             )
 
-            # Scientific notation independently
+            # Scientific notation independently on both axes
             formatter_left = ScalarFormatter(
                 useMathText=True
             )
@@ -620,7 +677,7 @@ class TraceCWTResult:
                 labelbottom=False
             )
 
-            # Combined legend
+            # Combined legend for both waveform axes
             ax_waveform_low.legend(
                 [line_low, line_high],
                 [
@@ -635,17 +692,33 @@ class TraceCWTResult:
             # ==================================================
             # HIGH-FREQUENCY CWT
             # ==================================================
-            pcm = ax_high.pcolormesh(
-                cwt_x,
-                freq_high,
-                scalogram_high,
-                shading="auto",
-                cmap=cmap,
-                vmin=vmin_db,
-                vmax=vmax_db
-            )
 
-            # Preserve prediction / mask information
+            if smooth:
+
+                pcm = ax_high.contourf(
+                    cwt_x,
+                    freq_high,
+                    scalogram_high,
+                    levels=levels,
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db,
+                    extend="both"
+                )
+
+            else:
+
+                pcm = ax_high.pcolormesh(
+                    cwt_x,
+                    freq_high,
+                    scalogram_high,
+                    shading="auto",
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db
+                )
+
+            # Preserve the prediction / mask regions
             ax_high.fill_between(
                 pred_high_x,
                 freq_high,
@@ -664,13 +737,13 @@ class TraceCWTResult:
                 alpha=0.3
             )
 
+            ax_high.set_ylabel(
+                "Frequency [Hz]"
+            )
+
             ax_high.set_ylim(
                 split_freq,
                 np.max(freq_high)
-            )
-
-            ax_high.set_ylabel(
-                "Frequency [Hz]"
             )
 
             ax_high.tick_params(
@@ -690,9 +763,41 @@ class TraceCWTResult:
                 vmax=vmax_db
             )
 
-            # In frequency representation the original mask
-            # extends toward zero frequency. In period space,
-            # f -> 0 corresponds to T -> infinity.
+            if smooth:
+
+                ax_low.contourf(
+                    cwt_x,
+                    period_low,
+                    scalogram_low,
+                    levels=levels,
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db,
+                    extend="both"
+                )
+
+            else:
+
+                ax_low.pcolormesh(
+                    cwt_x,
+                    period_low,
+                    scalogram_low,
+                    shading="auto",
+                    cmap=cmap,
+                    vmin=vmin_db,
+                    vmax=vmax_db
+                )
+            # --------------------------------------------------
+            # The original frequency-domain mask extends
+            # toward f = 0.
+            #
+            # In period representation:
+            #
+            # f -> 0  means  T -> infinity
+            #
+            # therefore extend the shaded region toward the
+            # largest displayed period.
+            # --------------------------------------------------
             max_period = np.max(
                 period_low
             )
@@ -724,10 +829,8 @@ class TraceCWTResult:
                 np.max(period_low)
             )
 
-            # Same physical orientation as frequency:
-            #
-            # top    -> high frequency / short period
-            # bottom -> low frequency / long period
+            # Short periods / high frequencies at the top.
+            # Long periods / low frequencies at the bottom.
             ax_low.invert_yaxis()
 
             ax_low.set_ylabel(
@@ -735,7 +838,7 @@ class TraceCWTResult:
             )
 
             # ==================================================
-            # Period annotations
+            # Useful period annotations
             #
             # 0.1, 0.2, 0.5,
             # 1, 2, 5,
@@ -767,7 +870,10 @@ class TraceCWTResult:
                     exponent_min,
                     exponent_max + 1):
 
-                for multiplier in (1, 2, 5):
+                for multiplier in (
+                        1,
+                        2,
+                        5):
 
                     value = (
                             multiplier
@@ -825,7 +931,7 @@ class TraceCWTResult:
                 )
 
             # --------------------------------------------------
-            # Common colorbar
+            # Shared colorbar
             # --------------------------------------------------
             cbar = self.fig_spec.colorbar(
                 pcm,
