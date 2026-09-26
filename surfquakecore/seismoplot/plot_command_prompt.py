@@ -1455,6 +1455,8 @@ class PlotCommandPrompt:
             self.plot_proj.clear_plot()
             self.plot_proj.plot(page=0)
             print(f"[INFO] Cross-correlation complete. {len(cc_stream)} traces plotted.")
+            self.prompt_active = False
+            self._exit_code = "replot"  # ← señal nueva
         except Exception as e:
             print(f"[ERROR] Cross-correlation failed: {e}")
 
