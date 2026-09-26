@@ -45,6 +45,8 @@ class TraceSpectrumResult:
             ax.semilogx(self.freq, self.spectrum, linewidth=0.75)
         elif axis_type == "ylog":
             ax.semilogy(self.freq, self.spectrum, linewidth=0.75)
+        elif axis_type == "linlin":
+            ax.plot(self.freq, self.spectrum, linewidth=0.75)
         else:
             print("No accepted axis_type: available loglog, xlog and ylog")
 

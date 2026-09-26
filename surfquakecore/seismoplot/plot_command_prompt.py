@@ -621,86 +621,136 @@ class PlotCommandPrompt:
         """
         Usage:
             spectrogram <index> [<win_sec> <overlap%>] [<clip>]
-                        [--method multitaper|fft]
-                        [--nw <NW>]
+                        [--method fft|multitaper]
+                        [--nw <NW>] [--dates]
         """
 
         if len(args) < 2:
-            print("Usage: spectrogram <index> [<win_sec> <overlap%>] [<clip>] "
-                  "[--method multitaper|fft] [--nw <NW>]")
+            print(
+                "Usage: spectrogram <index> "
+                "[<win_sec> <overlap%>] [<clip>] "
+                "[--method fft|multitaper] "
+                "[--nw <NW>] [--dates]")
             return
 
         try:
             idx = int(args[1])
 
+            # --------------------------------------------------
             # Defaults
+            # --------------------------------------------------
             win = 5.0
             overlap = 50.0
             clip = None
-            method = "multitaper"
+
+            method = "fft"
             nw = None
+
+            # Plot absolute dates on the x axis
+            dates = False
 
             tokens = args[2:]
             positional = []
 
             i = 0
+
             while i < len(tokens):
+
                 tok = tokens[i]
 
-                # -------- METHOD --------
+                # ----------------------------------------------
+                # METHOD
+                # ----------------------------------------------
                 if tok == "--method":
+
                     if i + 1 >= len(tokens):
-                        print("Error: --method requires a value (multitaper or fft)")
+                        print("Error: --method requires a value " "(multitaper or fft)")
                         return
+
                     method = tokens[i + 1].lower()
+
                     if method not in ("multitaper", "fft"):
-                        print("Error: method must be 'multitaper' or 'fft'")
+                        print("Error: method must be " "'multitaper' or 'fft'")
                         return
+
                     i += 2
 
-                # -------- NW --------
+                # ----------------------------------------------
+                # NW
+                # ----------------------------------------------
                 elif tok == "--nw":
+
                     if i + 1 >= len(tokens):
                         print("Error: --nw requires a numeric value")
                         return
+
                     try:
                         nw = float(tokens[i + 1])
+
                     except ValueError:
                         print("Error: NW must be numeric")
                         return
+
                     i += 2
 
-                # -------- POSITIONAL --------
+                # ----------------------------------------------
+                # DATES
+                # Boolean flag: does not consume another token
+                # ----------------------------------------------
+                elif tok == "--dates":
+                    dates = True
+                    i += 1
+
+                # ----------------------------------------------
+                # POSITIONAL ARGUMENT
+                # ----------------------------------------------
                 else:
+
                     positional.append(tok)
                     i += 1
 
-            # -------- Handle clip (negative last positional) --------
+            # --------------------------------------------------
+            # Handle clip
+            #
+            # If the last positional value is negative,
+            # interpret it as the dB clipping level.
+            # --------------------------------------------------
             if positional:
+
                 try:
+
                     if float(positional[-1]) < 0:
                         clip = float(positional[-1])
-                        positional = positional[:-1]
+
+                        positional = (positional[:-1])
+
                 except ValueError:
                     pass
 
-            # -------- win / overlap --------
+            # --------------------------------------------------
+            # Window / overlap
+            # --------------------------------------------------
             if len(positional) >= 1:
                 win = float(positional[0])
+
             if len(positional) >= 2:
                 overlap = float(positional[1])
+
             if len(positional) > 2:
                 print("Error: Too many positional arguments.")
                 return
-            print(idx, win, overlap, clip, method, nw)
-            # -------- Final Call --------
-            self.plot_proj._plot_spectrogram(
-                idx,
-                win,
-                overlap,
-                clip=clip,
-                method=method,
-                nw=nw)
+
+            print(idx, win, overlap, clip, method, nw, dates)
+
+            # --------------------------------------------------
+            # Final call
+            # --------------------------------------------------
+            self.plot_proj._plot_spectrogram(idx, win, overlap, clip=clip, method=method,
+                nw=nw, dates=dates)
+
+        except ValueError as exc:
+
+            print(f"Error parsing spectrogram arguments: {exc}")
 
         except ValueError as e:
 
@@ -1679,6 +1729,7 @@ class PlotCommandPrompt:
                     clip         : (Optional) Minimum Power dB (e.g., -100) accepted (default: Minimum Power of the full spectrogram)
                     method       : (Optional) Multitaper or fft using a single 5% cosine taper (default Multitaper low bias)
                     nw           : (Optional) Time bandwidth, default (no set) low bias activation
+                    dates        : (Optional) Time axis in dates UTC.
 
                 Notes:
                     - Spectrogram shows how power varies with time and frequency.
@@ -1689,7 +1740,7 @@ class PlotCommandPrompt:
                     >> spec 0 3.0 75
                     >> spec 0 5.0 50 -120
                     >> spectrogram 0 5.0 50 --method fft
-                    >> spectrogram 0 5.0 50 --method multitaper --nw 3.5
+                    >> spectrogram 0 5.0 50 --method multitaper --nw 3.5 --dates
         """,
 
             "smap": """

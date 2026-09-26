@@ -1891,7 +1891,7 @@ def _specplot():
             -s, --smooth       [OPTIONAL] if smooth the Time-Frequency plane (Slower way but more pretty)
             -c, --clip         [OPTIONAL] Clipping level in dB for plotting the time-Frequency plane (default -120 dB)
             -v, --vmax_db      [OPTIONAL] Maximum displayed power in dB (default 0 dB)
-            -a, --axis_type    [OPTIONAL] Spectrum axis type (Default: loglog, option xlog, ylog)
+            -a, --axis_type    [OPTIONAL] Spectrum axis type (Default: loglog, option xlog, ylog & linlin)
                 --split        [OPTIONAL] if split the plot into low/high frequency panels
                 --cmap         [OPTIONAL] Matplotlib colormap (Default: rainbow).     
                 --save_path    [OPTIONAL] Output folder path to automatically save the figure
@@ -1927,7 +1927,7 @@ def _specplot():
         required=False, help="Matplotlib colormap. Default: rainbow")
 
     parser.add_argument("--axis_type", "-a", type=str, default="loglog",
-        required=False, help="Spectrum axis type (Default: loglog, option xlog, ylog)")
+        required=False, help="Spectrum axis type (Default: loglog, option xlog, ylog & linlin)")
 
     parser.add_argument("-s", "--smooth", help="if smooth the Time-Frequency plane", action="store_true")
 

@@ -1159,12 +1159,12 @@ class PlotProj:
         self.fig_spec.canvas.mpl_disconnect(cid)
         plt.show(block=False)  # non-blocking, return immediately to run()
 
-
     def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0, clip=None,
-                      method="multitaper", nw=None):
+                          method="multitaper", nw=None, dates=False):
 
         self._exit = False
         trace = self.displayed_traces[idx]
+
         try:
             stime = self.utc_start
         except:
@@ -1176,59 +1176,85 @@ class PlotProj:
             etime = trace.stats.endtime
 
         print("Spectrogram window: ", stime, etime)
+
         trace.trim(starttime=stime, endtime=etime)
-        print(idx, int(win_sec * trace.stats.sampling_rate), (100 - overlap_percent) * 1E-2, method, nw)
-        spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(
-            trace.data,
-            win=int(win_sec * trace.stats.sampling_rate),
-            dt=trace.stats.delta,
-            linf=0,
-            lsup=int(trace.stats.sampling_rate // 2),
-            step_percentage=(100 - overlap_percent) * 1E-2,
-            method=method,
-            nw=nw)
+
+        print(idx, int(win_sec * trace.stats.sampling_rate), (100 - overlap_percent) * 1E-2,
+            method, nw)
+
+        spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(trace.data, win=int(win_sec * trace.stats.sampling_rate),
+            dt=trace.stats.delta, linf=0, lsup=int(trace.stats.sampling_rate // 2),
+            step_percentage=(100 - overlap_percent) * 1E-2, method=method, nw=nw)
 
         # --- Set up GridSpec with reserved space for colorbar ---
         self.fig_spec = plt.figure(figsize=(10, 5))
+
         gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
-                               hspace=0.02, wspace=0.02)
+            hspace=0.02, wspace=0.02)
 
         ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
         ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
         ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
+
         formatter = ScalarFormatter(useMathText=True)
-        formatter.set_powerlimits((0, 0))  # Forces scientific notation always
+        formatter.set_powerlimits((0, 0))
         ax_waveform.yaxis.set_major_formatter(formatter)
 
+        # ------------------------------------------------------
+        # X coordinates
+        # ------------------------------------------------------
+        if dates:
+
+            import matplotlib.dates as mdates
+
+            start_num = mdates.date2num(trace.stats.starttime.datetime)
+            waveform_x = (start_num + trace.times() / 86400.0)
+            spec_x = (start_num + np.asarray(t) / 86400.0)
+            locator = mdates.AutoDateLocator()
+            ax_spec.xaxis.set_major_locator(locator)
+            ax_spec.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+
+            ax_spec.set_xlabel("Date / Time [UTC]")
+
+        else:
+
+            waveform_x = trace.times()
+            spec_x = t
+            ax_spec.set_xlabel("Time [s]")
+
         # --- Plot waveform ---
-        ax_waveform.plot(trace.times(), trace.data, linewidth=0.75)
+        ax_waveform.plot(waveform_x, trace.data, linewidth=0.75)
         ax_waveform.set_title(f"Spectrogram for {trace.id}")
         ax_waveform.tick_params(labelbottom=False)
+
+        # ------------------------------------------------------
+        # Convert spectrum to relative dB
+        # ------------------------------------------------------
         spectrum = 10 * np.log10(spectrum / np.max(spectrum))
 
-        # Computer water_level
-        if clip:
-            spectrum = np.clip(spectrum, a_min=clip, a_max=0)
+        # Compute water level
+        if clip is not None:
+            spectrum = np.clip(spectrum,a_min=clip, a_max=0)
 
         # --- Plot spectrogram ---
-        pcm = ax_spec.pcolormesh(t, f, spectrum, shading='auto', cmap='rainbow',
-                                 vmin=np.min(spectrum), vmax=0)
+        pcm = ax_spec.pcolormesh(spec_x, f, spectrum,
+            shading="auto", cmap="rainbow", vmin=np.min(spectrum), vmax=0)
 
-        ax_waveform.set_ylabel('Amplitude')
-        ax_spec.set_ylabel('Frequency [Hz]')
-        ax_spec.set_xlabel('Time [s]')
+        ax_waveform.set_ylabel("Amplitude")
+        ax_spec.set_ylabel("Frequency [Hz]")
 
         # --- Add colorbar without shifting axes ---
-        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
+        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation="vertical")
         cbar.set_label("Power [dB]")
         cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
 
         def on_close(event):
-            pass  # nothing needed, just let it close
+            pass
 
         self.fig_spec.canvas.mpl_connect("close_event", on_close)
         self.fig_spec.canvas.mpl_disconnect(cid)
-        plt.show(block=False)  # non-blocking, return immediately to run()
+
+        plt.show(block=False)
 
     def _plot_wavelet(self, idx, wavelet_type, param, **kwargs):
         self._exit = False
