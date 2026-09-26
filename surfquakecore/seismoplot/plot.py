@@ -1258,6 +1258,7 @@ class PlotProj:
 
     def _plot_wavelet(self, idx, wavelet_type, param, **kwargs):
         self._exit = False
+
         if wavelet_type == "cm":
             wavelet_type = "Complex Morlet"
         elif wavelet_type == "mh":
@@ -1267,9 +1268,11 @@ class PlotProj:
 
         param = float(param)
         tr = self.displayed_traces[idx]
+
         f_min = kwargs.pop("fmin", 0.5)
-        f_max = kwargs.pop("fmax", tr.stats.sampling_rate//2)
+        f_max = kwargs.pop("fmax", tr.stats.sampling_rate // 2)
         clip = kwargs.pop("clip", None)
+        dates = kwargs.pop("dates", False)
 
         try:
             stime = self.utc_start
@@ -1286,61 +1289,117 @@ class PlotProj:
         tr.trim(starttime=stime, endtime=etime)
 
         cw = ConvolveWaveletScipy(tr)
-        tt = int(tr.stats.sampling_rate/f_min)
-        cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=f_min, fmax=f_max, nf=80,
-                         use_wavelet=wavelet_type, m=param, decimate=False)
+
+        tt = int(tr.stats.sampling_rate / f_min)
+
+        cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=f_min, fmax=f_max,
+            nf=80, use_wavelet=wavelet_type, m=param, decimate=False)
+
         scalogram2 = cw.scalogram_in_dbs()
-        # Computer water_level
-        if clip:
+
+        # Compute water level
+        if clip is not None:
             scalogram2 = np.clip(scalogram2, a_min=clip, a_max=0)
 
         t = np.linspace(0, tr.stats.delta * scalogram2.shape[1], scalogram2.shape[1])
+
         f = np.logspace(np.log10(f_min), np.log10(f_max), scalogram2.shape[0])
-        x, y = np.meshgrid(t, f)
 
         c_f = param / 2 * math.pi
+
         ff = np.linspace(f_min, f_max, scalogram2.shape[0])
-        pred = (math.sqrt(2) * c_f / ff) - (math.sqrt(2) * c_f / f_max)
+
+        pred = ((math.sqrt(2) * c_f / ff) - (math.sqrt(2) * c_f / f_max))
 
         pred_comp = t[len(t) - 1] - pred
+
+        # ------------------------------------------------------
+        # X coordinates
+        #
+        # Matplotlib dates are expressed in days, therefore
+        # seconds are converted using / 86400.
+        # ------------------------------------------------------
+        if dates:
+
+            import matplotlib.dates as mdates
+
+            start_num = mdates.date2num(tr.stats.starttime.datetime)
+            waveform_x = (start_num + tr.times() / 86400.0)
+            spec_x = (start_num + t / 86400.0)
+
+            # pred and pred_comp are also time coordinates
+            pred_x = (start_num + pred / 86400.0)
+            pred_comp_x = (start_num + pred_comp / 86400.0)
+
+        else:
+
+            waveform_x = tr.times()
+            spec_x = t
+
+            pred_x = pred
+            pred_comp_x = pred_comp
+
+        # Mesh for the scalogram
+        x, y = np.meshgrid(spec_x, f)
+
         # --- Set up GridSpec with reserved space for colorbar ---
         self.fig_spec = plt.figure(figsize=(10, 5))
-        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1],
-                               hspace=0.02, wspace=0.02)
+
+        gs = gridspec.GridSpec(2,2, width_ratios=[1, 0.03], height_ratios=[1, 1], hspace=0.02,
+            wspace=0.02)
 
         ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
         ax_spec = self.fig_spec.add_subplot(gs[1, 0], sharex=ax_waveform)
         ax_cbar = self.fig_spec.add_subplot(gs[1, 1])
-
         formatter = ScalarFormatter(useMathText=True)
-        formatter.set_powerlimits((0, 0))  # Forces scientific notation always
+        formatter.set_powerlimits((0, 0))
         ax_waveform.yaxis.set_major_formatter(formatter)
 
         # --- Plot waveform ---
-        ax_waveform.plot(tr.times(), tr.data, linewidth=0.75)
+        ax_waveform.plot(waveform_x, tr.data, linewidth=0.75)
+
         ax_waveform.set_title(f"CWT Scalogram for {tr.id}")
+
         ax_waveform.tick_params(labelbottom=False)
 
         # --- Plot scalogram ---
-        pcm = ax_spec.pcolormesh(x, y, scalogram2, shading='auto', cmap='rainbow',
+        pcm = ax_spec.pcolormesh(x, y, scalogram2, shading="auto", cmap="rainbow",
                                  vmin=np.min(scalogram2), vmax=0)
-        ax_spec.fill_between(pred, ff, 0, color="black", edgecolor="red", alpha=0.3)
-        ax_spec.fill_between(pred_comp, ff, 0, color="black", edgecolor="red", alpha=0.3)
-        ax_waveform.set_ylabel('Amplitude')
+        ax_spec.fill_between(pred_x, ff,0, color="black", edgecolor="red", alpha=0.3)
+        ax_spec.fill_between(pred_comp_x, ff,0, color="black", edgecolor="red", alpha=0.3)
+
+        ax_waveform.set_ylabel("Amplitude")
         ax_spec.set_ylim([np.min(f), np.max(f)])
-        ax_spec.set_ylabel('Frequency [Hz]')
-        ax_spec.set_xlabel('Time [s]')
+        ax_spec.set_ylabel("Frequency [Hz]")
+
+        # ------------------------------------------------------
+        # X axis
+        # ------------------------------------------------------
+        if dates:
+
+            locator = mdates.AutoDateLocator()
+            ax_spec.xaxis.set_major_locator(locator)
+            ax_spec.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+            ax_spec.set_xlabel("Date / Time [UTC]")
+
+        else:
+
+            ax_spec.set_xlabel("Time [s]")
 
         # --- Add colorbar without shifting axes ---
-        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation='vertical')
+        cbar = self.fig_spec.colorbar(pcm, cax=ax_cbar, orientation="vertical")
+
         cbar.set_label("Power [dB]")
+
         cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
+
         def on_close(event):
             pass  # nothing needed, just let it close
 
         self.fig_spec.canvas.mpl_connect("close_event", on_close)
         self.fig_spec.canvas.mpl_disconnect(cid)
-        plt.show(block=False)  # non-blocking, return immediately to run()
+
+        plt.show(block=False)
 
 
     def _plot_stack(self, tr:Trace):

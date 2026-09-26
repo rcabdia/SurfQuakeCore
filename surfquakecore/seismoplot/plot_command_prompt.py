@@ -784,36 +784,60 @@ class PlotCommandPrompt:
         'param' is the main wavelet parameter; recommended value is 6 for Fourier frequency alignment.
 
         Usage:
-            cwt <index> <wavelet> <param> [<fmin> <fmax>] [<clip> (negative value)]
+            cwt <index> <wavelet> <param> [<fmin> <fmax>] [<clip> (negative value)] [--dates]
         """
+
         if len(args) < 4:
-            print("Usage: cwt <index> <wavelet> <param> [<fmin> <fmax>] [<clip> (negative value)]")
+            print(
+                "Usage: cwt <index> <wavelet> <param> "
+                "[<fmin> <fmax>] [<clip> (negative value)] [--dates]"
+            )
             return
 
         try:
+
+            # Detect optional dates flag
+            dates = "--dates" in args
+
+            if dates:
+                args = [arg for arg in args if arg != "--dates"]
+
             idx = int(args[1])
             wavelet = args[2]
             param = float(args[3])
+
             clip = None
             fmin = fmax = None
 
             # Detect clip value (if last arg is negative float)
             if len(args) >= 5 and float(args[-1]) < 0:
+
                 clip = float(args[-1])
                 extra_args = args[4:-1]
+
             else:
+
                 extra_args = args[4:]
 
             # Parse fmin/fmax if present
             if len(extra_args) == 2:
+
                 fmin = float(extra_args[0])
                 fmax = float(extra_args[1])
+
             elif len(extra_args) != 0:
-                print("Error: Must provide both fmin and fmax, or neither.")
+
+                print(
+                    "Error: Must provide both fmin and fmax, or neither."
+                )
                 return
 
             # Call with only the parameters that are not None
-            kwargs = {"clip": clip}
+            kwargs = {
+                "clip": clip,
+                "dates": dates
+            }
+
             if fmin is not None and fmax is not None:
                 kwargs["fmin"] = fmin
                 kwargs["fmax"] = fmax
@@ -821,7 +845,11 @@ class PlotCommandPrompt:
             self.plot_proj._plot_wavelet(idx, wavelet, param, **kwargs)
 
         except ValueError:
-            print("Error: index, param, fmin, fmax, and clip must be numeric where applicable.")
+
+            print(
+                "Error: index, param, fmin, fmax, and clip "
+                "must be numeric where applicable."
+            )
 
     def _cmd_smap(self, args):
         """
@@ -1710,11 +1738,12 @@ class PlotCommandPrompt:
                     fmin       : Optional minimum frequency band to display (Hz)
                     fmax       : Optional maximum frequency band to display (Hz)
                     clip       : (Optional) Minimum Power dB (e.g., -100) accepted (default: Minimum Power of the full scalogram)
+                    dates      : (Optional) if time axis in Dates UTC
 
                 Example:
                     >> cwt 0 cm 6
                     >> cwt 2 mh 6 0.5 10
-                    >> cwt 2 pa 6 0.5 10 -120
+                    >> cwt 2 pa 6 0.5 10 -120 --dates
         """,
 
             "spectrogram": """
