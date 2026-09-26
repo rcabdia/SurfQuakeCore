@@ -32,30 +32,62 @@ class SpectrumTool:
         data = data - np.mean(data)
 
         # Pad data to next power of 2
-        N_orig = len(data)
-        D = 2 ** math.ceil(math.log2(N_orig))
-        data = np.pad(data, (0, D - N_orig), mode='constant')
         N = len(data)
-
-        # Apply Hann taper (window)
-        taper = np.hanning(N)
-        data_tapered = data * taper
+        nfft = 2 ** math.ceil(math.log2(N))
+        #data = np.pad(data, (0, D - N_orig), mode='constant')
 
         if mode == "multitaper":
+
             # Compute multitaper PSD
-            freq, psd, _ = tsa.multi_taper_psd(data, 1 / delta, adaptive=True, jackknife=False, low_bias=True)
+            freq, psd, _ = tsa.multi_taper_psd(data, 1 / delta, adaptive=True, jackknife=False, low_bias=True, NFFT=nfft)
             df = freq[1] - freq[0]  # Frequency bin width
 
             # Convert PSD to amplitude spectrum
             amplitude = np.sqrt(psd * df)
-        else:
 
+        else:
             # Compute FFT amplitude spectrum for comparison
-            amplitude = (2.0 / N) * np.abs(np.fft.rfft(data_tapered))
-            amplitude[0] = amplitude[0] / 2
-            if N % 2 == 0:
-                amplitude[-1] = amplitude[-1] / 2
-            freq = np.fft.rfftfreq(N, d=delta)
+
+            # Taper length must also be the REAL window
+            # ----------------------------------------------------
+            # Taper for conventional FFT
+            # 5% cosine taper on EACH side
+            # ----------------------------------------------------
+
+            taper = np.ones(N)
+            edge = int(round(0.05 * N))
+
+            if edge > 1:
+
+                ramp = 0.5 * (1 - np.cos(np.linspace(0, np.pi, edge)))
+
+                # 0 -> 1
+                taper[:edge] = ramp
+
+                # 1 -> 0
+                taper[-edge:] = ramp[::-1]
+
+            elif edge == 1:
+
+                taper[0] = 0.0
+                taper[-1] = 0.0
+
+            data_tapered = data * taper
+
+            # FFT using zero-padding to nfft
+            fft_vals = np.fft.rfft(data_tapered, n=nfft)
+
+            # One-sided amplitude spectrum
+            amplitude = (2.0 / N) * np.abs(fft_vals)
+
+            # DC must not be doubled
+            amplitude[0] /= 2.0
+
+            # Nyquist must not be doubled
+            if nfft % 2 == 0:
+                amplitude[-1] /= 2.0
+
+            freq = np.fft.rfftfreq(nfft, d=delta)
 
         return amplitude, freq
 

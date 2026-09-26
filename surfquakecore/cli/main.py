@@ -1887,9 +1887,15 @@ def _specplot():
         
         Key Arguments:
             -f, --file         [REQUIRED] Path to waveform files (.sp, .spec or .cwt)
-            -c, --clip         [OPTIONAL] Clipping level in dB for plotting the time-Frequency plane (default -120)
-            -d, --dates         [OPTIONAL] if plot dates at x-asis
-                --save_path    [OPTIONAL] Output file path to automatically save the figure
+            -d, --dates        [OPTIONAL] if plot dates at x-axis, otherwise in seconds
+            -s, --smooth       [OPTIONAL] if smooth the Time-Frequency plane (Slower way but more pretty)
+            -c, --clip         [OPTIONAL] Clipping level in dB for plotting the time-Frequency plane (default -120 dB)
+            -v, --vmax_db      [OPTIONAL] Maximum displayed power in dB (default 0 dB)
+            -a, --axis_type    [OPTIONAL] Spectrum axis type (Default: loglog, option xlog, ylog)
+                --split        [OPTIONAL] if split the plot into low/high frequency panels
+                --cmap         [OPTIONAL] Matplotlib colormap (Default: rainbow).     
+                --save_path    [OPTIONAL] Output folder path to automatically save the figure
+                --extension    [OPTIONAL] file extension (Default: format png)
                 
         Examples:
             Plot a saved spectrum:
@@ -1899,19 +1905,19 @@ def _specplot():
                 surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0 --split
         
             Save plot to a file:
-                surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.spec --save_path output.png
+                surfquake specplot --f "./spectral/WM.OBS01..SHZ.D.2015.260.cwt" -d --split 
+                --smooth --save_path "./spectral/" --cmap "gnuplot2"
         
         """
     )
 
     parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
 
-
     parser.add_argument("--split", nargs="?", const=1.0, default=None, type=float,
         help=("Split the plot into low/high frequency panels. "
             "If used without a value, the default cutoff is 1 Hz. ""Example: --split or --split 0.5"))
 
-    parser.add_argument("--vmax_db", type=float, default=None, required=False,
+    parser.add_argument("-v", "--vmax_db", type=float, default=None, required=False,
         help="Maximum displayed power in dB. Default:  0 dB in Normalize Spec ")
 
     parser.add_argument("--clip", "-c", type=float, required=False, default=None,
@@ -1920,11 +1926,17 @@ def _specplot():
     parser.add_argument("--cmap", type=str, default="rainbow",
         required=False, help="Matplotlib colormap. Default: rainbow")
 
+    parser.add_argument("--axis_type", "-a", type=str, default="loglog",
+        required=False, help="Spectrum axis type (Default: loglog, option xlog, ylog)")
+
     parser.add_argument("-s", "--smooth", help="if smooth the Time-Frequency plane", action="store_true")
 
-    parser.add_argument("--save_path", help="Optional path to save the figure (e.g., output.png)")
+    parser.add_argument("--save_path", help="Optional folder path to save the figure")
 
     parser.add_argument("-d", "--dates", help="if plot dates at x-asis", action="store_true")
+
+    parser.add_argument( "--extension", type=str, default="png", required=False,
+                        help="file format (default png)")
 
     args = parser.parse_args()
     filepath = args.file
@@ -1934,17 +1946,19 @@ def _specplot():
 
     if ext == ".sp":
         obj = TraceSpectrumResult.from_pickle(filepath)
-        obj.plot_spectrum(save_path=args.save_path)
+        obj.plot_spectrum(save_path=args.save_path, axis_type=args.axis_type, type_spec="sp", extension=args.extension)
 
     elif ext == ".spec":
         obj = TraceSpectrogramResult.from_pickle(filepath)
         obj.plot_spectrogram(save_path=args.save_path, clip=args.clip, plot_date=args.dates,
-                            split=args.split, vmax_db=args.vmax_db,  cmap=args.cmap, smooth=args.smooth)
+                            split=args.split, vmax_db=args.vmax_db,  cmap=args.cmap, smooth=args.smooth,
+                             extension=args.extension, type_spec="spec")
 
     elif ext == ".cwt":
         obj = TraceCWTResult.from_pickle(filepath)
-        obj.plot_cwt(save_path=args.save_path, clip=args.clip, plot_date=args.verbose,
-                     split=args.split, vmax_db=args.vmax_db, cmap=args.cmap, smooth=args.smooth)
+        obj.plot_cwt(save_path=args.save_path, clip=args.clip, plot_date=args.dates,
+                     split=args.split, vmax_db=args.vmax_db, cmap=args.cmap, smooth=args.smooth,
+                     extension=args.extension, type_spec="cwt")
     else:
         raise ValueError(
             f"Unsupported file extension '{ext}'. "
@@ -2339,7 +2353,7 @@ def _ppsdPlot():
         surfquake ppsdPlot -d "./output/test.pkl" --spp 1 --all -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
         surfquake ppsdPlot -d "./output/test.pkl" -st "OBS01,OBS02" -m heatmap --mean --nhnm --nlnm --earthquakes --min_mag 1.0 --max_mag 3.0
         surfquake ppsdPlot -d "./output/test.pkl"  -m variation --variation Diurnal
-        surfquake ppsdPlot -d "./output/test.pkl" comparison --mean --nhnm --nlnm
+        surfquake ppsdPlot -d "./output/test.pkl" -m comparison --mean --nhnm --nlnm
         """
     )
 

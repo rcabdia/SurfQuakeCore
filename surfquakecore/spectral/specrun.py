@@ -27,7 +27,7 @@ class TraceSpectrumResult:
                                                                  mode=method)
         self.method = method
 
-    def plot_spectrum(self, axis_type="loglog", save_path: str = None):
+    def plot_spectrum(self, axis_type="loglog", save_path: str = None, type_spec: str = "sp", extension: str = "png"):
 
         import matplotlib.pyplot as plt
         import matplotlib as mplt
@@ -56,8 +56,12 @@ class TraceSpectrumResult:
         plt.tight_layout()
 
         if save_path:
-            self.fig_spec.savefig(save_path, dpi=300)
-            plt.close(self.fig_spec)
+            starttime = self.trace.stats.starttime
+            textstr = str(starttime.julday) + "_" + str(starttime.year) + "_" + starttime.strftime("%Y_%m_%d_%H_%M_%S")
+            file_name = self.trace.id + "." + textstr + "." + type_spec + "." + extension
+            save_path = os.path.join(save_path, file_name)
+            fig.savefig(save_path, dpi=300)
+            plt.close(fig)
         else:
             plt.show()
 
@@ -135,7 +139,8 @@ class TraceSpectrogramResult:
                                              method, nw)
 
     def plot_spectrogram(self, save_path: str = None, clip: float = None, plot_date: bool = False, split=None,
-            vmax_db: float = None, cmap: str = "rainbow", smooth: bool = False):
+            vmax_db: float = None, cmap: str = "rainbow",
+            smooth: bool = False, extension="png", type_spec: str = ""):
 
         import platform
         import numpy as np
@@ -286,7 +291,6 @@ class TraceSpectrogramResult:
             if smooth:
                 # Levels used only by contourf
 
-
                 pcm = ax_spec.contourf(spec_x, freq, spectrogram, levels=levels,
                     cmap=cmap, vmin=vmin_db, vmax=vmax_db, extend="both")
 
@@ -362,8 +366,7 @@ class TraceSpectrogramResult:
             # High-frequency representation remains in Hz
             # --------------------------------------------------
             freq_high = freq[high_mask]
-            spec_high = spectrogram[
-                        high_mask, :]
+            spec_high = spectrogram[high_mask, :]
 
             # --------------------------------------------------
             # Low-frequency representation becomes period
@@ -465,28 +468,13 @@ class TraceSpectrogramResult:
             # ==================================================
             if smooth:
 
-                pcm = ax_high.contourf(
-                    spec_x,
-                    freq_high,
-                    spec_high,
-                    levels=levels,
-                    cmap=cmap,
-                    vmin=vmin_db,
-                    vmax=vmax_db,
-                    extend="both"
-                )
+                pcm = ax_high.contourf(spec_x, freq_high, spec_high, levels=levels, cmap=cmap, vmin=vmin_db,
+                    vmax=vmax_db, extend="both")
 
             else:
 
-                pcm = ax_high.pcolormesh(
-                    spec_x,
-                    freq_high,
-                    spec_high,
-                    shading="auto",
-                    cmap=cmap,
-                    vmin=vmin_db,
-                    vmax=vmax_db
-                )
+                pcm = ax_high.pcolormesh(spec_x, freq_high, spec_high, shading="auto", cmap=cmap,
+                    vmin=vmin_db, vmax=vmax_db)
 
             ax_high.set_ylabel("Frequency [Hz]")
 
@@ -499,28 +487,13 @@ class TraceSpectrogramResult:
             # ==================================================
             if smooth:
 
-                ax_low.contourf(
-                    spec_x,
-                    period_low,
-                    spec_low,
-                    levels=levels,
-                    cmap=cmap,
-                    vmin=vmin_db,
-                    vmax=vmax_db,
-                    extend="both"
-                )
+                ax_low.contourf( spec_x, period_low, spec_low, levels=levels, cmap=cmap,
+                    vmin=vmin_db, vmax=vmax_db, extend="both")
 
             else:
 
-                ax_low.pcolormesh(
-                    spec_x,
-                    period_low,
-                    spec_low,
-                    shading="auto",
-                    cmap=cmap,
-                    vmin=vmin_db,
-                    vmax=vmax_db
-                )
+                ax_low.pcolormesh(spec_x, period_low, spec_low, shading="auto", cmap=cmap,
+                                  vmin=vmin_db, vmax=vmax_db)
 
             ax_low.set_yscale("log")
 
@@ -599,14 +572,9 @@ class TraceSpectrogramResult:
         # ======================================================
         # Trace start-time annotation
         # ======================================================
-        date_str = starttime.strftime(
-            "%Y-%m-%d %H:%M:%S")
+        date_str = starttime.strftime("%Y-%m-%d %H:%M:%S")
 
-        textstr = (
-            f"JD {starttime.julday} / "
-            f"{starttime.year}\n"
-            f"{date_str}"
-        )
+        textstr = f"JD {starttime.julday} / "f"{starttime.year}\n" f"{date_str}"
 
         annotation_axis.text(0.01, 0.95, textstr, transform=annotation_axis.transAxes,
             fontsize=8, va="top", ha="left", bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow",
@@ -619,8 +587,12 @@ class TraceSpectrogramResult:
         # ======================================================
         if save_path:
 
-            self.fig_spec.savefig(save_path, dpi=300)
+            if os.path.isdir(save_path):
+                textstr = str(starttime.julday)+"_"+str(starttime.year)+"_"+starttime.strftime("%Y_%m_%d_%H_%M_%S")
+                file_name = self.trace.id+"."+textstr+"."+type_spec+"."+extension
+                save_path = os.path.join(save_path, file_name)
 
+            self.fig_spec.savefig(save_path, dpi=300)
             plt.close(self.fig_spec)
 
         else:
