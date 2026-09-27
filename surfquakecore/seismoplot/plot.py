@@ -72,6 +72,8 @@ class PlotProj:
             "show_crosshair": False,
             "show_help": True,
             "plot_output_path": None,  # <-- NEW: folder to auto-save figures; None = disabled
+            "show_plot": True,  # <-- NEW: set False for headless/batch saving
+            "format_save": "png",
             "backend": "TkAgg"}
 
 
@@ -165,18 +167,25 @@ class PlotProj:
             return float('inf'), float('inf')
 
     def plot(self, page=0):
+        backend = "Agg" if not self.plot_config.get("show_plot", True) else self.plot_config["backend"]
+        mplt.use(backend)
 
-        mplt.use(self.plot_config["backend"])
-
-        self.current_page = page
         plot_type = self.plot_config.get("plot_type", "standard")
 
+        if plot_type == "standard" and not self.plot_config.get("show_plot", True):
+            # Batch mode: save every page automatically, no interaction needed
+            traces_per_fig = self.plot_config["traces_per_fig"]
+            n_pages = -(-len(self.trace_list) // traces_per_fig)  # ceil division
+            for p in range(n_pages):
+                self.current_page = p
+                self._plot_standard_traces(page=p)
+            return self.trace_list
+
+        self.current_page = page
         if plot_type == "record":
             self._plot_record_section()
-
         elif plot_type == "overlay":
             self._plot_overlay_traces()
-
         elif plot_type == "standard":
             self._plot_standard_traces(page=page)
 
@@ -318,13 +327,18 @@ class PlotProj:
         plt.ion()
         plt.tight_layout()
 
-        # --- Auto-save figure (Approach B: project_page_timestamp naming) ---
+        # --- Auto-save figure---
         out_dir = self.plot_config.get("plot_output_path")
+        format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
-
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"sqProject_page{page:03d}_{timestamp}.png"
+            base_name = f"sqProject_page{page:03d}_{timestamp}"
+            filename = f"{base_name}.{format_save}"
             out_file = os.path.join(out_dir, filename)
+            counter = 1
+            while os.path.exists(out_file):
+                out_file = os.path.join(out_dir, f"{base_name}_{counter}.{format_save}")
+                counter += 1
             try:
                 self.fig.savefig(out_file, dpi=150)
                 print(f"[INFO] Figure saved to {out_file}")
@@ -336,6 +350,11 @@ class PlotProj:
         if self.plot_config.get("auto_load_pick_file", False):
             pick_file = self.plot_config.get("pick_output_file", "./picks.csv")
             self.import_nlloc_obs(pick_file)
+
+        ### Automatic saving plot
+        if not self.plot_config.get("show_plot", True):
+            plt.close(self.fig)
+            return
 
         if self.enable_command_prompt:
             plt.show(block=False)
@@ -461,15 +480,20 @@ class PlotProj:
 
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
+        format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"sqProject_record_page{self.current_page:03d}_{timestamp}.png"
+            filename = f"sqProject_record_page{self.current_page:03d}_{timestamp}.{format_save}"
             out_file = os.path.join(out_dir, filename)
             try:
                 self.fig.savefig(out_file, dpi=150)
                 print(f"[INFO] Figure saved to {out_file}")
             except Exception as e:
                 print(f"[ERROR] Failed to save figure: {e}")
+
+        if not self.plot_config.get("show_plot", True):
+            plt.close(self.fig)
+            return
 
         if self.enable_command_prompt:
             plt.show(block=False)
@@ -517,15 +541,20 @@ class PlotProj:
 
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
+        format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"sqProject_overlay_page{self.current_page:03d}_{timestamp}.png"
+            filename = f"sqProject_overlay_page{self.current_page:03d}_{timestamp}.{format_save}"
             out_file = os.path.join(out_dir, filename)
             try:
                 fig.savefig(out_file, dpi=150)
                 print(f"[INFO] Figure saved to {out_file}")
             except Exception as e:
                 print(f"[ERROR] Failed to save figure: {e}")
+
+        if not self.plot_config.get("show_plot", True):
+            plt.close(fig)
+            return
 
         plt.show(block=True)
 
