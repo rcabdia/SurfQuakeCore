@@ -14,7 +14,7 @@ import math
 import os
 import time
 from collections import defaultdict
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
@@ -71,6 +71,7 @@ class PlotProj:
             "auto_load_pick_file": False,
             "show_crosshair": False,
             "show_help": True,
+            "plot_output_path": None,  # <-- NEW: folder to auto-save figures; None = disabled
             "backend": "TkAgg"}
 
 
@@ -317,6 +318,21 @@ class PlotProj:
         plt.ion()
         plt.tight_layout()
 
+        # --- Auto-save figure (Approach B: project_page_timestamp naming) ---
+        out_dir = self.plot_config.get("plot_output_path")
+        if out_dir and os.path.isdir(out_dir):
+
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            filename = f"sqProject_page{page:03d}_{timestamp}.png"
+            out_file = os.path.join(out_dir, filename)
+            try:
+                self.fig.savefig(out_file, dpi=150)
+                print(f"[INFO] Figure saved to {out_file}")
+            except Exception as e:
+                print(f"[ERROR] Failed to save figure: {e}")
+
+        ####
+
         if self.plot_config.get("auto_load_pick_file", False):
             pick_file = self.plot_config.get("pick_output_file", "./picks.csv")
             self.import_nlloc_obs(pick_file)
@@ -443,6 +459,18 @@ class PlotProj:
         if cfg["show_legend"]:
             ax.legend(fontsize=6)
 
+        # --- Auto-save figure ---
+        out_dir = self.plot_config.get("plot_output_path")
+        if out_dir and os.path.isdir(out_dir):
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            filename = f"sqProject_record_page{self.current_page:03d}_{timestamp}.png"
+            out_file = os.path.join(out_dir, filename)
+            try:
+                self.fig.savefig(out_file, dpi=150)
+                print(f"[INFO] Figure saved to {out_file}")
+            except Exception as e:
+                print(f"[ERROR] Failed to save figure: {e}")
+
         if self.enable_command_prompt:
             plt.show(block=False)
             self.fig.canvas.draw_idle()
@@ -486,6 +514,19 @@ class PlotProj:
             ax.legend(fontsize=6)
 
         plt.tight_layout()
+
+        # --- Auto-save figure ---
+        out_dir = self.plot_config.get("plot_output_path")
+        if out_dir and os.path.isdir(out_dir):
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            filename = f"sqProject_overlay_page{self.current_page:03d}_{timestamp}.png"
+            out_file = os.path.join(out_dir, filename)
+            try:
+                fig.savefig(out_file, dpi=150)
+                print(f"[INFO] Figure saved to {out_file}")
+            except Exception as e:
+                print(f"[ERROR] Failed to save figure: {e}")
+
         plt.show(block=True)
 
     def _setup_pick_interaction(self):
