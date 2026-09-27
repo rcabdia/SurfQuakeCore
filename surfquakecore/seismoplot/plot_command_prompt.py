@@ -38,6 +38,8 @@ class PlotCommandPrompt:
             "n": self._cmd_next,
             "b": self._cmd_prev,
             "filter": self._cmd_filter,
+            "rmean": self._cmd_rmean,
+            "taper": self._cmd_taper,
             "spectrogram": self._cmd_spectrogram,
             "spec": self._cmd_spectrogram,
             "spectrum": self._cmd_spectrum,
@@ -209,6 +211,100 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"Error displaying info: {e}")
 
+    def _cmd_rmean(self, args):
+        """
+        Remove mean/trend from currently displayed traces.
+
+        Usage:
+            rmean [--method <simple|linear|constant|demean|polynomial|spline>]
+        Example:
+            >> rmean
+            >> rmean --method linear
+        """
+        method = "simple"
+
+        it = iter(args[1:])
+        for arg in it:
+            if arg == "--method":
+                try:
+                    method = next(it)
+                except StopIteration:
+                    print("[ERROR] Missing value after --method")
+                    return
+            else:
+                print(f"[WARN] Unknown option: {arg}")
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to process.")
+            return
+
+        rmean_count = 0
+        for tr in traces:
+            try:
+                success = tr.detrend(type=method)
+                if success is not False:
+                    rmean_count += 1
+            except Exception as e:
+                print(f"[ERROR] Failed to rmean {tr.id}: {e}")
+
+        print(f"[INFO] rmean ('{method}') applied to {rmean_count} traces.")
+
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
+    def _cmd_taper(self, args):
+        """
+        Apply a taper to currently displayed traces.
+
+        Usage:
+            taper [--type <taper_type>] [--max_percentage <float>]
+        Example:
+            >> taper
+            >> taper --type hann --max_percentage 0.1
+        """
+        taper_type = "cosine"
+        max_percentage = 0.05
+
+        it = iter(args[1:])
+        for arg in it:
+            if arg == "--type":
+                try:
+                    taper_type = next(it)
+                except StopIteration:
+                    print("[ERROR] Missing value after --type")
+                    return
+            elif arg == "--max_percentage":
+                try:
+                    max_percentage = float(next(it))
+                except StopIteration:
+                    print("[ERROR] Missing value after --max_percentage")
+                    return
+                except ValueError:
+                    print("[ERROR] --max_percentage must be a number.")
+                    return
+            else:
+                print(f"[WARN] Unknown option: {arg}")
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to process.")
+            return
+
+        taper_count = 0
+        for tr in traces:
+            try:
+                tr.taper(max_percentage=max_percentage,type=taper_type )
+            except Exception as e:
+                print(f"[ERROR] Failed to taper {tr.id}: {e}")
+
+        print(f"[INFO] taper ('{taper_type}', max_percentage={max_percentage}) applied to {taper_count} traces.")
+
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
     def _cmd_stack(self, args):
         """
         Stack traces using ObsPy's Stream.stack().
@@ -228,8 +324,7 @@ class PlotCommandPrompt:
             - Trims to common overlap before stacking.
             - Appends the stacked trace as ST.STACK..BHS and replots.
         """
-        from obspy import Stream, Trace, UTCDateTime
-        import numpy as np
+        from obspy import Stream, UTCDateTime
 
         # --- choose source traces ---
         source = getattr(self.plot_proj, "displayed_traces", None) or getattr(self.plot_proj, "trace_list", [])
@@ -1523,6 +1618,8 @@ class PlotCommandPrompt:
 
             "Signal Processing": [
                 ("algebra", "Apply a Math expression on traces"),
+                ("rmean", "Remove mean on traces"),
+                ("taper", "Apply taper window on traces"),
                 ("filter", "Apply signal filtering"),
                 ("cut", "Trim traces using picks or UTC times"),
                 ("concat", "Merge trace segments, no parameters needed"),
@@ -1647,6 +1744,24 @@ class PlotCommandPrompt:
             >> filter cheby1 0.2 2.0 --ripple 1
             >> filter elliptic 0.3 3.0 --rp 0.5 --rs 60
     """,
+            "rmean": """
+        rmean [--method <simple|linear|constant|demean|polynomial|spline>]
+            Remove mean/trend from all traces in the current view.
+            Default method: 'simple'.
+
+            Examples:
+                >> rmean
+                >> rmean --method linear
+        """,
+            "taper": """
+        taper [--type <taper_type>] [--max_percentage <float>]
+            Apply a taper to the edges of all traces in the current view.
+            Default: type='cosine', max_percentage=0.05.
+
+            Examples:
+                >> taper
+                >> taper --type hann --max_percentage 0.1
+        """,
             "shift": """
     shift --phase <name>
     shift --phase_theo <name>

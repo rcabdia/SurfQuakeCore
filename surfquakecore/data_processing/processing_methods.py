@@ -34,6 +34,40 @@ def next_power_of_2(n):
     n = math.ceil(n)
     return 2 ** (n - 1).bit_length()
 
+def reverse(tr):
+    """
+    Reverse the data points of a seismic trace in-place (time-reversal).
+
+    Parameters
+    ----------
+    tr : obspy.core.trace.Trace
+        Seismic trace whose data array will be reversed.
+
+    Returns
+    -------
+    obspy.core.trace.Trace
+        The same trace object, with tr.data reversed.
+    """
+    tr.data = tr.data[::-1]
+    return tr
+
+def flip(tr):
+    """
+    Flip the polarity of a seismic trace in-place (amplitude inversion).
+
+    Parameters
+    ----------
+    tr : obspy.core.trace.Trace
+        Seismic trace whose data values will be inverted.
+
+    Returns
+    -------
+    obspy.core.trace.Trace
+        The same trace object, with tr.data multiplied by -1.
+    """
+    tr.data = tr.data * -1
+    return tr
+
 def filter_trace(trace, type, fmin, fmax, **kwargs):
     """
         Filter an ObsPy Trace using standard and advanced filters.
