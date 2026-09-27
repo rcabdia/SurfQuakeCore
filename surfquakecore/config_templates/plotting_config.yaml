@@ -13,6 +13,12 @@ plotting:
   auto_load_pick_file: False
   show_info_picks: False
   show_crosshair: False
+  plot_output_path: False
+  show_plot: True
+  format_save: pdf
   backend: TkAgg
 
-#backend: TkAgg (maximum robustness, default), MacOSX (only for mac, fully recommended), Qt5Agg (fast but picking  & interactive commands raise problems)
+#backend: TkAgg (maximum robustness, default), MacOSX (only for mac, fully recommended), Qt5Agg (fast but picking
+#& interactive commands raise problems)
+
+#If show_plot: True and plot_output_path to your folder automatically wil be saved the plots
