@@ -1324,6 +1324,7 @@ def cwt_ftan(filepath: str,
              num_ridges: int = 1,
              branch: str = 'fold',
              use_pmf: bool = False,
+             use_filter: bool = False,
              pmf_ref_periods: Optional[np.ndarray] = None,
              pmf_ref_vel: Optional[np.ndarray] = None,
              pmf_ref_grvel: Optional[np.ndarray] = None,
@@ -1382,6 +1383,16 @@ def cwt_ftan(filepath: str,
     print(f"[CWT-FTAN]  {os.path.basename(filepath)}")
     print(f"            dist={dist_km:.2f} km  az={azim:.1f}  "
           f"branch='{branch}'  wavelet='{wt_label}'")
+
+    if use_filter:
+        try:
+            tr.detrend(type="simple")
+            tr.detrend(type="linear")
+            tr.taper(max_percentage=0.05)
+            tr.filter(type="bandpass", freqmin=1/tmax, freqmax=1/tmin, zerophase=True, corners=3)
+            tr.detrend(type="simple")
+        except:
+            print("No possible apply filter ", "tmin: ", tmin, "tmax: ", tmax)
 
     # --- branch ---
     raw  = tr.data.astype(np.float64)

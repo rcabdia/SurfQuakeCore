@@ -3180,6 +3180,7 @@ Key Arguments:
   --tresh                [OPTIONAL] Jump detection threshold          (default: 3.0)
   --npoints              [OPTIONAL] Max correctable jump length       (default: 5)
   --use_pmf              [OPTIONAL] Apply phase-match filter          (needs --ref)
+  --use_filter           [OPTIONAL] Apply bandpass filter [tmax,tmin] (default: false)
   --filter_param         [OPTIONAL] PMF Gaussian window width [s]     (default: 15.0)
   --n_branches           [OPTIONAL] 2pi cycle branches for phase vel  (default: 10)
   --ref                  [OPTIONAL] Reference model name or CSV path
@@ -3275,6 +3276,8 @@ Documentation:
     arg_parse.add_argument("--npoints", type=int, default=5, help="Max correctable jump length in period bins")
     arg_parse.add_argument("--use_pmf", action="store_true",
                            help="Apply phase-match filter before CWT (requires --ref)")
+    arg_parse.add_argument("--use_filter", action="store_true",
+                           help="if apply a bandpass filter zero-phase [tmax,tmin]")
     arg_parse.add_argument("--filter_param", type=float, default=15.0, help="PMF Gaussian window width [s]")
     arg_parse.add_argument("--n_branches", type=int, default=10, help="Number of 2pi cycle branches for phase velocity")
     arg_parse.add_argument("--ref", type=str, default=None,
@@ -3357,6 +3360,7 @@ Documentation:
         num_ridges=parsed.num_ridges,
         branch=parsed.branch,
         use_pmf=use_pmf,
+        use_filter=parsed.use_filter,
         pmf_ref_periods=pmf_ref_periods,
         pmf_ref_vel=pmf_ref_vel,
         pmf_ref_grvel=ref_group_vel,
