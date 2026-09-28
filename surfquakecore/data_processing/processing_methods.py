@@ -34,9 +34,10 @@ def next_power_of_2(n):
     n = math.ceil(n)
     return 2 ** (n - 1).bit_length()
 
-def reverse(tr):
+def reverse(tr, flip_trace=False):
     """
     Reverse the data points of a seismic trace in-place (time-reversal).
+    If flip is set reversed polarity
 
     Parameters
     ----------
@@ -49,7 +50,11 @@ def reverse(tr):
         The same trace object, with tr.data reversed.
     """
     tr.data = tr.data[::-1]
-    return tr
+
+    if flip_trace:
+        return flip(tr)
+    else:
+        return tr
 
 def flip(tr):
     """

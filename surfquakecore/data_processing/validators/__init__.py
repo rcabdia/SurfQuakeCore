@@ -7,6 +7,7 @@ from .entropy import validate_entropy
 from .particle import validate_particle
 from .raw import validate_raw
 from .rename import validate_rename
+from .reverse import validate_reverse
 from .rmean import validate_rmean
 from .snr import validate_snr
 from .spectrogram import validate_spectrogram
@@ -73,7 +74,8 @@ CHECK_DISPATCH = {
     'rename': validate_rename,
     'kurtosis': validate_kurtosis,
     'algebra': validate_algebra,
-    'chop': "validate_chop_cont"}
+    'chop': validate_chop_cont,
+    'reverse': validate_reverse}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

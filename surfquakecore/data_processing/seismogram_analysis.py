@@ -7,7 +7,7 @@ from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
-    rename_trace, whiten_new_band_freq_single, run_chop_data
+    rename_trace, whiten_new_band_freq_single, run_chop_data, reverse
 
 try:
     from surfquakecore.cython_module.hampel import hampel
@@ -258,6 +258,9 @@ class SeismogramData:
 
                 if _config['name'] == 'rename':
                     tr = rename_trace(tr, _config)
+
+                if _config['name'] == 'reverse':
+                    tr = reverse(tr, flip_trace=_config["flip"])
 
             return tr
 
