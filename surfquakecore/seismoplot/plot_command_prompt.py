@@ -61,11 +61,53 @@ class PlotCommandPrompt:
             "write": self._cmd_write,
             "info": self.plot_command_prompt,
             "help": self._cmd_help,
-            "exit": self._cmd_exit
+            "exit": self._cmd_exit,
+            "history": self._cmd_history,
         }
 
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(path) if path else None
+
+    def _cmd_history(self, args):
+        """
+        Show the last N meaningful commands entered (default 10).
+        Single-character navigation keys (n, p, c, e, etc.) and
+        'help'/'exit' commands are skipped.
+
+        Usage:
+            history [N]
+        Example:
+            >> history
+            >> history 20
+        """
+        n = 10
+        if len(args) > 1:
+            try:
+                n = int(args[1])
+            except ValueError:
+                print("[ERROR] N must be an integer.")
+                return
+
+        excluded_keywords = ("help", "exit", "history", "clear")
+
+        total = readline.get_current_history_length()
+
+        filtered = []
+        for i in range(total, 0, -1):
+            cmd = readline.get_history_item(i)
+            if not cmd:
+                continue
+            stripped = cmd.strip()
+            if len(stripped) <= 1:
+                continue
+            if any(kw in stripped.lower() for kw in excluded_keywords):
+                continue
+            filtered.append(cmd)
+            if len(filtered) >= n:
+                break
+
+        for idx, cmd in enumerate(reversed(filtered), start=1):
+            print(f"{idx}: {cmd}")
 
     def _cmd_exit(self, args):
 
@@ -1614,6 +1656,7 @@ class PlotCommandPrompt:
                 ("b", "Previous trace page"),
                 ("p", "Return to picking mode"),
                 ("exit", "Close interactive session"),
+                ("history [N]", "Show the last N commands entered at the prompt (default 10)")
             ],
 
             "Signal Processing": [
@@ -1688,6 +1731,14 @@ class PlotCommandPrompt:
         """
         # Detailed help content per command
         detailed_help = {
+            "history": """
+        history [N]
+            Show the last N commands entered at the prompt (default 10).
+
+            Examples:
+                >> history
+                >> history 20
+        """,
             "algebra": """
             Apply algebraic expression to the displayed stream traces (tr1, tr2...trN)
             algebra --expression <python_math_expression>
