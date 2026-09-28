@@ -2627,7 +2627,7 @@ def _ant_create_dict():
         Usage Examples:
 
             # All stations and channels
-            ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl
+            surfquake ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl
 
             # Only broadband verticals on network II
             surfquake ant_create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\

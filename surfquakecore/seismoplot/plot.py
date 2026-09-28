@@ -99,6 +99,9 @@ class PlotProj:
         self._hover = None  # (trace_id, line, label, pick_time) when hovering a pick
         self._hover_tol_px = 8  # pixel tolerance for hover hit testing
 
+    def make_abs(self, path: Optional[str]) -> Optional[str]:
+        return os.path.abspath(path) if path else None
+
     def _print_help_table(self):
         """Print available keyboard commands in a table format."""
 
@@ -329,6 +332,9 @@ class PlotProj:
 
         # --- Auto-save figure---
         out_dir = self.plot_config.get("plot_output_path")
+        if out_dir:
+            out_dir = self.make_abs(out_dir)
+
         format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -480,6 +486,8 @@ class PlotProj:
 
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
+        if out_dir:
+            out_dir = self.make_abs(out_dir)
         format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -541,6 +549,8 @@ class PlotProj:
 
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
+        if out_dir:
+            out_dir = self.make_abs(out_dir)
         format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
