@@ -8,10 +8,16 @@ def require_keys(config: object, required_keys: object) -> object:
 
 def require_type(config, key, expected_type):
     if not isinstance(config[key], expected_type):
-        raise ValueError(
-            f"Key '{key}' must be of type {expected_type.__name__}, got {type(config[key]).__name__}"
-        )
 
+        if isinstance(expected_type, tuple):
+            expected_names = ", ".join(t.__name__ for t in expected_type)
+        else:
+            expected_names = expected_type.__name__
+
+        raise ValueError(
+            f"Key '{key}' must be of type {expected_names}, "
+            f"got {type(config[key]).__name__}"
+        )
 def optional_type(config, key, expected_types):
     if key in config and not isinstance(config[key], expected_types):
         type_names = (

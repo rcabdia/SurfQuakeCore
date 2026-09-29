@@ -4,6 +4,7 @@ from .cut import validate_cut
 from .cut_stream import validate_cut_stream
 from .cwt import validate_cwt
 from .entropy import validate_entropy
+from .flip import validate_flip
 from .particle import validate_particle
 from .raw import validate_raw
 from .rename import validate_rename
@@ -75,7 +76,8 @@ CHECK_DISPATCH = {
     'kurtosis': validate_kurtosis,
     'algebra': validate_algebra,
     'chop': validate_chop_cont,
-    'reverse': validate_reverse}
+    'reverse': validate_reverse,
+    'flip': validate_flip}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

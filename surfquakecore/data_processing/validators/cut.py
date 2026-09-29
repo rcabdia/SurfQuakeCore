@@ -17,7 +17,7 @@ def validate_cut(config):
     if method not in CUT_TYPES:
         raise ValueError(f"Unsupported cut method: {config['method']}")
 
-    if config['method'] == "absolute":
+    elif config['method'] == "absolute":
         require_type(config, 'start', datetime)
         require_type(config, 'end', datetime)
 
@@ -33,5 +33,8 @@ def validate_cut(config):
     else:
         print("No valid Config method ", config['method'], "options are: absolute, phase or reference")
         return False
+
+    require_type(config, 'pad', bool)
+    require_type(config, 'fill_value', (int, float, None))
 
     return True

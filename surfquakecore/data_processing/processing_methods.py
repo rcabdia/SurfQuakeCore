@@ -34,7 +34,7 @@ def next_power_of_2(n):
     n = math.ceil(n)
     return 2 ** (n - 1).bit_length()
 
-def reverse(tr, flip_trace=False):
+def reverse(tr):
     """
     Reverse the data points of a seismic trace in-place (time-reversal).
     If flip is set reversed polarity
@@ -51,10 +51,7 @@ def reverse(tr, flip_trace=False):
     """
     tr.data = tr.data[::-1]
 
-    if flip_trace:
-        return flip(tr)
-    else:
-        return tr
+    return tr
 
 def flip(tr):
     """
@@ -820,7 +817,7 @@ def trim_trace(trace, config):
         raise ValueError(f"Unsupported method: {method}")
 
     try:
-        return trace.trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
+        return trace.trim(starttime=t1, endtime=t2, pad=config["pad"], fill_value=config["fill_value"])
     except Exception as e:
         raise ValueError(f"Trimming failed: {e}")
 
