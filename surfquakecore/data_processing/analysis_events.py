@@ -46,6 +46,7 @@ class AnalysisEvents:
         self.all_traces = []
         self.surf_projects = surf_projects
         self.config_file = config_file
+
         # Store user-specified time segment (as string or UTCDateTime)
         self.time_segment_start = time_segment_start
         self.time_segment_end = time_segment_end
@@ -481,8 +482,15 @@ class AnalysisEvents:
 
         plot = not auto
         interactive = False
+
         if merge:
             self.time_segment = True
+
+        # Convert string-based time segment (if set) to UTCDateTime
+        if hasattr(self, "time_segment_start") and isinstance(self.time_segment_start, str):
+            self.time_segment_start = UTCDateTime(self.time_segment_start)
+        if hasattr(self, "time_segment_end") and isinstance(self.time_segment_end, str):
+            self.time_segment_end = UTCDateTime(self.time_segment_end)
 
         station_files = defaultdict(list)
 

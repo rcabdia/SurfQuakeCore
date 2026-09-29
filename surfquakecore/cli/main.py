@@ -1579,9 +1579,9 @@ def _processing_daily():
 
     arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
 
-    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS'", type=str)
 
-    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS'", type=str)
 
     arg_parse.add_argument(
         "--post_script",
@@ -1617,6 +1617,7 @@ def _processing_daily():
 
     # --- Apply time filters ---
     min_date, max_date = None, None
+
     try:
         if parsed_args.min_date:
             # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
@@ -1628,7 +1629,7 @@ def _processing_daily():
             print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
             sp.filter_project_time(starttime=min_date, endtime=max_date, tol=parsed_args.time_tolerance, verbose=True)
     except ValueError as ve:
-        print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+        print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS'")
         raise ve
 
     # --- Decide between time segment or split ---
@@ -1699,9 +1700,11 @@ def _quickproc():
             -o, --output_folder      [OPTIONAL] Directory to save processed traces
             -a, --auto               [OPTIONAL] Run in automatic (non-interactive) mode
             -m, --merge              [OPTIONAL] If merge traces as fist action
-            --plot_config            [OPTIONAL] Plotting settings YAML
-            --post_script            [OPTIONAL] Python script to apply to each stream
-            --post_script_stage      [OPTIONAL] When to run post-script: 'before' or 'after' (default: before)
+                --min_date           [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT None
+                --max_date           [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT None
+                --plot_config        [OPTIONAL] Plotting settings YAML
+                --post_script        [OPTIONAL] Python script to apply to each stream
+                --post_script_stage  [OPTIONAL] When to run post-script: 'before' or 'after' (default: before)
         """
     )
 
@@ -1719,6 +1722,10 @@ def _quickproc():
 
     parser.add_argument(
         "-m", "--merge", help="if merge traces as fist action", action="store_true")
+
+    parser.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS'", type=str)
+
+    parser.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS'", type=str)
 
     parser.add_argument("--plot_config", type=str)
 
@@ -1752,8 +1759,9 @@ def _quickproc():
         surf_projects=[],
         plot_config_file=make_abs(parsed_args.plot_config),
         post_script=make_abs(parsed_args.post_script),
-        post_script_stage=parsed_args.post_script_stage
-    )
+        post_script_stage=parsed_args.post_script_stage,
+        time_segment_start=parsed_args.min_date,
+        time_segment_end=parsed_args.max_date)
 
     ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto, merge=parsed_args.merge)
 
@@ -1814,9 +1822,9 @@ def _trigg():
 
     arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
 
-    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS'", type=str)
 
-    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'",
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS'",
                            type=str)
 
     arg_parse.add_argument("--plot", help="plot events & CFs", action="store_true")
