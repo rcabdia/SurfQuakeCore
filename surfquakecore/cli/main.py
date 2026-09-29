@@ -1502,119 +1502,6 @@ def _processing():
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
 
-def _trigg():
-    from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
-    from surfquakecore.project.surf_project import SurfProject
-    from datetime import timedelta
-
-    arg_parse = ArgumentParser(
-        prog=f"{__entry_point_name} computes coincidence trigger",
-        description="Process seismograms in daily files to detect events using coincidence trigger",
-        formatter_class=RawDescriptionHelpFormatter,
-        epilog="""
-        
-        Overview:
-        Process seismograms in daily files to detect events using coincidence trigger. 
-        It can be used either SNR or Kurtosis as Characterisitic functions.
-
-        Allen, R. (1982). Automatic phase pickers: Their present use and future prospects. Bulletin of the
-        Seismological Society of America, 72(6B), S225-S242.
-
-        Poiata, N., C. Satriano, J.-P. Vilotte, P. Bernard, and K. Obara (2016). Multi-band array detection and 
-        location of seismic sources recorded by dense seismic networks, Geophys. J. Int.,
-        205(3), 1548-1573, doi:10.1093/gji/ggw071.
-
-        Usage Example:
-            surfquake trigg -c config.yaml -o ./output_folder -ch "HHZ" --min_date "2024-01-01 00:00:00" \\
-            --max_date "2024-01-04 00:00:00" --span_seconds  86400 --picking_file ./pick.txt --plot
-                
-        Key Arguments:
-            -p, --project_file        [REQUIRED] Path to a saved project files
-            -o, --output_folder       [REQUIRED] Directory for processed output
-            -c, --config_file         [REQUIRED] Processing configuration (YAML)
-            -n, --net                 [OPTIONAL] Network code filter
-            -s, --station             [OPTIONAL] Station code filter
-            -ch, --channel            [OPTIONAL] Channel filter
-            --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
-            --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
-            --span_seconds            [OPTIONAL] Select and merge files in sets of time spans, DEFAULT 86400
-            --plot                    [OPTIONAL] Plot events and Characteristic Functions
-            --picking_file            [OPTIONAL] I set a picking file this will be separated accoring to found events inside cluster
-        """)
-
-    arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
-
-    arg_parse.add_argument("-o", "--output_folder", required=True, help="Folder to save processed data")
-
-    arg_parse.add_argument("-c", "--config_file", required=True, help="YAML config for processing")
-
-    arg_parse.add_argument("--span_seconds", type=int, default=86400,
-                           help="Time span to split your dataset (in seconds), default 86400s")
-
-    # Filter arguments
-    arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
-
-    arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
-
-    arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
-
-    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
-
-    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'",
-                           type=str)
-
-    arg_parse.add_argument("--plot", help="plot events & CFs", action="store_true")
-
-    arg_parse.add_argument("--picking_file", help="picking file to split", type=str)
-
-    parsed_args = arg_parse.parse_args()
-    print(parsed_args)
-
-    # --- Load project --
-    project_file = make_abs(parsed_args.project_file)
-    sp = SurfProject.load_project(project_file)
-
-    # --- Apply key filters ---
-    filters = {}
-    if parsed_args.net:
-        filters["net"] = parsed_args.net
-    if parsed_args.station:
-        filters["station"] = parsed_args.station
-    if parsed_args.channel:
-        filters["channel"] = parsed_args.channel
-    if filters:
-        print(f"[INFO] Filtering project by: {filters}")
-        sp.filter_project_keys(**filters)
-
-    # --- Decide between time segment or split ---
-    info = sp.get_project_basic_info()
-    min_date = info["Start"]
-    max_date = info["End"]
-    dt1 = parse_datetime(min_date)
-    dt2 = parse_datetime(max_date)
-
-    diff = abs(dt2 - dt1)
-    if diff < timedelta(days=1):
-        sp.get_data_files()
-        subprojects = [sp]
-
-    else:
-        print(f"[INFO] Splitting into subprojects every {parsed_args.span_seconds} seconds")
-        subprojects = sp.split_by_time_spans(
-            span_seconds=parsed_args.span_seconds,
-            min_date=parsed_args.min_date,
-            max_date=parsed_args.max_date,
-            file_selection_mode="overlap_threshold",
-            verbose=True)
-
-    config_file = make_abs(parsed_args.config_file)
-    picking_file = make_abs(parsed_args.picking_file)
-    output_folder = make_abs(parsed_args.output_folder)
-
-    ct = CoincidenceTrigger(subprojects, config_file, picking_file, output_folder, parsed_args.plot)
-    ct.optimized_project_processing()
-
-
 def _processing_daily():
     from surfquakecore.data_processing.analysis_events import AnalysisEvents
     from surfquakecore.project.surf_project import SurfProject
@@ -1811,6 +1698,7 @@ def _quickproc():
             -i, --inventory_file     [OPTIONAL] Station metadata (StationXML or RESP)
             -o, --output_folder      [OPTIONAL] Directory to save processed traces
             -a, --auto               [OPTIONAL] Run in automatic (non-interactive) mode
+            -m, --merge              [OPTIONAL] If merge traces as fist action
             --plot_config            [OPTIONAL] Plotting settings YAML
             --post_script            [OPTIONAL] Python script to apply to each stream
             --post_script_stage      [OPTIONAL] When to run post-script: 'before' or 'after' (default: before)
@@ -1829,20 +1717,18 @@ def _quickproc():
 
     parser.add_argument("-o", "--output_folder", type=str, required=False)
 
+    parser.add_argument(
+        "-m", "--merge", help="if merge traces as fist action", action="store_true")
+
     parser.add_argument("--plot_config", type=str)
 
-    parser.add_argument(
-        "--post_script",
-        help="Path to Python script to apply to each event stream",
-        type=str
-    )
+    parser.add_argument("--post_script", help="Path to Python script to apply to each event stream",
+        type=str)
 
-    parser.add_argument(
-        "--post_script_stage",
+    parser.add_argument("--post_script_stage",
         help="When to apply the post-script: 'before' or 'after' plotting",
         choices=["before", "after"],
-        default="before"
-    )
+        default="before")
 
     parsed_args = parser.parse_args()
     print(parsed_args)
@@ -1869,7 +1755,120 @@ def _quickproc():
         post_script_stage=parsed_args.post_script_stage
     )
 
-    ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto)
+    ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto, merge=parsed_args.merge)
+
+
+def _trigg():
+    from surfquakecore.coincidence_trigger.coincidence_trigger import CoincidenceTrigger
+    from surfquakecore.project.surf_project import SurfProject
+    from datetime import timedelta
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} computes coincidence trigger",
+        description="Process seismograms in daily files to detect events using coincidence trigger",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+
+        Overview:
+        Process seismograms in daily files to detect events using coincidence trigger. 
+        It can be used either SNR or Kurtosis as Characterisitic functions.
+
+        Allen, R. (1982). Automatic phase pickers: Their present use and future prospects. Bulletin of the
+        Seismological Society of America, 72(6B), S225-S242.
+
+        Poiata, N., C. Satriano, J.-P. Vilotte, P. Bernard, and K. Obara (2016). Multi-band array detection and 
+        location of seismic sources recorded by dense seismic networks, Geophys. J. Int.,
+        205(3), 1548-1573, doi:10.1093/gji/ggw071.
+
+        Usage Example:
+            surfquake trigg -c config.yaml -o ./output_folder -ch "HHZ" --min_date "2024-01-01 00:00:00" \\
+            --max_date "2024-01-04 00:00:00" --span_seconds  86400 --picking_file ./pick.txt --plot
+
+        Key Arguments:
+            -p, --project_file        [REQUIRED] Path to a saved project files
+            -o, --output_folder       [REQUIRED] Directory for processed output
+            -c, --config_file         [REQUIRED] Processing configuration (YAML)
+            -n, --net                 [OPTIONAL] Network code filter
+            -s, --station             [OPTIONAL] Station code filter
+            -ch, --channel            [OPTIONAL] Channel filter
+            --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
+            --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
+            --span_seconds            [OPTIONAL] Select and merge files in sets of time spans, DEFAULT 86400
+            --plot                    [OPTIONAL] Plot events and Characteristic Functions
+            --picking_file            [OPTIONAL] I set a picking file this will be separated accoring to found events inside cluster
+        """)
+
+    arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
+
+    arg_parse.add_argument("-o", "--output_folder", required=True, help="Folder to save processed data")
+
+    arg_parse.add_argument("-c", "--config_file", required=True, help="YAML config for processing")
+
+    arg_parse.add_argument("--span_seconds", type=int, default=86400,
+                           help="Time span to split your dataset (in seconds), default 86400s")
+
+    # Filter arguments
+    arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
+
+    arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
+
+    arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
+
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'",
+                           type=str)
+
+    arg_parse.add_argument("--plot", help="plot events & CFs", action="store_true")
+
+    arg_parse.add_argument("--picking_file", help="picking file to split", type=str)
+
+    parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+
+    # --- Load project --
+    project_file = make_abs(parsed_args.project_file)
+    sp = SurfProject.load_project(project_file)
+
+    # --- Apply key filters ---
+    filters = {}
+    if parsed_args.net:
+        filters["net"] = parsed_args.net
+    if parsed_args.station:
+        filters["station"] = parsed_args.station
+    if parsed_args.channel:
+        filters["channel"] = parsed_args.channel
+    if filters:
+        print(f"[INFO] Filtering project by: {filters}")
+        sp.filter_project_keys(**filters)
+
+    # --- Decide between time segment or split ---
+    info = sp.get_project_basic_info()
+    min_date = info["Start"]
+    max_date = info["End"]
+    dt1 = parse_datetime(min_date)
+    dt2 = parse_datetime(max_date)
+
+    diff = abs(dt2 - dt1)
+    if diff < timedelta(days=1):
+        sp.get_data_files()
+        subprojects = [sp]
+
+    else:
+        print(f"[INFO] Splitting into subprojects every {parsed_args.span_seconds} seconds")
+        subprojects = sp.split_by_time_spans(
+            span_seconds=parsed_args.span_seconds,
+            min_date=parsed_args.min_date,
+            max_date=parsed_args.max_date,
+            file_selection_mode="overlap_threshold",
+            verbose=True)
+
+    config_file = make_abs(parsed_args.config_file)
+    picking_file = make_abs(parsed_args.picking_file)
+    output_folder = make_abs(parsed_args.output_folder)
+
+    ct = CoincidenceTrigger(subprojects, config_file, picking_file, output_folder, parsed_args.plot)
+    ct.optimized_project_processing()
 
 
 def _specplot():

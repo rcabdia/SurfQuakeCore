@@ -37,7 +37,6 @@ class AnalysisEvents:
                  phase_list: Optional[list] = None, vel: Optional[float] = None,
                  time_segment: Optional[bool] = False):
 
-
         self.output = output
         self._exist_folder = False
         self.inventory = None
@@ -60,11 +59,9 @@ class AnalysisEvents:
             except:
                 print("Warning NO VALID inventory file: ", inventory_file)
 
-
-
         self.config = None
         self.df_events = None
-        self.time_segment=time_segment
+        self.time_segment = time_segment
 
         if self.reference is None:
             self.reference = "event_time"
@@ -135,7 +132,7 @@ class AnalysisEvents:
 
                 if self.vel:  # Use velocity-based travel time estimate
 
-                    travel_time = distance_m*1E-3 / float(self.vel)  # seconds
+                    travel_time = distance_m * 1E-3 / float(self.vel)  # seconds
                     arrival_time = origin + travel_time
                     t1 = arrival_time - cut_start
                     t2 = arrival_time + cut_end
@@ -145,12 +142,11 @@ class AnalysisEvents:
 
                     if self.phase_list:
                         arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg,
-                                                      phase_list=self.phase_list)
+                                                          phase_list=self.phase_list)
                     else:
                         arrivals = model.get_travel_times(source_depth_in_km=depth, distance_in_degree=distance_deg)
                     if not arrivals:
                         raise ValueError("No valid arrivals returned by TauPyModel.")
-
 
                     for arr in arrivals:
                         arrivals_info.append({
@@ -255,7 +251,6 @@ class AnalysisEvents:
         if isinstance(self.surf_projects, SurfProject):
             self.surf_projects = [self.surf_projects]
 
-
         for i, project in enumerate(self.surf_projects):
             while True:
                 try:
@@ -357,7 +352,6 @@ class AnalysisEvents:
         from obspy.taup import TauPyModel
         model = TauPyModel("iasp91")
 
-
         plot = not auto
         interactive = False
 
@@ -389,11 +383,11 @@ class AnalysisEvents:
                         tasks = []
                         for file_group in station_files.values():
                             tasks.append((file_group, event, model, cut_start, cut_end,
-                                self.inventory, self._set_header))
+                                          self.inventory, self._set_header))
 
                         # --- Process stations (parallel if no post-script) ---
                         if self.post_script_func:
-                            #print("[INFO] Using sequential mode due to post-script")
+                            # print("[INFO] Using sequential mode due to post-script")
                             results = [self._process_station_traces(task) for task in tasks]
                         else:
                             with Pool(processes=min(cpu_count(), len(tasks))) as pool:
@@ -457,7 +451,8 @@ class AnalysisEvents:
 
                             elif user_choice == "r":
                                 if self.config:
-                                    print(f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
+                                    print(
+                                        f"[INFO] Loading parametrization and Reprocessing subproject {i}, event {j}...")
                                     self.config = self.load_analysis_configuration(self.config_file)
                                 continue  # Rerun same event
 
@@ -477,7 +472,7 @@ class AnalysisEvents:
                         print("[INFO] Skipping to next event...")
                         break  # go to next event despite the error
 
-    def run_fast_waveform_analysis(self, data_files, auto: bool = True):
+    def run_fast_waveform_analysis(self, data_files, auto: bool = True, merge: bool = False):
 
         """
         Lightweight waveform analysis for raw file-based input using self.data_files.
@@ -486,12 +481,17 @@ class AnalysisEvents:
 
         plot = not auto
         interactive = False
+        if merge:
+            self.time_segment = True
 
         station_files = defaultdict(list)
 
+        # 0. Scanning traces
+
         for file_path in data_files:
             try:
-                st = read(file_path)
+                st = read(file_path, headonly=True)
+
                 for tr in st:
                     key = f"{tr.stats.network}.{tr.stats.station}"
                     station_files[key].append((file_path, tr.stats))
@@ -504,6 +504,7 @@ class AnalysisEvents:
 
         try:
             while True:
+
                 # 1. Station processing — always runs, serial only if post_script_func exists (pickle constraint)
                 if self.post_script_func:
 
@@ -640,4 +641,3 @@ class AnalysisEvents:
                 print(f"[WARNING] Script {script_path} must define a callable `run(stream, inventory, event=None)`")
         except Exception as e:
             print(f"[ERROR] Failed to import post-script {script_path}: {e}")
-
