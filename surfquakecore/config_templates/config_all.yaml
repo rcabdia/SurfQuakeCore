@@ -100,4 +100,5 @@ Analysis:
     integers: True
   process_25:
       name: 'reverse'
-      flip: True
+  process_26:
+    name: 'flip'
