@@ -33,8 +33,10 @@ def validate_cut(config):
     else:
         print("No valid Config method ", config['method'], "options are: absolute, phase or reference")
         return False
+    if "pad" in config.keys():
+        require_type(config, 'pad', bool)
 
-    require_type(config, 'pad', bool)
-    require_type(config, 'fill_value', (int, float, None))
+    if 'fill_value' in config.keys():
+        require_type(config, 'fill_value', (int, float, None))
 
     return True
