@@ -935,7 +935,7 @@ def downsample_trace(trace, factor=10, to_int=False, scale_target=1000):
     return new_trace
 
 
-def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', trim=True):
+def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', trim=True, conv=False):
 
     """
     Cross-correlate all traces in the stream with respect to a reference trace.
@@ -947,6 +947,7 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
             - "mode": correlation mode ('full', 'valid', 'same')
             - "reference": index of the reference trace (default: 0)
             - "strict": if True, all traces must align in time (default: True)
+            - "conv": if True, Performs convolution instead of correlation
 
     Returns:
         Stream: New stream with correlation functions as Trace objects.
@@ -985,6 +986,8 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
 
     for i, tr in enumerate(st):
         try:
+            if conv:
+                tr = reverse(tr)
             cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
         except Exception as e:
             print(f"[WARNING] Failed to correlate {tr.id} with {ref_trace.id}: {e}")

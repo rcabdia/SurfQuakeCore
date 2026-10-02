@@ -317,6 +317,8 @@ class StreamProcessing:
                     self.stream = self.apply_stack(step)
                 elif method_name == "cross_correlate":
                     self.stream = self.apply_cross_correlation(step)
+                elif method_name == "convolution":
+                    self.stream = self.apply_cross_correlation(step, conv=True)
                 elif method_name == "rotate":
                     self.stream = self.apply_rotation(step)
                 elif method_name == "shift":
@@ -498,7 +500,7 @@ class StreamProcessing:
         # Return a new Stream
         return Stream(traces=[stacked_trace])
 
-    def apply_cross_correlation(self, step_config):
+    def apply_cross_correlation(self, step_config, conv=False):
         """
         Cross-correlate all traces in the stream with respect to a reference trace.
 
@@ -508,7 +510,7 @@ class StreamProcessing:
                 - "mode": correlation mode ('full', 'valid', 'same')
                 - "reference": index of the reference trace (default: 0)
                 - "strict": if True, all traces must align in time (default: True)
-
+                - "conv": if True, Performs convolution instead of correlation
         Returns:
             Stream: New stream with correlation functions as Trace objects.
         """
@@ -549,6 +551,8 @@ class StreamProcessing:
 
         for i, tr in enumerate(st):
             try:
+                if conv:
+                    tr = reverse(tr)
                 cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
             except Exception as e:
                 print(f"[WARNING] Failed to correlate {tr.id} with {ref_trace.id}: {e}")

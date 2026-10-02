@@ -1,5 +1,6 @@
 from .beam import validate_beam
 from .concat import validate_concat
+from .convolve import validate_convolve
 from .cut import validate_cut
 from .cut_stream import validate_cut_stream
 from .cwt import validate_cwt
@@ -77,7 +78,8 @@ CHECK_DISPATCH = {
     'algebra': validate_algebra,
     'chop': validate_chop_cont,
     'reverse': validate_reverse,
-    'flip': validate_flip}
+    'flip': validate_flip,
+    'convolve': validate_convolve}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:
