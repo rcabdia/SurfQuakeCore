@@ -10,7 +10,7 @@ import readline
 import atexit
 from typing import Optional
 
-from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers
+from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers, flip, reverse
 
 
 class PlotCommandPrompt:
@@ -39,6 +39,8 @@ class PlotCommandPrompt:
             "b": self._cmd_prev,
             "filter": self._cmd_filter,
             "rmean": self._cmd_rmean,
+            "flip": self._cmd_flip,
+            "reverse": self._cmd_reverse,
             "taper": self._cmd_taper,
             "spectrogram": self._cmd_spectrogram,
             "spec": self._cmd_spectrogram,
@@ -252,6 +254,65 @@ class PlotCommandPrompt:
             print_surfquake_trace_headers(traces, max_columns=3)
         except Exception as e:
             print(f"Error displaying info: {e}")
+
+    def _cmd_flip(self,  args):
+        """
+        Flip the polarity of a seismic trace in-place (amplitude inversion)
+
+        Usage:
+            flip
+        Example:
+
+        """
+
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to process.")
+            return
+
+        flipped_count = 0
+        for tr in traces:
+            try:
+                success = flip(tr)
+                if success is not False:
+                    flipped_count += 1
+            except Exception as e:
+                print(f"[ERROR] Failed to rmean {tr.id}: {e}")
+
+        print(f"[INFO] Flipped applied to {flipped_count} traces.")
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
+    def _cmd_reverse(self,  args):
+        """
+        Reverse the data points of a seismic trace in-place (time-reversal)
+
+        Usage:
+            reverse
+        Example:
+
+        """
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to process.")
+            return
+
+        reverse_count = 0
+        for tr in traces:
+            try:
+                success = reverse(tr)
+                if success is not False:
+                    reverse_count += 1
+            except Exception as e:
+                print(f"[ERROR] Failed to rmean {tr.id}: {e}")
+
+        print(f"[INFO] Flipped applied to {reverse_count} traces.")
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
 
     def _cmd_rmean(self, args):
         """
@@ -1663,6 +1724,8 @@ class PlotCommandPrompt:
                 ("algebra", "Apply a Math expression on traces"),
                 ("rmean", "Remove mean on traces"),
                 ("taper", "Apply taper window on traces"),
+                ("flip", "Flip the polarity of a seismic trace"),
+                ("reverse", "Reverse the data points of seismic traces"),
                 ("filter", "Apply signal filtering"),
                 ("cut", "Trim traces using picks or UTC times"),
                 ("concat", "Merge trace segments, no parameters needed"),
@@ -1812,6 +1875,13 @@ class PlotCommandPrompt:
             Examples:
                 >> taper
                 >> taper --type hann --max_percentage 0.1
+        """,
+            "flip": """
+                Flip the polarity of a seismic trace in-place (amplitude inversion).
+        """,
+
+            "reverse": """
+                Reverse the data points of a seismic trace in-place (time-reversal).
         """,
             "shift": """
     shift --phase <name>

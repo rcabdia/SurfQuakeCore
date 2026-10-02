@@ -37,7 +37,6 @@ def next_power_of_2(n):
 def reverse(tr):
     """
     Reverse the data points of a seismic trace in-place (time-reversal).
-    If flip is set reversed polarity
 
     Parameters
     ----------
@@ -1293,13 +1292,13 @@ def run_chop_data(stream, chunk_length=3600, min_length=3540, max_interpolation_
     stream : obspy.Stream
         Input seismic stream.
 
-    chunk_length: float
+    chunk_length: int or float
         Output window length in seconds.
 
-    min_length: float
+    min_length: int or float
         Minimum amount of REAL recorded data required, in seconds.
 
-    max_interpolation_gap: float
+    max_interpolation_gap: int or float
         Maximum gap that we allow to interpolate, in seconds.
 
     Returns
