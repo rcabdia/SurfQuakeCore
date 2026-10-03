@@ -8,7 +8,7 @@ from typing import Dict
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
                  'shift', 'remove_response', 'add_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
-                 'cross_correlate', 'stack', 'synch', 'envelope', 'cut', 'cut_stream', 'concat', 'spectrum',
+                 'cross_correlate', 'convolve', 'stack', 'synch', 'envelope', 'cut', 'cut_stream', 'concat', 'spectrum',
                  'spectrogram', 'cwt', 'entropy', 'snr', 'raw', 'beam', 'particle_motion', 'rename', 'kurtosis',
                  'algebra', 'flip', 'reverse', 'chop']
 

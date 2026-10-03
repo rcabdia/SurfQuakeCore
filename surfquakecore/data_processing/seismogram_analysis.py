@@ -527,7 +527,6 @@ class StreamProcessing:
 
         # Ensure uniform sampling rate and trim to common time window and ensure aligned length
         sr = st[0].stats.sampling_rate
-        npts = st[reference_idx].stats.npts
 
         if strict:
 
@@ -538,6 +537,7 @@ class StreamProcessing:
             common_start = max(tr.stats.starttime for tr in st)
             common_end = min(tr.stats.endtime for tr in st)
             st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
+            npts = st[0].stats.npts
 
             for tr in st:
                 if tr.stats.npts != npts:

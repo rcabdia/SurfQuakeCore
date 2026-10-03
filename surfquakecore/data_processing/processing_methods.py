@@ -962,10 +962,8 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
 
     # Ensure uniform sampling rate and trim to common time window and ensure aligned length
     sr = st[0].stats.sampling_rate
-    npts = st[reference].stats.npts
 
     if trim:
-
         for tr in st:
             if tr.stats.sampling_rate != sr:
                 raise ValueError("Inconsistent sampling rates in stream.")
@@ -974,6 +972,7 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
         common_end = min(tr.stats.endtime for tr in st)
         st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
 
+        npts = st[0].stats.npts  # <-- take it from the trimmed stream, any trace
         for tr in st:
             if tr.stats.npts != npts:
                 raise ValueError("Traces do not have same number of samples after trimming.")
