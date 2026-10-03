@@ -2081,7 +2081,7 @@ class PlotCommandPrompt:
                         Example:
                             >> conv --ref 0 --mode full --normalize full --trim False
                     """,
-            
+
             "cwt": """
             cwt <index> <wavelet> <param> [<fmin> <fmax>]
                 Perform Continuous Wavelet Transform (CWT) on a trace.

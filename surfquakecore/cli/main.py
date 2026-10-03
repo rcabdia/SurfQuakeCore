@@ -2628,6 +2628,36 @@ def _ant_create_dict():
             -ch, --channel         [OPTIONAL] Channel filter, wildcards allowed (default: * = all)
             -w,  --workers         [OPTIONAL] Number of parallel header-reading workers (default: cpu_count - 1)
 
+   Filtering (--net / --station / --channel):
+
+        Each of these three filters accepts ONE OR MORE values, separated by spaces.
+        A file is kept if it matches at least one value in EACH filter you specify
+        (i.e. values within one filter are OR'ed together; net, station and channel
+        filters are AND'ed against each other).
+
+        Each individual value may be:
+          - an exact code, e.g.            -nt II
+          - a Unix-style wildcard pattern:  * matches any run of characters
+                                             ? matches exactly one character
+                                             [ABC] matches any one of A, B, or C
+        Matching is applied per filter against the corresponding header field
+        (network code, station code, or channel code) read from each file.
+
+        If a filter is omitted entirely, it defaults to "match everything" for
+        that field — you do NOT need to pass "*" explicitly (though you can).
+
+        Examples of what each pattern means:
+          -ch BHZ              -> only channel BHZ, nothing else
+          -ch BHZ BHN BHE      -> BHZ or BHN or BHE (three exact values, OR'ed)
+          -ch "BH*"            -> any channel starting with BH (BHZ, BHN, BHE, ...)
+          -ch "HH?"            -> any 3-character channel starting with HH (HHZ, HHN, ...)
+          -ch "BH*" "HH?"      -> the UNION of both patterns above
+          -nt "II" "IU"        -> network II OR network IU
+          -nt II -st ANMO      -> network II AND station ANMO (both must match)
+
+        Quoting wildcards (e.g. "BH*") is recommended so your shell does not
+        expand them against local filenames before they reach the program.
+        
         Documentation:
             https://projectisp.github.io/surfquaketutorial.github.io/
 
@@ -2637,10 +2667,12 @@ def _ant_create_dict():
             surfquake ant create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl
 
             # Only broadband verticals on network II
+            # (net == II  AND  channel == BHZ)
             surfquake ant_create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
                 -nt II -ch BHZ
 
             # Wildcard channel filter, multiple networks
+            # (net == II OR IU)  AND  (channel matches BH* OR HH?)
             surfquake ant_create_dict -d ./mseed -i ./meta/inventory.xml -s ./output/data_dict.pkl \\
                 -nt "II" "IU" -ch "BH*" "HH?" -w 8
         """

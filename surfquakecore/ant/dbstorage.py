@@ -58,6 +58,18 @@ def _matches(value: str, patterns: list[str]) -> bool:
         return True
     return any(fnmatch.fnmatch(value, p) for p in patterns)
 
+def _matches(value: str, patterns: list[str]) -> bool:
+    """
+    Return True if `value` matches any pattern in `patterns`.
+    Supports wildcards: * ? [ABC]
+    An empty pattern list means "accept all".
+    """
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    if not patterns:
+        return True
+    value = value.strip().upper()
+    return any(fnmatch.fnmatchcase(value, p.strip().upper()) for p in patterns)
 
 def _list_directory(data_path: str) -> list[str]:
     """Recursively collect all file paths under data_path, sorted."""
