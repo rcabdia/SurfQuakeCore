@@ -553,7 +553,9 @@ class StreamProcessing:
             try:
                 if conv:
                     tr = reverse(tr)
-                cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
+                    cc = correlate_template(tr, ref_trace, mode=mode, normalize=None, demean=True, method='auto')
+                else:
+                    cc = correlate_template(tr, ref_trace, mode=mode, normalize=normalize, demean=True, method='auto')
             except Exception as e:
                 print(f"[WARNING] Failed to correlate {tr.id} with {ref_trace.id}: {e}")
                 continue

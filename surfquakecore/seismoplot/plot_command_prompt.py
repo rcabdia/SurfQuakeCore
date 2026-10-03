@@ -9,7 +9,6 @@ import os
 import readline
 import atexit
 from typing import Optional
-
 from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers, flip, reverse
 
 
@@ -53,6 +52,7 @@ class PlotCommandPrompt:
             "smap": self._cmd_smap,
             "stack": self._cmd_stack,
             "xcorr": self._cmd_xcorr,
+            "conv": self._cmd_conv,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
             "rotate": self._cmd_rotate,
@@ -62,6 +62,7 @@ class PlotCommandPrompt:
             "shift": self._cmd_shift,
             "write": self._cmd_write,
             "info": self.plot_command_prompt,
+            "runpy": self._cmd_post_script,
             "help": self._cmd_help,
             "exit": self._cmd_exit,
             "history": self._cmd_history,
@@ -255,7 +256,7 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"Error displaying info: {e}")
 
-    def _cmd_flip(self,  args):
+    def _cmd_flip(self, args):
         """
         Flip the polarity of a seismic trace in-place (amplitude inversion)
 
@@ -265,6 +266,7 @@ class PlotCommandPrompt:
 
         """
 
+        from surfquakecore.data_processing.processing_methods import flip
 
         traces = getattr(self.plot_proj, "trace_list", [])
         if not traces:
@@ -285,7 +287,7 @@ class PlotCommandPrompt:
         self.prompt_active = False
         self._exit_code = "replot"
 
-    def _cmd_reverse(self,  args):
+    def _cmd_reverse(self, args):
         """
         Reverse the data points of a seismic trace in-place (time-reversal)
 
@@ -294,6 +296,7 @@ class PlotCommandPrompt:
         Example:
 
         """
+        from surfquakecore.data_processing.processing_methods import reverse
 
         traces = getattr(self.plot_proj, "trace_list", [])
         if not traces:
@@ -398,7 +401,7 @@ class PlotCommandPrompt:
         taper_count = 0
         for tr in traces:
             try:
-                tr.taper(max_percentage=max_percentage,type=taper_type )
+                tr.taper(max_percentage=max_percentage, type=taper_type)
             except Exception as e:
                 print(f"[ERROR] Failed to taper {tr.id}: {e}")
 
@@ -943,8 +946,7 @@ class PlotCommandPrompt:
             # --------------------------------------------------
             # Final call
             # --------------------------------------------------
-            self.plot_proj._plot_spectrogram(idx, win, overlap, clip=clip, method=method,
-                nw=nw, dates=dates)
+            self.plot_proj._plot_spectrogram(idx, win, overlap, clip=clip, method=method, nw=nw, dates=dates)
 
         except ValueError as exc:
 
@@ -1249,7 +1251,7 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Failed to write displayed traces: {e}")
 
-        #self.plot_proj.trace_list
+        # self.plot_proj.trace_list
 
     def _write_files(self, stream, output_folder):
         """
@@ -1290,9 +1292,6 @@ class PlotCommandPrompt:
             print(f"[WARN] Writing finished with some errors.")
         else:
             print(f"[INFO] All traces written successfully to: {output_folder}")
-
-    from obspy import UTCDateTime
-    from datetime import datetime
 
     def _cmd_cut(self, args):
 
@@ -1658,6 +1657,60 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Cross-correlation failed: {e}")
 
+    def _cmd_conv(self, args):
+        """
+        Cross-correlate current traces with respect to a reference.
+
+        Usage:
+            conv [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--trim True|False]
+
+        Example:
+            >> conv --ref 0 --mode full --normalize full --trim True
+        """
+
+        from surfquakecore.data_processing.processing_methods import apply_cross_correlation
+
+        # Default parameters
+        params = {
+            "reference": 0,
+            "mode": "full",
+            "normalize": "full",
+            "trim": True,
+        }
+
+        # Parse arguments
+        it = iter(args[1:])
+        for arg in it:
+            if arg == "--ref":
+                params["reference"] = int(next(it))
+            elif arg == "--mode":
+                params["mode"] = next(it)
+            elif arg == "--normalize":
+                params["normalize"] = next(it)
+            elif arg == "--trim":
+                val = next(it)
+                params["trim"] = val.lower() == "False"
+
+        # Input stream
+        stream = getattr(self.plot_proj, "trace_list", [])
+        if not stream:
+            print("[ERROR] No traces available for cross-correlation.")
+            return
+
+        print(f"[INFO] Running cross-correlation with parameters: {params}")
+
+        try:
+            cc_stream = apply_cross_correlation(stream, **params, conv=True)
+            self.plot_proj.trace_list = list(cc_stream)
+            self.plot_proj.current_page = 0
+            self.plot_proj.clear_plot()
+            self.plot_proj.plot(page=0)
+            print(f"[INFO] Cross-correlation complete. {len(cc_stream)} traces plotted.")
+            self.prompt_active = False
+            self._exit_code = "replot"  # ← señal nueva
+        except Exception as e:
+            print(f"[ERROR] Cross-correlation failed: {e}")
+
     def _apply_algebra(self, args):
         """
         Apply algebraic expression to the stream traces
@@ -1710,6 +1763,55 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Failed to apply math expression: {e}")
 
+    def _cmd_post_script(self, args):
+
+        """
+        Run an external Python script against the current stream.
+
+        The script must define: def process(stream): ... return stream
+
+        Usage:
+            post_script <path_to_script.py>
+        """
+
+        from obspy import Stream
+
+        if len(args) < 2:
+            print("[ERROR] Usage: post_script <path_to_script.py>")
+            return
+
+        script_path = args[1]
+        if not os.path.isfile(script_path):
+            print(f"[ERROR] Script not found: {script_path}")
+            return
+
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("user_post_script", script_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            if not hasattr(module, "process"):
+                print("[ERROR] Script must define a 'process(stream)' function.")
+                return
+
+            stream = Stream(traces=self.plot_proj.trace_list)
+            result = module.process(stream)
+
+            if result is not None:
+                self.plot_proj.trace_list = list(result)
+                print(f"[INFO] post_script '{script_path}' applied successfully.")
+            else:
+                print("[WARN] Script returned None — trace_list left unchanged.")
+
+        except Exception as e:
+            print(f"[ERROR] post_script failed: {e}")
+            return
+
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
     def _help_groups(self):
         return {
             "Navigation": [
@@ -1744,7 +1846,8 @@ class PlotCommandPrompt:
                 ("beam", "FK beamforming analysis"),
                 ("smap", "Slowness map estimation"),
                 ("stack", "Trace stacking"),
-                ("xcorr", "Cross-correlation analysis"),
+                ("xcorr", "Cross-correlate traces"),
+                ("conv", "Convolve traces"),
             ],
 
             "Polarization & Picking": [
@@ -1756,7 +1859,12 @@ class PlotCommandPrompt:
             "Seismogram Information": [
                 ("info", "Show trace headers"),
             ],
+
+            "Run python script": [
+                ("runpy", "Run your own script"),
+            ],
         }
+
     def _print_general_help(self):
 
         title = "SurfQuake Interactive Plot Console"
@@ -1767,7 +1875,6 @@ class PlotCommandPrompt:
         print("╚" + "═" * 62 + "╝")
 
         print()
-
 
         width = 22
 
@@ -1961,7 +2068,20 @@ class PlotCommandPrompt:
                 Example:
                     >> xcorr --ref 0 --mode full --normalize full --trim False
             """,
+            "conv": """
+                    conv [--ref <index>] [--mode <mode>] [--normalize <normalize>] [--trim True|False]
+                        Cross-correlate currently displayed traces against a reference trace.
 
+                        Parameters:
+                            --ref         Reference trace index (default: 0)
+                            --mode        Correlation mode: full, same, valid (default: full)
+                            --normalize   Normalization mode: full, partial, etc. (default: full)
+                            --trim      True: enforce same start/end times (default: False)
+
+                        Example:
+                            >> conv --ref 0 --mode full --normalize full --trim False
+                    """,
+            
             "cwt": """
             cwt <index> <wavelet> <param> [<fmin> <fmax>]
                 Perform Continuous Wavelet Transform (CWT) on a trace.
@@ -2029,7 +2149,7 @@ class PlotCommandPrompt:
                     >> smap --method MUSIC --fmin 1.0 --fmax 3.0 --grid 0.01  --nsignals 1
         
         """,
-        "stack": """
+            "stack": """
             Stack traces using ObsPy's Stream.stack(). 'mean' (linear) by default.
             'sum' scales the linear stack by N. 'pw:k' phase-weighted, 'root:k' root stack.
             Examples:
@@ -2039,7 +2159,45 @@ class PlotCommandPrompt:
                 >> stack all --method pw:2
         """,
 
-        "rotate": """
+            "runpy": """
+        
+        runpy <path_to_script.py>
+            Run an external Python script against the traces currently
+            loaded in the tool.
+
+            The script must define a function with this exact signature:
+
+                def process(stream):
+                    # stream is an obspy.Stream built from the current
+                    # trace_list. Modify traces in place, add/remove
+                    # traces, or just read their headers — then return
+                    # the (possibly modified) Stream.
+                    return stream
+
+            Useful trace header fields available inside the script:
+                tr.stats.geodetic['geodetic']   -> (distance_km, az, backazimuth)
+                tr.stats.geodetic['arrivals']   -> list of theoretical phase
+                                                    arrivals, e.g. P, S
+                tr.stats.geodetic['otime']      -> event origin time
+                tr.stats.references             -> list of manually-placed
+                                                    reference times (Unix
+                                                    timestamps), added by
+                                                    pressing 'w' on the plot
+                tr.stats.picks                  -> manually added picks
+                                                    (phase, time, polarity)
+
+            Whatever the script returns replaces the tool's current
+            trace_list, and the view is automatically replotted.
+
+            Note: this executes arbitrary local Python code with no
+            sandboxing. Only point it at scripts you trust.
+
+            Examples:
+                >> runpy ./scripts/p_window_snr.py
+                >> runpy /home/user/analysis/drop_flat_traces.py
+        """,
+
+            "rotate": """
         
         Rotate traces to a specific angle or to the Gear Arc Circle (GAC)
         Usage:
@@ -2054,6 +2212,8 @@ class PlotCommandPrompt:
             >> rotate NE->RT 45.0
             >> rotate ->LQT 45.0 10.0
             >> rotate ->ZNE
+        
+        
         """
 
         }
