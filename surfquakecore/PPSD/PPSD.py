@@ -62,44 +62,45 @@ class PPSDSurf:
 
         print(self.metadata)
 
-
-
-
     @staticmethod
-    def _normalize_filter(values: Optional[str]):
+    def _normalize_filter(values):
         """
-        Convert filter string to a list of patterns.
+        Convert a filter value to a list of wildcard patterns, or None (match all).
 
-        Examples
-        --------
-        "*"        -> None (match all)
-        ""         -> None (match all)
-        "WM,ES"    -> ["WM","ES"]
-        "HH*"      -> ["HH*"]
+        Accepts:
+            None                -> None
+            ""  or  "*"         -> None
+            "WM,ES"             -> ["WM", "ES"]   (comma-separated string)
+            ["WM", "ES"]        -> ["WM", "ES"]   (already a list, e.g. from nargs="+")
+            "WM"                -> ["WM"]
         """
         if values is None:
             return None
 
-        values = values.strip()
+        if isinstance(values, (list, tuple)):
+            tokens = [v for v in values if v and v.strip()]
+        else:
+            tokens = [v for v in values.split(",") if v and v.strip()]
 
-        if values == "" or values == "*":
+        tokens = [t.strip().upper() for t in tokens]
+
+        if not tokens or tokens == ["*"]:
             return None
 
-        return [v.strip() for v in values.split(",") if v.strip()]
+        return tokens
 
     @staticmethod
     def _matches(value: str, patterns) -> bool:
         """
-        Wildcard matching using fnmatch.
+        Case-insensitive wildcard matching using fnmatch (uppercases both sides
+        so behavior is identical on POSIX and Windows, and tolerant of stray
+        whitespace in older MiniSEED headers).
         """
         if patterns is None:
             return True
 
-        for pattern in patterns:
-            if fnmatch(value, pattern):
-                return True
-
-        return False
+        value = (value or "").strip().upper()
+        return any(fnmatch(value, p) for p in patterns)
 
     @staticmethod
     def _is_surf_project_instance(obj: Any) -> bool:

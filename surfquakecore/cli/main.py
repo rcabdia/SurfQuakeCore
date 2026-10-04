@@ -305,6 +305,8 @@ def _make_config():
         ch_functions     ->  Characteristic functions (Kurtosis, SNRs... and so on)
         plotting_config  ->  Template for plotting
         script_template  ->  Template containing a python template script to perform your own code
+        script_air_X     ->  Template containing a python template script to plugg your own code 
+        when plot seismogram (X is num (1-3) of script example)
         events           ->  Event file template
         rename           ->  Template config to rename seismogram files header (Network, station...)
         algebra          ->  Template for manipulate traces using basic algebraic expressions
@@ -318,11 +320,12 @@ def _make_config():
         
         Usage Example:
             > surfquake make_config -c stream_config -o ./configs
+            > surfquake make_config -c script_air_1 -o ./configs
         """
     )
-    available_configs = ["typical_config", "config_all", "stream_config", "spectral config", "events",
+    available_configs = ["typical_config", "config_all", "stream_config", "spectral_config", "events",
                          "plotting_config", "script_template", "real_config", "nll_config", "mti_config", "rename",
-                         "algebra", "ch_functions"]
+                         "algebra", "ch_functions", "script_air_1", "script_air_2", "script_air_3"]
 
     arg_parse.add_argument("-c", "--config_type", help="Config type name", type=str, required=True)
 
@@ -2211,23 +2214,51 @@ def _ppsdDB():
             - McNamara, D. E. and Buland, R. P. (2004), Ambient Noise Levels in the Continental United States,
               Bulletin of the Seismological Society of America, 94 (4), 1517-1527.
 
-        Key Arguments:
-            -p,  --project_file        [REQUIRED] Path to waveform data directory (or file pattern)
-            -i,  --inventory_file      [REQUIRED] Path to stations metadata (XML or RESP)
-            -s,  --save_file           [REQUIRED] Path to save the data base
-            -le, --length              [OPTIONAL] Length of data segments passed to psd in seconds (default 3600)
-            -ov, --overlap             [OPTIONAL] Overlap in percentage of segments passed to psd (default 50)
-            -sm, --smoothing           [OPTIONAL] PSDs are averaged over a octave at each central freq (default 1)
-            -n,  --net                 [OPTIONAL] project net filter (Default: *, Example WM)
-            -s,  --station             [OPTIONAL] project station filter (Default: *, Example ARNO)
-            -ch, --channel             [OPTIONAL] project channel filter (Default: *, Example BH?)
 
+    Key Arguments:
+        -p,  --project_file        [REQUIRED] Path to waveform data directory (or file pattern)
+        -i,  --inventory_file      [REQUIRED] Path to stations metadata (XML or RESP)
+        -s,  --save_file           [REQUIRED] Path where the PPSD database (.pkl) will be saved
+        -le, --length              [OPTIONAL] Length of data segments passed to PSD, in seconds (default: 3600)
+        -ov, --overlap             [OPTIONAL] Overlap percentage between segments (default: 50)
+        -sm, --smoothing           [OPTIONAL] PSD smoothing width in octaves at each central freq (default: 1)
+        -pr, --period              [OPTIONAL] Period step in octaves (default: 0.125)
+        -nt, --net                 [OPTIONAL] Network filter(s) (default: all networks)
+        -st, --station             [OPTIONAL] Station filter(s) (default: all stations)
+        -ch, --channel             [OPTIONAL] Channel filter(s) (default: all channels)
+
+    Filtering (--net / --station / --channel):
+
+        Each of these three filters accepts ONE OR MORE values, separated by spaces.
+        A file is kept if it matches at least one value in EACH filter you specify
+        (values within one filter are OR'ed together; net, station and channel
+        filters are AND'ed against each other).
+
+        Each value may be an exact code or a Unix-style wildcard pattern:
+            *        matches any run of characters
+            ?        matches exactly one character
+            [ABC]    matches any one of A, B, or C
+
+        Matching is case-insensitive. If a filter is omitted entirely, it
+        defaults to "match everything" for that field.
+
+        Examples:
+            -ch BHZ               -> only channel BHZ
+            -ch BHZ BHN BHE       -> BHZ or BHN or BHE
+            -ch "BH*"             -> any channel starting with BH
+            -ch "HH?"             -> any 3-character channel starting with HH
+            -nt "II" "IU"         -> network II OR IU
+            -nt II -st ANMO       -> network II AND station ANMO
+
+        Quote wildcard patterns (e.g. "BH*") so your shell does not expand
+        them against local filenames before they reach the program.
+        
         Documentation:
             https://projectisp.github.io/surfquaketutorial.github.io/
 
         Usage Example:
 
-        surfquake ppsdDB -p "./ppsd_test" -i "./meta/metadata.xml" -s "./output/test.pkl"
+        surfquake ppsdDB -p "./ppsd_test" -ch "BH*" -i "./meta/metadata.xml" -s "./output/test.pkl"
         """
     )
 
@@ -2252,14 +2283,14 @@ def _ppsdDB():
     arg_parse.add_argument("-pr", "--period", help="Period", type=float, required=False,
                            default=0.125)
 
-    arg_parse.add_argument("-nt", "--net", help="Net Selection", type=str, required=False,
-                           default="*")
+    arg_parse.add_argument("-nt", "--net", help="Network filter(s), wildcards allowed", type=str,
+                           nargs="+", required=False, default=None)
 
-    arg_parse.add_argument("-st", "--station", help="Station Selection", type=str, required=False,
-                           default="*")
+    arg_parse.add_argument("-st", "--station", help="Station filter(s), wildcards allowed", type=str,
+                           nargs="+", required=False, default=None)
 
-    arg_parse.add_argument("-ch", "--channel", help="Channel Selection", type=str, required=False,
-                           default="*")
+    arg_parse.add_argument("-ch", "--channel", help="Channel filter(s), wildcards allowed", type=str,
+                           nargs="+", required=False, default=None)
 
     parsed_args = arg_parse.parse_args()
     print("Input Arguments")

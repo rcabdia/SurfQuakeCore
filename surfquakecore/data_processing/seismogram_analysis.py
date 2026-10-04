@@ -287,7 +287,7 @@ class StreamProcessing:
     Class for applying stream-wide processing steps (e.g., stack, cross-correlation, rotate, shift).
     """
 
-    STREAM_METHODS = {"stack", "cross_correlate", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
+    STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
                       "kurtosis", "cut_stream", "algebra", "chop"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
@@ -317,7 +317,7 @@ class StreamProcessing:
                     self.stream = self.apply_stack(step)
                 elif method_name == "cross_correlate":
                     self.stream = self.apply_cross_correlation(step)
-                elif method_name == "convolution":
+                elif method_name == "convolve":
                     self.stream = self.apply_cross_correlation(step, conv=True)
                 elif method_name == "rotate":
                     self.stream = self.apply_rotation(step)
