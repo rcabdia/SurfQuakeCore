@@ -305,8 +305,7 @@ def _make_config():
         ch_functions     ->  Characteristic functions (Kurtosis, SNRs... and so on)
         plotting_config  ->  Template for plotting
         script_template  ->  Template containing a python template script to perform your own code
-        script_air_X     ->  Template containing a python template script to plugg your own code 
-        when plot seismogram (X is num (1-3) of script example)
+        script_air_X     ->  Template containing a python template script to plugg your own code when plot seismogram (X is num (1-3) of script example)
         events           ->  Event file template
         rename           ->  Template config to rename seismogram files header (Network, station...)
         algebra          ->  Template for manipulate traces using basic algebraic expressions

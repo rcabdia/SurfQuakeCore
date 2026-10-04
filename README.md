@@ -9,9 +9,14 @@ static stress drop, apparent stress) from the inversion of P-wave and S-wave and
 
 # Install
 
-Current version 1.5.0
+Current version 1.6.0
 >> (environment) pip install surfquake
 
-## Citation
+surfquake core is automatically installed with Integrated Seismic Program
+
+Check installation by typing
+>> (enviroment) surfquake -h
+
+# Citation
 
 Cabieces, R., Junqueira, T. C., Harris, K., Relinque, J., Satriano, C., & Vackář, J. (2025). surfQuake: A new Python toolbox for the workflow process of seismic sources. Seismological Research Letters, 96(5), 3231-3243.
