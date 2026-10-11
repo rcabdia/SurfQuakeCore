@@ -175,7 +175,7 @@ class AnalysisEvents:
 
             traces = []
             for tr in st:
-                if self.config:
+                if self.config and self.order_preference == "trace_first":
                     tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
                 if tr is not None and self.reference == "event_time":
                     tr = set_header_func(tr, distance_km=distance_m / 1000, BAZ=baz, AZ=az,
@@ -293,6 +293,9 @@ class AnalysisEvents:
                     sp = StreamProcessing(full_stream, self.config, self.inventory)
                     full_stream = sp.run_stream_processing()
 
+                    if self.order_preference == "stream_first":
+                        full_stream = self._apply_trace_level_processing(full_stream)
+
                     print(f"[INFO] Subproject {i}: {len(full_stream)} traces processed")
 
                     # If post-script is to run BEFORE plotting
@@ -406,6 +409,9 @@ class AnalysisEvents:
 
                         sp = StreamProcessing(full_stream, self.config, self.inventory)
                         full_stream = sp.run_stream_processing()
+
+                        if self.order_preference == "stream_first":
+                            full_stream = self._apply_trace_level_processing(full_stream)
 
                         print(f"[INFO] Subproject {i}, event {j}: {len(full_stream)} traces kept")
 
@@ -530,14 +536,11 @@ class AnalysisEvents:
                 gc.collect()
 
                 # 3. Trace-level and stream-level processing — order depends on user preference
+                sp = StreamProcessing(full_stream, self.config, self.inventory)
+                full_stream = sp.run_stream_processing()
+
                 if self.order_preference == "stream_first":
-                    sp = StreamProcessing(full_stream, self.config, self.inventory)
-                    full_stream = sp.run_stream_processing()
                     full_stream = self._apply_trace_level_processing(full_stream)
-                else:  # "trace_first" (default, preserves original behavior)
-                    full_stream = self._apply_trace_level_processing(full_stream)
-                    sp = StreamProcessing(full_stream, self.config, self.inventory)
-                    full_stream = sp.run_stream_processing()
 
                 print(f"[INFO] Fast mode: {len(full_stream)} traces processed")
 
@@ -625,6 +628,10 @@ class AnalysisEvents:
 
             traces = []
             for tr in st:
+                if self.config and self.order_preference == "trace_first":
+                    tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
+                if tr is None:
+                    continue
                 if 'geodetic' in tr.stats:
                     pass
                 else:
@@ -650,9 +657,13 @@ class AnalysisEvents:
 
         processed = []
         for tr in stream:
+            tid = tr.id
             tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
-            if tr is not None:
-                processed.append(tr)
+            if tr is None:
+                print(f"[WARNING] Trace-level processing failed for {tid}; trace dropped.")
+                continue
+
+            processed.append(tr)
 
         return self._clean_traces(processed)
 

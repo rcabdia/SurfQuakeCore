@@ -1347,12 +1347,15 @@ def _processing():
         -cs, --cut_start_time      [OPTIONAL] Cut pre-first arrival in seconds
         -ce, --cut_end_time        [OPTIONAL] Cut post-first arrival in seconds
         -r, --reference            [OPTIONAL] The pick time for cutting the waveforms is the origin time of the event
+        -op, --order_preference    [OPTIONAL] trace_first (default) | stream_first. Controls whether trace-level
+                                   steps (rmean, filter, taper...) run before or after stream-level steps
+                                   (cross_correlate, rotate, stack...)
         --phases                   [OPTIONAL] Comma-separated list of phases for arrival estimation (e.g., P,S)
         --vel                      [OPTIONAL] Phase speed to estimate the first arrival time (reference for cutting waveform)
         --plot_config              [OPTIONAL] Optional plot configuration file (YAML)
         --post_script              [OPTIONAL] Python script to apply per event stream
         --post_script_stage        [OPTIONAL] When to apply the post-script: before | after (default: before)
-    
+
     """
     )
 
@@ -1415,6 +1418,14 @@ def _processing():
         help="When to apply the post-script: 'before' or 'after' plotting",
         choices=["before", "after"],
         default="before"
+    )
+
+    arg_parse.add_argument(
+        "-op", "--order_preference",
+        help="'trace_first' (default) runs trace-level steps before stream-level steps; "
+             "'stream_first' runs stream-level steps first",
+        choices=["trace_first", "stream_first"],
+        default="trace_first"
     )
 
     parsed_args = arg_parse.parse_args()
@@ -1490,7 +1501,7 @@ def _processing():
                             sp_sub_projects, post_script=make_abs(parsed_args.post_script),
                             post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=make_abs(parsed_args.plot_config), reference=reference,
-                            phase_list=phase_list, vel=parsed_args.vel)
+                            phase_list=phase_list, vel=parsed_args.vel, order_preference=parsed_args.order_preference)
         sd.run_waveform_cutting(cut_start=start, cut_end=end, auto=parsed_args.auto)
 
     else:
@@ -1500,7 +1511,7 @@ def _processing():
                             sp, post_script=make_abs(parsed_args.post_script),
                             post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=make_abs(parsed_args.plot_config),
-                            reference=reference, phase_list=phase_list)
+                            reference=reference, phase_list=phase_list, order_preference=parsed_args.order_preference)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
 
@@ -1542,6 +1553,9 @@ def _processing_daily():
         -n, --net                 [OPTIONAL] Network code filter
         -s, --station             [OPTIONAL] Station code filter
         -ch, --channel            [OPTIONAL] Channel filter
+        -op, --order_preference    [OPTIONAL] trace_first (default) | stream_first. Controls whether trace-level
+                                   steps (rmean, filter, taper...) run before or after stream-level steps
+                                   (cross_correlate, rotate, stack...)
         --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
         --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
         --time_tolerance          [OPTIONAL] Tolerance in seconds for time filtering, excluded files with smaller time span
@@ -1550,6 +1564,7 @@ def _processing_daily():
         --plot_config             [OPTIONAL] Optional plotting configuration (YAML)
         --post_script             [OPTIONAL] Path to Python script for custom post-processing
         --post_script_stage       [OPTIONAL] When to apply the post-script: before | after (default: before)
+
     """
     )
 
@@ -1596,6 +1611,14 @@ def _processing_daily():
         help="When to apply the post-script: 'before' or 'after' plotting",
         choices=["before", "after"],
         default="before"
+    )
+
+    arg_parse.add_argument(
+        "-op", "--order_preference",
+        help="'trace_first' (default) runs trace-level steps before stream-level steps; "
+             "'stream_first' runs stream-level steps first",
+        choices=["trace_first", "stream_first"],
+        default="trace_first"
     )
 
     parsed_args = arg_parse.parse_args()
@@ -1648,6 +1671,7 @@ def _processing_daily():
             verbose=True
         )
 
+
     # --- Run processing workflow ---
     ae = AnalysisEvents(
         output=make_abs(parsed_args.output_folder),
@@ -1659,8 +1683,9 @@ def _processing_daily():
         time_segment_end=parsed_args.max_date,
         post_script=make_abs(parsed_args.post_script),
         post_script_stage=parsed_args.post_script_stage,
-        time_segment=parsed_args.time_segment
-    )
+        time_segment=parsed_args.time_segment,
+        order_preference=parsed_args.order_preference)
+
     ae.run_waveform_analysis(auto=parsed_args.auto)
 
 
