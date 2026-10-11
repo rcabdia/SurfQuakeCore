@@ -1702,11 +1702,15 @@ def _quickproc():
             -o, --output_folder      [OPTIONAL] Directory to save processed traces
             -a, --auto               [OPTIONAL] Run in automatic (non-interactive) mode
             -m, --merge              [OPTIONAL] If merge traces as fist action
+            -op, --order_preference  [OPTIONAL] 'trace_first' (default) or 'stream_first' — controls
+                                      whether trace-level steps (rmean, filter, taper...) run before
+                                      or after stream-level steps (cross_correlate, rotate, stack...)
                 --min_date           [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT None
                 --max_date           [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT None
                 --plot_config        [OPTIONAL] Plotting settings YAML
                 --post_script        [OPTIONAL] Python script to apply to each stream
                 --post_script_stage  [OPTIONAL] When to run post-script: 'before' or 'after' (default: before)
+
         """
     )
 
@@ -1739,6 +1743,13 @@ def _quickproc():
         choices=["before", "after"],
         default="before")
 
+    parser.add_argument(
+        "-op", "--order_preference",
+        help="Processing order preference: run trace-level steps before stream-level steps "
+             "('trace_first', default) or stream-level steps first ('stream_first')",
+        choices=["trace_first", "stream_first"],
+        default="trace_first")
+
     parsed_args = parser.parse_args()
     print(parsed_args)
 
@@ -1763,7 +1774,8 @@ def _quickproc():
         post_script=make_abs(parsed_args.post_script),
         post_script_stage=parsed_args.post_script_stage,
         time_segment_start=parsed_args.min_date,
-        time_segment_end=parsed_args.max_date)
+        time_segment_end=parsed_args.max_date,
+        order_preference=parsed_args.order_preference)
 
     ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto, merge=parsed_args.merge)
 

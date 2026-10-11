@@ -35,7 +35,7 @@ class AnalysisEvents:
                  post_script_stage: Optional[str] = "before", time_segment_start: Optional[str] = None,
                  time_segment_end: Optional[str] = None, reference: Optional[str] = None,
                  phase_list: Optional[list] = None, vel: Optional[float] = None,
-                 time_segment: Optional[bool] = False):
+                 time_segment: Optional[bool] = False, order_preference: Optional[str] = "trace_first"):
 
         self.output = output
         self._exist_folder = False
@@ -52,6 +52,8 @@ class AnalysisEvents:
         self.time_segment_end = time_segment_end
         self.post_script_stage = post_script_stage
         self.phase_list = phase_list
+        self.order_preference = order_preference \
+            if order_preference in ("trace_first", "stream_first") else "trace_first"
 
         if inventory_file:
             try:
@@ -527,9 +529,15 @@ class AnalysisEvents:
                 del all_traces, results
                 gc.collect()
 
-                # 3. StreamProcessing — always runs, unconditionally
-                sp = StreamProcessing(full_stream, self.config, self.inventory)
-                full_stream = sp.run_stream_processing()
+                # 3. Trace-level and stream-level processing — order depends on user preference
+                if self.order_preference == "stream_first":
+                    sp = StreamProcessing(full_stream, self.config, self.inventory)
+                    full_stream = sp.run_stream_processing()
+                    full_stream = self._apply_trace_level_processing(full_stream)
+                else:  # "trace_first" (default, preserves original behavior)
+                    full_stream = self._apply_trace_level_processing(full_stream)
+                    sp = StreamProcessing(full_stream, self.config, self.inventory)
+                    full_stream = sp.run_stream_processing()
 
                 print(f"[INFO] Fast mode: {len(full_stream)} traces processed")
 
@@ -617,8 +625,6 @@ class AnalysisEvents:
 
             traces = []
             for tr in st:
-                if self.config:
-                    tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
                 if 'geodetic' in tr.stats:
                     pass
                 else:
@@ -631,6 +637,24 @@ class AnalysisEvents:
         except Exception as e:
             print(f"[WARNING] Failed station processing: {e}")
             return []
+
+    def _apply_trace_level_processing(self, stream):
+        """
+        Apply all trace-level steps from self.config to every trace in `stream`,
+        in the order they appear in the config. Stream-level steps (handled by
+        StreamProcessing) are silently ignored by SeismogramData.run_analysis,
+        so this is safe to call with the full shared config list.
+        """
+        if not self.config:
+            return stream
+
+        processed = []
+        for tr in stream:
+            tr = SeismogramData.run_analysis(tr, self.config, inventory=self.inventory)
+            if tr is not None:
+                processed.append(tr)
+
+        return self._clean_traces(processed)
 
     def _load_post_script(self, script_path: str):
         if not os.path.exists(script_path):
