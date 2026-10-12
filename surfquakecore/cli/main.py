@@ -313,7 +313,8 @@ def _make_config():
         2. Configurations of script inputs
         
         script_template  ->  Template containing a python template script to perform your own code
-        script_air_X     ->  Template containing a python template script to plugg your own code when plot seismogram (X is num (1-3) of script example)
+        script_air_X     ->  Template containing a python template script to plugg your own code when 
+                             plot seismogram (X is num (1-3) of script example)
         
         ----------------------------------------------------------------------------------------
         3. Configurations to be used with commands: associate, locate and mti.
@@ -1559,9 +1560,9 @@ def _processing_daily():
         -n, --net                 [OPTIONAL] Network code filter
         -s, --station             [OPTIONAL] Station code filter
         -ch, --channel            [OPTIONAL] Channel filter
-        -op, --order_preference    [OPTIONAL] trace_first (default) | stream_first. Controls whether trace-level
-                                   steps (rmean, filter, taper...) run before or after stream-level steps
-                                   (cross_correlate, rotate, stack...)
+        -op, --order_preference   [OPTIONAL] trace_first (default) | stream_first. Controls whether trace-level
+                                  steps (rmean, filter, taper...) run before or after stream-level steps
+                                  (cross_correlate, rotate, stack...)
         --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
         --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
         --time_tolerance          [OPTIONAL] Tolerance in seconds for time filtering, excluded files with smaller time span
