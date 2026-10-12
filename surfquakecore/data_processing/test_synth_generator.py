@@ -1,10 +1,9 @@
-
 import numpy as np
 from obspy import Trace, UTCDateTime
 from scipy.signal import chirp
 
 
-class TestTraceGenerator:
+class SyntheticTraceGenerator:
     """
     Generate synthetic ObsPy traces for testing and signal-processing
     applications.
@@ -60,6 +59,44 @@ class TestTraceGenerator:
         self.dt = 1.0 / self.sampling_rate
         self.time = np.arange(self.npts) * self.dt
 
+    @classmethod
+    def from_trace(cls, tr):
+        """
+        Build a generator that matches an existing ObsPy Trace.
+
+        The generator inherits sampling rate, number of samples, start
+        time and the network/station/location/channel codes of ``tr``,
+        so any signal it generates has exactly the same time axis as
+        the trace it was created from.
+
+        Parameters
+        ----------
+        tr : obspy.Trace
+            Reference trace.
+
+        Returns
+        -------
+        TestTraceGenerator
+        """
+
+        if not isinstance(tr, Trace):
+            raise TypeError("tr must be an obspy.Trace")
+
+        stats = tr.stats
+
+        if stats.npts < 1:
+            raise ValueError("Reference trace has no samples.")
+
+        return cls(
+            sampling_rate=stats.sampling_rate,
+            duration=stats.npts / stats.sampling_rate,
+            starttime=stats.starttime,
+            network=stats.network,
+            station=stats.station,
+            location=stats.location,
+            channel=stats.channel,
+        )
+
     def generate(self, signal_type, **kwargs):
         """
         Generate a synthetic ObsPy Trace.
@@ -77,6 +114,7 @@ class TestTraceGenerator:
         cubic
         random
         ricker
+        gaussian
         chirp
         damped_sine
         """
@@ -95,6 +133,7 @@ class TestTraceGenerator:
             "cubic": self._cubic,
             "random": self._random,
             "ricker": self._ricker,
+            "gaussian": self._gaussian,
             "chirp": self._chirp,
             "damped_sine": self._damped_sine,
         }
@@ -237,6 +276,50 @@ class TestTraceGenerator:
     # ------------------------------------------------------------------
     # Seismic / signal-processing functions
     # ------------------------------------------------------------------
+
+    def _gaussian(
+        self,
+        sigma=1.0,
+        time=None,
+        amplitude=1.0,
+    ):
+        """
+        Generate a Gaussian pulse.
+
+        x(t) = A exp(-(t - time)**2 / (2 sigma**2))
+
+        Parameters
+        ----------
+        sigma : float
+            Standard deviation of the pulse in seconds. The full width at
+            half maximum is about 2.355 * sigma. It must be at least one
+            sample interval.
+        time : float, optional
+            Time of the pulse maximum in seconds from the beginning of the
+            trace. Defaults to the centre of the trace.
+        amplitude : float
+            Peak value.
+        """
+
+        if sigma <= 0:
+            raise ValueError("sigma must be > 0")
+
+        if sigma < self.dt:
+            raise ValueError(
+                f"sigma must be at least one sample interval ({self.dt} s)."
+            )
+
+        if time is None:
+            time = self.duration / 2.0
+
+        if not 0 <= time <= self.duration:
+            raise ValueError(
+                "time must lie inside the trace duration."
+            )
+
+        return amplitude * np.exp(
+            -((self.time - time) ** 2) / (2.0 * sigma**2)
+        )
 
     def _ricker(
         self,

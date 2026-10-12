@@ -24,6 +24,7 @@ from surfquakecore.seismoplot.plot import PlotProj
 from collections import defaultdict
 import importlib.util
 import gc
+from surfquakecore.data_processing.test_synth_generator import SyntheticTraceGenerator
 
 
 class AnalysisEvents:
@@ -63,6 +64,7 @@ class AnalysisEvents:
                 print("Warning NO VALID inventory file: ", inventory_file)
 
         self.config = None
+        self.source_config = None
         self.df_events = None
         self.time_segment = time_segment
 
@@ -71,6 +73,7 @@ class AnalysisEvents:
 
         if config_file is not None:
             self.config = self.load_analysis_configuration(config_file)
+            self.source_config = self.load_source_configuration(config_file)
 
         if self.output is not None:
             if os.path.isdir(self.output):
@@ -92,6 +95,9 @@ class AnalysisEvents:
         if post_script:
             self._load_post_script(post_script)
 
+        self._SOURCE_HEADER_KEYS = {"network", "station", "location", "channel",
+                       "sampling_rate", "duration", "starttime"}
+
     def load_analysis_configuration(self, config_file: str):
         with open(config_file, 'r') as file:
             try:
@@ -101,7 +107,31 @@ class AnalysisEvents:
                 print(f"Conflictive file at {os.path.basename(file.name)}: {e}")
                 return None
 
+        if yaml_data and "Analysis" not in yaml_data and "Source" in yaml_data:
+            return []  # generation only, nothing to process
+
         return parse_configuration_file(yaml_data)
+
+    def load_source_configuration(self, config_file: str):
+        with open(config_file, "r") as f:
+            yaml_data = yaml.safe_load(f) or {}
+        return yaml_data.get("Source")
+
+    def _generate_source_traces(self):
+        """Build the input traces from the 'Source' section of the config."""
+        if not self.source_config:
+            raise ValueError("No 'Source' section found in the config file.")
+
+        stream = Stream()
+        for key in sorted(self.source_config, key=lambda k: int(k.split("_")[-1])):
+            params = dict(self.source_config[key])
+            header = {k: params.pop(k) for k in list(params) if k in self._SOURCE_HEADER_KEYS}
+            signal_type = params.pop("signal_type", None)
+            if signal_type is None:
+                raise ValueError(f"Source '{key}' needs a 'signal_type'.")
+            gen = SyntheticTraceGenerator(**header)
+            stream.append(gen.generate(signal_type, **params))
+        return stream
 
     def _process_station_traces(self, args):
 
@@ -481,7 +511,7 @@ class AnalysisEvents:
                         print("[INFO] Skipping to next event...")
                         break  # go to next event despite the error
 
-    def run_fast_waveform_analysis(self, data_files, auto: bool = True, merge: bool = False):
+    def run_fast_waveform_analysis(self, data_files, auto: bool = True, merge: bool = False, generate: bool = False):
 
         """
         Lightweight waveform analysis for raw file-based input using self.data_files.
@@ -522,8 +552,15 @@ class AnalysisEvents:
             while True:
 
                 # 1. Station processing — always runs, serial only if post_script_func exists (pickle constraint)
-                if self.post_script_func:
-
+                # 1. Station processing, or synthetic generation when no -w was given
+                if generate:
+                    raw = Stream([self._set_header(tr, distance_km=-1, BAZ=-1, AZ=-1, incidence_angle=-1,
+                                                   otime=None, lat=None, lon=None, depth=None)
+                                  for tr in self._generate_source_traces()])
+                    if self.order_preference == "trace_first":
+                        raw = self._apply_trace_level_processing(raw)
+                    results = [list(raw)]
+                elif self.post_script_func:
                     results = [self._process_station_analysis(task) for task in tasks]
                 else:
                     with Pool(processes=min(cpu_count(), len(tasks))) as pool:
@@ -585,6 +622,7 @@ class AnalysisEvents:
                         if self.config_file:
                             print(f"[INFO] Loading parametrization and Reprocessing...")
                             self.config = self.load_analysis_configuration(self.config_file)
+                            self.source_config = self.load_source_configuration(self.config_file)
                         continue  # Rerun same event
 
                     elif user_choice == "exit" or user_choice == "e":

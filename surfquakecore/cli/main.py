@@ -304,13 +304,19 @@ def _make_config():
         spectral_config  ->  Template for generate spectrum, spectrogram and continuous wavelet transform
         ch_functions     ->  Characteristic functions (Kurtosis, SNRs... and so on)
         plotting_config  ->  Template for plotting
-        script_template  ->  Template containing a python template script to perform your own code
-        script_air_X     ->  Template containing a python template script to plugg your own code when plot seismogram (X is num (1-3) of script example)
+        test_sign_config ->  template for generate test sinthetic signals
         events           ->  Event file template
         rename           ->  Template config to rename seismogram files header (Network, station...)
         algebra          ->  Template for manipulate traces using basic algebraic expressions
+        
         ----------------------------------------------------------------------------------------
-        2. Configurations to be used with commands: associate, locate and mti.
+        2. Configurations of script inputs
+        
+        script_template  ->  Template containing a python template script to perform your own code
+        script_air_X     ->  Template containing a python template script to plugg your own code when plot seismogram (X is num (1-3) of script example)
+        
+        ----------------------------------------------------------------------------------------
+        3. Configurations to be used with commands: associate, locate and mti.
         
         real_config      -> Template to associate picks
         nll_config       -> Template for locate events
@@ -324,7 +330,7 @@ def _make_config():
     )
     available_configs = ["typical_config", "config_all", "stream_config", "spectral_config", "events",
                          "plotting_config", "script_template", "real_config", "nll_config", "mti_config", "rename",
-                         "algebra", "ch_functions", "script_air_1", "script_air_2", "script_air_3"]
+                         "algebra", "ch_functions", "script_air_1", "script_air_2", "script_air_3", "test_sign_config"]
 
     arg_parse.add_argument("-c", "--config_type", help="Config type name", type=str, required=True)
 
@@ -1721,7 +1727,7 @@ def _quickproc():
                 surfquake quick -w "./data/*.mseed" -c ./config.yaml -i ./inventory.xml -o ./out --plot_config plot.yaml
 
         Key Arguments:
-            -w, --wave_files         [REQUIRED] Glob pattern or path to waveform files
+            -w, --wave_files         [REQUIRED | OPTIONAL] Glob pattern or path to waveform files, (not needed if the config has a 'Source' section)
             -c, --config_file        [OPTIONAL] YAML config defining processing steps
             -i, --inventory_file     [OPTIONAL] Station metadata (StationXML or RESP)
             -o, --output_folder      [OPTIONAL] Directory to save processed traces
@@ -1739,7 +1745,8 @@ def _quickproc():
         """
     )
 
-    parser.add_argument("-w", "--wave_files", type=str, required=True)
+    parser.add_argument("-w", "--wave_files", type=str, required=False, default=None,
+                        help="Waveform files. Optional if the config file has a 'Source' section")
 
     parser.add_argument(
         "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)",
@@ -1778,16 +1785,21 @@ def _quickproc():
     parsed_args = parser.parse_args()
     print(parsed_args)
 
-    if "," in parsed_args.wave_files or " " in parsed_args.wave_files:
-        # Explicit list of files
-        wave_paths = [make_abs(f.strip()) for f in parsed_args.wave_files.split(",") if f.strip()]
+    generate = parsed_args.wave_files is None
 
+    if generate:
+        if not parsed_args.config_file:
+            parser.error("Without -w you must give -c with a 'Source' section")
+        data_files = []
     else:
-        # Wildcard path
-        wave_paths = make_abs(parsed_args.wave_files)
+        if "," in parsed_args.wave_files or " " in parsed_args.wave_files:
+            wave_paths = [make_abs(f.strip()) for f in parsed_args.wave_files.split(",") if f.strip()]
+        else:
+            wave_paths = make_abs(parsed_args.wave_files)
 
-    # Build project on-the-fly using wildcard path
-    data_files = SurfProject.collect_files(root_path=wave_paths)
+        # Build project on-the-fly using wildcard path
+        data_files = SurfProject.collect_files(root_path=wave_paths)
+
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
@@ -1802,7 +1814,11 @@ def _quickproc():
         time_segment_end=parsed_args.max_date,
         order_preference=parsed_args.order_preference)
 
-    ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto, merge=parsed_args.merge)
+    if generate and not ae.source_config:
+        parser.error("No -w given and the config file has no 'Source' section")
+
+    ae.run_fast_waveform_analysis(data_files, auto=parsed_args.auto, merge=parsed_args.merge,
+                                  generate=generate)
 
 
 def _trigg():
