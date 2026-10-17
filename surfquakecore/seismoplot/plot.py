@@ -29,6 +29,7 @@ from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
 from surfquakecore.seismoplot.crosshair import Cursor
+from surfquakecore.seismoplot.fast_plot import FastLine
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
@@ -74,6 +75,8 @@ class PlotProj:
             "plot_output_path": None,  # <-- NEW: folder to auto-save figures; None = disabled
             "show_plot": True,  # <-- NEW: set False for headless/batch saving
             "format_save": "png",
+            "fast": False,  # QDP-style min/max decimated plotting
+            "fast_points": None,
             "backend": "TkAgg"}
 
 
@@ -254,9 +257,13 @@ class PlotProj:
         self._setup_pick_interaction()
         self._restore_state()
 
+        use_fast = self.plot_config.get("fast", False)
+        #fast_points = self.plot_config.get("fast_points")
+        if use_fast:
+            fast_points = 1000
+
         # Plot each trace
         for ax_idx, (ax, tr) in enumerate(zip(self.axs, sub_traces)):
-            t = tr.times("matplotlib")
 
             if sort_mode:
                 dist, baz = self._get_geodetic_info(tr)
@@ -264,7 +271,12 @@ class PlotProj:
             else:
                 label = tr.id
 
-            ax.plot(t, tr.data, linewidth=0.75, label=label)
+            # One single plotting call per trace
+            if use_fast:
+                FastLine(ax, tr, n_points=fast_points, linewidth=0.75, label=label)
+            else:
+                t = tr.times("matplotlib")
+                ax.plot(t, tr.data, linewidth=0.75, label=label)
 
             # --- Plot theoretical arrivals and origin time if present ---
             arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
@@ -321,9 +333,10 @@ class PlotProj:
             ax.yaxis.set_major_formatter(formatter_pow)
             ax.yaxis.get_offset_text().set_visible(True)
 
-        # Set x-limits across all axes
-        auto_start = min(tr.times("matplotlib")[0] for tr in sub_traces)
-        auto_end = max(tr.times("matplotlib")[-1] for tr in sub_traces)
+        # Set x-limits across all axes (no need to build the full time arrays)
+        auto_start = min(tr.stats.starttime.matplotlib_date for tr in sub_traces)
+        auto_end = max(tr.stats.endtime.matplotlib_date for tr in sub_traces)
+
         for ax in self.axs:
             ax.set_xlim(auto_start, auto_end)
 

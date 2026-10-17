@@ -817,7 +817,8 @@ def _locate():
         -o, --output_dir          [REQUIRED] Directory where location results will be saved
         -g, --generate_tt         [REQUIRED] Generate travel time files before location
         -s, --apply_station_corr  [OPTIONAL] Apply station corrections
-        -n, --iterations          [OPTIONAL] Number of global search iterations (int, number of iterations if stations corrections is set)
+        -n, --iterations          [OPTIONAL] Number of global search iterations 
+                                  (int, number of iterations if stations corrections is set)
 
     Reference:
         Lomax, A., Michelini, A., Curtis, A. (2009). Earthquake Location: Direct, Global-Search Methods.
@@ -1742,7 +1743,7 @@ def _quickproc():
                 --plot_config        [OPTIONAL] Plotting settings YAML
                 --post_script        [OPTIONAL] Python script to apply to each stream
                 --post_script_stage  [OPTIONAL] When to run post-script: 'before' or 'after' (default: before)
-
+                --fast               [OPTIONAL] Quick-and-dirty (QDP-style) min/max decimated plotting
         """
     )
 
@@ -1770,6 +1771,10 @@ def _quickproc():
 
     parser.add_argument("--post_script", help="Path to Python script to apply to each event stream",
         type=str)
+
+    parser.add_argument("--fast", action="store_true",
+                           help="Fast plotting: min/max decimation")
+
 
     parser.add_argument("--post_script_stage",
         help="When to apply the post-script: 'before' or 'after' plotting",
@@ -1813,7 +1818,8 @@ def _quickproc():
         post_script_stage=parsed_args.post_script_stage,
         time_segment_start=parsed_args.min_date,
         time_segment_end=parsed_args.max_date,
-        order_preference=parsed_args.order_preference)
+        order_preference=parsed_args.order_preference,
+        fast=parsed_args.fast)
 
     if generate and not ae.source_config:
         parser.error("No -w given and the config file has no 'Source' section")

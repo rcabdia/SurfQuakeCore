@@ -36,7 +36,8 @@ class AnalysisEvents:
                  post_script_stage: Optional[str] = "before", time_segment_start: Optional[str] = None,
                  time_segment_end: Optional[str] = None, reference: Optional[str] = None,
                  phase_list: Optional[list] = None, vel: Optional[float] = None,
-                 time_segment: Optional[bool] = False, order_preference: Optional[str] = "trace_first"):
+                 time_segment: Optional[bool] = False, order_preference: Optional[str] = "trace_first",
+                 fast: Optional[bool] = False):
 
         self.output = output
         self._exist_folder = False
@@ -88,8 +89,15 @@ class AnalysisEvents:
             try:
                 with open(plot_config_file, "r") as f:
                     self.plot_config = yaml.safe_load(f).get("plotting", {})
+
             except Exception as e:
                 print(f"[WARNING] Plot config not loaded: {e}")
+
+        if fast:
+            self.plot_config = {}
+            print("Activacting fast mode")
+            self.plot_config["fast"] = True
+            self.plot_config["fast_points"] = 1000
 
         # Load post-processing script
         if post_script:
