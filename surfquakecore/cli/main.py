@@ -1772,9 +1772,8 @@ def _quickproc():
     parser.add_argument("--post_script", help="Path to Python script to apply to each event stream",
         type=str)
 
-    parser.add_argument("--fast", action="store_true",
+    parser.add_argument("--fast", nargs="?", const=True, default=False, type=int, metavar="N",
                            help="Fast plotting: min/max decimation")
-
 
     parser.add_argument("--post_script_stage",
         help="When to apply the post-script: 'before' or 'after' plotting",

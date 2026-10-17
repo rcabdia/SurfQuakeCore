@@ -13,7 +13,7 @@ import yaml
 from obspy import read_inventory, UTCDateTime
 import os
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
-from typing import Optional, List
+from typing import Optional, List, Union
 from surfquakecore.data_processing.seismogram_analysis import SeismogramData, StreamProcessing
 from surfquakecore.project.surf_project import SurfProject
 from multiprocessing import Pool, cpu_count
@@ -37,7 +37,7 @@ class AnalysisEvents:
                  time_segment_end: Optional[str] = None, reference: Optional[str] = None,
                  phase_list: Optional[list] = None, vel: Optional[float] = None,
                  time_segment: Optional[bool] = False, order_preference: Optional[str] = "trace_first",
-                 fast: Optional[bool] = False):
+                 fast: Union[bool, int] = False):
 
         self.output = output
         self._exist_folder = False
@@ -72,9 +72,16 @@ class AnalysisEvents:
         if self.reference is None:
             self.reference = "event_time"
 
+
         if config_file is not None:
             self.config = self.load_analysis_configuration(config_file)
             self.source_config = self.load_source_configuration(config_file)
+        if isinstance(fast, int) and not isinstance(fast, bool):
+            fast_config = [{'name': 'raw', 'factor': fast, 'integers': True}]
+            if config_file is not None:
+                self.config = fast_config + self.config
+            else:
+                self.config = fast_config
 
         if self.output is not None:
             if os.path.isdir(self.output):
@@ -95,7 +102,7 @@ class AnalysisEvents:
 
         if fast:
             self.plot_config = {}
-            print("Activacting fast mode")
+            print("Quick and Dirty mode activated")
             self.plot_config["fast"] = True
             self.plot_config["fast_points"] = 1000
 
