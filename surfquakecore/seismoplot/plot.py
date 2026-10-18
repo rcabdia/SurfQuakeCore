@@ -1173,10 +1173,17 @@ class PlotProj:
         else:
             print("[INFO] No reference times found to remove.")
 
+    def _window_copy(self, trace):
+        """Copy of the trace trimmed to the plot window (utc_start / utc_end). Never modifies the original."""
+        tr = trace.copy()
+        if self.utc_start is not None or self.utc_end is not None:
+            tr.trim(starttime=self.utc_start, endtime=self.utc_end)
+        return tr
+
     def _plot_single_spectrum(self, idx, axis_type, mode="fft"):
 
         self._exit = False
-        trace = self.displayed_traces[idx]
+        trace = self._window_copy(self.displayed_traces[idx])
         spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta, mode=mode)
 
         try:
@@ -1228,26 +1235,9 @@ class PlotProj:
         self._exit = False
         self.fig_spec, self.ax_spec = plt.subplots()
 
-        st = Stream(self.displayed_traces)
-        common_start = max(tr.stats.starttime for tr in st)
-        common_end = min(tr.stats.endtime for tr in st)
-        st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
+        traces = [self._window_copy(tr) for tr in self.displayed_traces]
 
-        if self.utc_start is not None:
-
-            stime_trim = self.utc_start
-        else:
-            stime_trim = st[0].stats.starttime
-
-        if self.utc_end is not None:
-
-            etime_trim = self.utc_end
-        else:
-            etime_trim = st[0].stats.endtime
-
-        print("Spectrum window: ", stime_trim, etime_trim)
-
-        for trace in st:
+        for trace in traces:
             spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta, mode=mode)
             if axis_type == "loglog":
                 self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
@@ -1273,7 +1263,7 @@ class PlotProj:
                           method="multitaper", nw=None, dates=False):
 
         self._exit = False
-        trace = self.displayed_traces[idx]
+        trace = self._window_copy(self.displayed_traces[idx])
 
         try:
             stime = self.utc_start
@@ -1287,10 +1277,9 @@ class PlotProj:
 
         print("Spectrogram window: ", stime, etime)
 
-        trace.trim(starttime=stime, endtime=etime)
-
         print(idx, int(win_sec * trace.stats.sampling_rate), (100 - overlap_percent) * 1E-2,
             method, nw)
+
 
         spectrum, num_steps, t, f = SpectrumTool.compute_spectrogram(trace.data, win=int(win_sec * trace.stats.sampling_rate),
             dt=trace.stats.delta, linf=0, lsup=int(trace.stats.sampling_rate // 2),
@@ -1378,7 +1367,7 @@ class PlotProj:
             wavelet_type = "Paul"
 
         param = float(param)
-        tr = self.displayed_traces[idx]
+        tr = self._window_copy(self.displayed_traces[idx])
 
         f_min = kwargs.pop("fmin", 0.5)
         f_max = kwargs.pop("fmax", tr.stats.sampling_rate // 2)

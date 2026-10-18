@@ -1822,6 +1822,20 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Failed to apply math expression: {e}")
 
+    @staticmethod
+    def _as_mode(value):
+        value = value.lower()
+        if value not in ("fft", "multitaper"):
+            raise ValueError("use fft or multitaper")
+        return value
+
+    @staticmethod
+    def _as_wavelet(value):
+        value = value.lower()
+        if value not in ("cm", "mh", "pa"):
+            raise ValueError("use cm, mh or pa")
+        return value
+
     def _cmd_save_tf(self, args):
         """
         Save an analysis product of the displayed traces to disk.
@@ -1889,33 +1903,56 @@ class PlotCommandPrompt:
             print(f"[ERROR] Failed to create folder '{opts['folder_path']}': {e}")
             return
 
+        start = getattr(self.plot_proj, "utc_start", None)
+        end = getattr(self.plot_proj, "utc_end", None)
+        if start is not None or end is not None:
+            print(f"[INFO] Time window: {start.isoformat() if start else 'trace start'} -> "
+                  f"{end.isoformat() if end else 'trace end'} "
+                  f"(saved on a cut copy, plotted traces are not modified)")
+        else:
+            print("[INFO] No time window set: saving the full traces.")
+
         saver(traces, opts)
+
 
     def _parse_save_options(self, tokens):
         """Parse the options of 'save'. Returns a dict, or None if an option is invalid."""
-        opts = {"folder_path": None, "mode": "fft", "compress": True}
+        opts = {"folder_path": None, "mode": "fft", "compress": True,
+                "win": 5.0, "overlap": 50.0, "nw": None,                    # spectrogram
+                "wavelet": "cm", "param": 6.0, "fmin": None, "fmax": None}  # cwt
+
+        # option -> (key in opts, converter)
+        value_opts = {
+            "--folder_path": ("folder_path", self.make_abs),
+            "--mode": ("mode", self._as_mode),
+            "--method": ("mode", self._as_mode),      # same name used by the 'spectrogram' command
+            "--win": ("win", float),
+            "--overlap": ("overlap", float),
+            "--nw": ("nw", float),
+            "--wavelet": ("wavelet", self._as_wavelet),
+            "--param": ("param", float),
+            "--fmin": ("fmin", float),
+            "--fmax": ("fmax", float),
+        }
+
         it = iter(tokens)
         for tok in it:
-            if tok == "--folder_path":
-                try:
-                    opts["folder_path"] = self.make_abs(next(it))
-                except StopIteration:
-                    print("[ERROR] Missing value after --folder_path")
-                    return None
-            elif tok == "--mode":
-                try:
-                    mode = next(it).lower()
-                except StopIteration:
-                    print("[ERROR] Missing value after --mode")
-                    return None
-                if mode not in ("fft", "multitaper"):
-                    print(f"[ERROR] Invalid mode '{mode}'. Use fft or multitaper.")
-                    return None
-                opts["mode"] = mode
-            elif tok == "--no_compress":
+            if tok == "--no_compress":
                 opts["compress"] = False
-            else:
+                continue
+            if tok not in value_opts:
                 print(f"[ERROR] Unknown option '{tok}'.")
+                return None
+            key, convert = value_opts[tok]
+            try:
+                raw = next(it)
+            except StopIteration:
+                print(f"[ERROR] Missing value after {tok}")
+                return None
+            try:
+                opts[key] = convert(raw)
+            except ValueError as e:
+                print(f"[ERROR] Invalid value '{raw}' for {tok}: {e}")
                 return None
         return opts
 
@@ -1949,10 +1986,63 @@ class PlotCommandPrompt:
               f"in {opts['folder_path']}")
 
     def _save_spectrogram(self, traces, opts):
-        print("[INFO] 'save spectrogram' is not implemented yet.")
+        from surfquakecore.spectral.specrun import TraceSpectrogramResult
+
+        if opts["win"] <= 0 or not (0 <= opts["overlap"] < 100):
+            print("[ERROR] --win must be > 0 and --overlap must be in [0, 100).")
+            return
+
+        saved = 0
+        for trace in traces:
+            try:
+                tr = self._trace_in_window(trace)
+                if tr.stats.npts < 2:
+                    print(f"[WARN] {trace.id}: empty or too short window, skipped.")
+                    continue
+                if round(opts["win"] * tr.stats.sampling_rate) >= tr.stats.npts:
+                    print(f"[WARN] {trace.id}: window of {opts['win']} s is not shorter than the data "
+                          f"({tr.stats.npts * tr.stats.delta:.1f} s), skipped.")
+                    continue
+
+                result = TraceSpectrogramResult(tr)
+                result.compute_spectrogram(win=opts["win"], overlap_percent=opts["overlap"],
+                                           method=opts["mode"], nw=opts["nw"])
+                result.to_pickle(opts["folder_path"], compress=opts["compress"])
+                saved += 1
+            except Exception as e:
+                print(f"[ERROR] {trace.id}: could not save spectrogram: {e}")
+
+        print(f"[INFO] Spectrogram ({opts['mode']}, win={opts['win']} s, overlap={opts['overlap']}%) "
+              f"saved for {saved}/{len(traces)} trace(s) in {opts['folder_path']}")
 
     def _save_cwt(self, traces, opts):
-        print("[INFO] 'save cwt' is not implemented yet.")
+        from surfquakecore.spectral.cwtrun import TraceCWTResult
+
+        saved = 0
+        for trace in traces:
+            try:
+                tr = self._trace_in_window(trace)
+                if tr.stats.npts < 2:
+                    print(f"[WARN] {trace.id}: empty or too short window, skipped.")
+                    continue
+
+                # same defaults as the 'cwt' plotting command
+                fmin = opts["fmin"] if opts["fmin"] is not None else 0.5
+                fmax = opts["fmax"] if opts["fmax"] is not None else tr.stats.sampling_rate // 2
+                if fmin >= fmax:
+                    print(f"[WARN] {trace.id}: fmin ({fmin}) must be lower than fmax ({fmax}), skipped.")
+                    continue
+
+                result = TraceCWTResult(tr)
+                result.compute_cwt(wavelet_type=opts["wavelet"], param=opts["param"],
+                                   fmin=fmin, fmax=fmax)
+                result.to_pickle(opts["folder_path"], compress=opts["compress"])
+                saved += 1
+            except Exception as e:
+                print(f"[ERROR] {trace.id}: could not save cwt: {e}")
+
+        print(f"[INFO] CWT (wavelet={opts['wavelet']}, param={opts['param']}) "
+              f"saved for {saved}/{len(traces)} trace(s) in {opts['folder_path']}")
 
     def _cmd_post_script(self, args):
 
@@ -2104,21 +2194,22 @@ class PlotCommandPrompt:
                 >> history 20
         """,
             "save_tf": """
-            Save an analysis product of the displayed traces to disk.
+        Save an analysis product of the displayed traces to disk.
 
         Usage:
             save <product> <index>|all --folder_path <folder> [--mode fft|multitaper] [--no_compress]
 
-        Products:
-            spectrum (sp)       amplitude spectrum, saved as <trace_id>.D.<year>.<julday>.sp
-            spectrogram (spec)  not implemented yet
-            cwt                 not implemented yet
+        Products and options:
+            spectrum (sp)       --mode fft|multitaper                (default fft)
+            spectrogram (spec)  --win <sec> (5.0)  --overlap <%> (50)  --method fft|multitaper (fft)  --nw <NW>
+            cwt                 --wavelet cm|mh|pa (cm)  --param <p> (6)  --fmin <Hz> (0.5)  --fmax <Hz> (Nyquist)
+        Common:
+            --no_compress       write uncompressed pickle files
 
         Examples:
-            >> save_tf spectrum 0 --folder_path ./spectra
-            >> save_tf sp all --folder_path ./spectra --mode multitaper
-
-        Files can be loaded again with TraceSpectrumResult.from_pickle(path).
+            >> save spectrum 0 --folder_path ./spectra
+            >> save spec all --folder_path ./spectra --win 10 --overlap 75 --method multitaper
+            >> save cwt 0 --folder_path ./spectra --wavelet cm --param 6 --fmin 1 --fmax 20
             """,
             "back2future": """
         Restore the traces to their original state (as loaded), undoing all
