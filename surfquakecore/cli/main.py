@@ -1375,7 +1375,8 @@ def _processing():
                            required=False)
 
     arg_parse.add_argument(
-        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true"
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts) "
+                             "saves figures if show_plot: false and plot_output_path are set", action="store_true"
     )
 
     arg_parse.add_argument("-w", "--wave_files", help="path to waveform files (e.g. './data/*Z')", type=str)
@@ -1588,7 +1589,8 @@ def _processing_daily():
     arg_parse.add_argument("-p", "--project_file", required=True, help="Path to SurfProject .pkl")
 
     arg_parse.add_argument(
-        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)", action="store_true")
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts) "
+                             "saves figures if show_plot: false and plot_output_path are set", action="store_true")
 
     arg_parse.add_argument("-o", "--output_folder", help="Folder to save processed data")
 
@@ -1764,7 +1766,8 @@ def _quickproc():
                         help="Waveform files. Optional if the config file has a 'Source' section")
 
     parser.add_argument(
-        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts)",
+        "-a", "--auto", help="Run in automatic processing mode (no plotting or prompts) "
+                             "saves figures if show_plot: false and plot_output_path are set",
         action="store_true")
 
     parser.add_argument("-c", "--config_file", type=str, required=False)

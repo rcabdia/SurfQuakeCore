@@ -62,6 +62,7 @@ class PlotCommandPrompt:
             "load_picks": self._cmd_load_picks,
             "shift": self._cmd_shift,
             "write": self._cmd_write,
+            "save_tf":self._cmd_save_tf,
             "info": self.plot_command_prompt,
             "runpy": self._cmd_post_script,
             "help": self._cmd_help,
@@ -1821,6 +1822,138 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Failed to apply math expression: {e}")
 
+    def _cmd_save_tf(self, args):
+        """
+        Save an analysis product of the displayed traces to disk.
+
+        Usage:
+            save <product> <index>|all --folder_path <folder> [--mode fft|multitaper] [--no_compress]
+
+        Products:
+            spectrum (sp)       amplitude spectrum, saved as <trace_id>.D.<year>.<julday>.sp
+            spectrogram (spec)  not implemented yet
+            cwt                 not implemented yet
+
+        Examples:
+            >> save spectrum 0 --folder_path ./spectra
+            >> save sp all --folder_path ./spectra --mode multitaper
+
+        Files can be loaded again with TraceSpectrumResult.from_pickle(path).
+        """
+        # To add a new product: write a _save_<product>(traces, opts) method and register it here
+        savers = {
+            "spectrum": self._save_spectrum,
+            "sp": self._save_spectrum,
+            "spectrogram": self._save_spectrogram,
+            "spec": self._save_spectrogram,
+            "cwt": self._save_cwt,
+        }
+        usage = ("Usage: save <spectrum|spectrogram|cwt> <index>|all --folder_path <folder> "
+                 "[--mode fft|multitaper] [--no_compress]")
+
+        if len(args) < 3:
+            print(usage)
+            return
+
+        saver = savers.get(args[1].lower())
+        if saver is None:
+            print(f"[ERROR] Unknown product '{args[1]}'. Available: spectrum (sp), spectrogram (spec), cwt.")
+            return
+
+        opts = self._parse_save_options(args[3:])
+        if opts is None:
+            return
+        if not opts["folder_path"]:
+            print(f"[ERROR] --folder_path must be specified. {usage}")
+            return
+
+        # Which traces
+        displayed = getattr(self.plot_proj, "displayed_traces", None)
+        if not displayed:
+            print("[WARN] No traces currently displayed to save.")
+            return
+
+        target = args[2]
+        if target == "all":
+            traces = list(displayed)
+        elif target.isdigit() and int(target) < len(displayed):
+            traces = [displayed[int(target)]]
+        else:
+            print(f"[ERROR] Invalid index '{target}'. Use 0-{len(displayed) - 1} or 'all'.")
+            return
+
+        # Make sure the output folder exists (same behaviour as 'write')
+        try:
+            os.makedirs(opts["folder_path"], exist_ok=True)
+        except OSError as e:
+            print(f"[ERROR] Failed to create folder '{opts['folder_path']}': {e}")
+            return
+
+        saver(traces, opts)
+
+    def _parse_save_options(self, tokens):
+        """Parse the options of 'save'. Returns a dict, or None if an option is invalid."""
+        opts = {"folder_path": None, "mode": "fft", "compress": True}
+        it = iter(tokens)
+        for tok in it:
+            if tok == "--folder_path":
+                try:
+                    opts["folder_path"] = self.make_abs(next(it))
+                except StopIteration:
+                    print("[ERROR] Missing value after --folder_path")
+                    return None
+            elif tok == "--mode":
+                try:
+                    mode = next(it).lower()
+                except StopIteration:
+                    print("[ERROR] Missing value after --mode")
+                    return None
+                if mode not in ("fft", "multitaper"):
+                    print(f"[ERROR] Invalid mode '{mode}'. Use fft or multitaper.")
+                    return None
+                opts["mode"] = mode
+            elif tok == "--no_compress":
+                opts["compress"] = False
+            else:
+                print(f"[ERROR] Unknown option '{tok}'.")
+                return None
+        return opts
+
+    def _trace_in_window(self, trace):
+        """Copy of the trace trimmed to the time window selected in the plot (if any)."""
+        tr = trace.copy()
+        start = getattr(self.plot_proj, "utc_start", None)
+        end = getattr(self.plot_proj, "utc_end", None)
+        if start is not None or end is not None:
+            tr.trim(starttime=start, endtime=end)
+        return tr
+
+    def _save_spectrum(self, traces, opts):
+        from surfquakecore.spectral.specrun import TraceSpectrumResult
+
+        saved = 0
+        for trace in traces:
+            try:
+                tr = self._trace_in_window(trace)
+                if tr.stats.npts < 2:
+                    print(f"[WARN] {trace.id}: empty or too short window, skipped.")
+                    continue
+                result = TraceSpectrumResult(tr)
+                result.compute_spectrum(method=opts["mode"])
+                result.to_pickle(opts["folder_path"], compress=opts["compress"])
+                saved += 1
+            except Exception as e:
+                print(f"[ERROR] {trace.id}: could not save spectrum: {e}")
+
+        print(f"[INFO] Spectrum ({opts['mode']}) saved for {saved}/{len(traces)} trace(s) "
+              f"in {opts['folder_path']}")
+
+    def _save_spectrogram(self, traces, opts):
+        print("[INFO] 'save spectrogram' is not implemented yet.")
+
+    def _save_cwt(self, traces, opts):
+        print("[INFO] 'save cwt' is not implemented yet.")
+
     def _cmd_post_script(self, args):
 
         """
@@ -1899,6 +2032,7 @@ class PlotCommandPrompt:
                 ("spectrum / sp", "Plot amplitude spectrum"),
                 ("spectrogram / spec", "Plot multitaper spectrogram"),
                 ("cwt", "Continuous wavelet transform"),
+                ("save_tf", "Save Time-Frequency Anlysis"),
             ],
 
             "Array Processing": [
@@ -1969,6 +2103,23 @@ class PlotCommandPrompt:
                 >> history
                 >> history 20
         """,
+            "save_tf": """
+            Save an analysis product of the displayed traces to disk.
+
+        Usage:
+            save <product> <index>|all --folder_path <folder> [--mode fft|multitaper] [--no_compress]
+
+        Products:
+            spectrum (sp)       amplitude spectrum, saved as <trace_id>.D.<year>.<julday>.sp
+            spectrogram (spec)  not implemented yet
+            cwt                 not implemented yet
+
+        Examples:
+            >> save_tf spectrum 0 --folder_path ./spectra
+            >> save_tf sp all --folder_path ./spectra --mode multitaper
+
+        Files can be loaded again with TraceSpectrumResult.from_pickle(path).
+            """,
             "back2future": """
         Restore the traces to their original state (as loaded), undoing all
         processing applied in this session (filter, rmean, taper, cut, rotate...).
