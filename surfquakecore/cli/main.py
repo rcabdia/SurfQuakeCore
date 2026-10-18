@@ -127,7 +127,7 @@ def _create_actions():
         ),
         "processing": _CliActions(
             name="processing", run=_processing,
-            description="Process/cut event waveforms (interactive or auto)."
+            description="Process/cut event waveforms."
         ),
         "processing_daily": _CliActions(
             name="processing_daily", run=_processing_daily,
@@ -225,15 +225,16 @@ def _command_groups():
         "Section 1: Project / Metadata": [
             "project", "make_config", "csv2xml", "buildcatalog", "buildmticonfig",
         ],
-        "Section 2: Detection, Picking / Association": [
+        "Section 2: Waveform Processing / Inspection": ["quick", "info", "explore",
+                                                        "processing", "processing_daily",
+                                                        ],
+        "Section 3: Detection, Picking / Association": [
             "pick", "associate", "trigg",
         ],
-        "Section 3: Location/  Source / Mechanism": [
+        "Section 4: Location/  Source / Mechanism": [
             "locate", "source", "polarity", "focmec", "plotmec", "mti",
         ],
-        "Section 4: Waveform Processing / Inspection": [
-            "processing", "processing_daily", "quick", "info", "explore"
-        ],
+
         "Section 5: Time-Frequency and Array processing Plotting": [
             "specplot", "beamplot",
         ],
@@ -1345,6 +1346,7 @@ def _processing():
     Key Arguments:
         -p, --project_file         [OPTIONAL] Path to an existing project file
         -w, --wave_files           [OPTIONAL] Path or glob pattern to waveform files
+        -f, --fast                 [OPTIONAL] Quick-and-Dirty plotting
         -i, --inventory_file       [OPTIONAL] Station metadata file (XML, RESP)
         -e, --event_file           [OPTIONAL] Event catalog in txt format (columns: date;hour;latitude;longitude;depth;magnitude) 
         -c, --config_file          [OPTIONAL] Processing configuration file (YAML)
@@ -1416,6 +1418,9 @@ def _processing():
 
     arg_parse.add_argument("--plot_config", help="Path to optional plotting configuration file (.yaml)",
                            type=str)
+
+    arg_parse.add_argument("-f", "--fast", nargs="?", const=True, default=False, type=int, metavar="N",
+                           help="Fast plotting")
 
     arg_parse.add_argument(
         "--post_script",
@@ -1521,7 +1526,8 @@ def _processing():
                             sp, post_script=make_abs(parsed_args.post_script),
                             post_script_stage=parsed_args.post_script_stage,
                             plot_config_file=make_abs(parsed_args.plot_config),
-                            reference=reference, phase_list=phase_list, order_preference=parsed_args.order_preference)
+                            reference=reference, phase_list=phase_list, order_preference=parsed_args.order_preference,
+                            fast=parsed_args.fast)
         sd.run_waveform_analysis(auto=parsed_args.auto)
 
 
@@ -1556,6 +1562,7 @@ def _processing_daily():
 
     Key Arguments:
         -p, --project_file        [REQUIRED] Path to a saved project files
+        -f, --fast                [OPTIONAL] Quick-and-Dirty plotting
         -o, --output_folder       [OPTIONAL] Directory for processed output
         -i, --inventory_file      [OPTIONAL] Station metadata (XML/RESP)
         -c, --config_file         [OPTIONAL] Processing configuration (YAML)
@@ -1609,6 +1616,9 @@ def _processing_daily():
     arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS'", type=str)
 
     arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS'", type=str)
+
+    arg_parse.add_argument("-f", "--fast", nargs="?", const=True, default=False, type=int, metavar="N",
+                           help="Fast plotting")
 
     arg_parse.add_argument(
         "--post_script",
@@ -1694,7 +1704,8 @@ def _processing_daily():
         post_script=make_abs(parsed_args.post_script),
         post_script_stage=parsed_args.post_script_stage,
         time_segment=parsed_args.time_segment,
-        order_preference=parsed_args.order_preference)
+        order_preference=parsed_args.order_preference,
+        fast=parsed_args.fast)
 
     ae.run_waveform_analysis(auto=parsed_args.auto)
 
@@ -1732,6 +1743,7 @@ def _quickproc():
 
         Key Arguments:
             -w, --wave_files         [REQUIRED | OPTIONAL] Glob pattern or path to waveform files, (not needed if the config has a 'Source' section)
+            -f, --fast               [OPTIONAL] Quick-and-Dirty plotting
             -c, --config_file        [OPTIONAL] YAML config defining processing steps
             -i, --inventory_file     [OPTIONAL] Station metadata (StationXML or RESP)
             -o, --output_folder      [OPTIONAL] Directory to save processed traces
@@ -1745,7 +1757,6 @@ def _quickproc():
                 --plot_config        [OPTIONAL] Plotting settings YAML
                 --post_script        [OPTIONAL] Python script to apply to each stream
                 --post_script_stage  [OPTIONAL] When to run post-script: 'before' or 'after' (default: before)
-                --fast               [OPTIONAL] Quick-and-dirty (QDP-style) min/max decimated plotting
         """
     )
 
@@ -1774,8 +1785,8 @@ def _quickproc():
     parser.add_argument("--post_script", help="Path to Python script to apply to each event stream",
         type=str)
 
-    parser.add_argument("--fast", nargs="?", const=True, default=False, type=int, metavar="N",
-                           help="Fast plotting: min/max decimation")
+    parser.add_argument("-f", "--fast", nargs="?", const=True, default=False, type=int, metavar="N",
+                           help="Fast plotting")
 
     parser.add_argument("--post_script_stage",
         help="When to apply the post-script: 'before' or 'after' plotting",
