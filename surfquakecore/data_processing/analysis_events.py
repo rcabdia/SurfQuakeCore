@@ -7,7 +7,7 @@
 # Author: Roberto Cabieces, Thiago C. Junqueira & C. Palacios
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
-
+import sys
 import traceback
 import yaml
 from obspy import read_inventory, UTCDateTime
@@ -281,10 +281,16 @@ class AnalysisEvents:
                 stream.append(tr)
         return stream
 
+    def _headless_plot(self):
+        """True when figures are only saved to disk (show_plot: false), so no prompt is needed."""
+        return not (self.plot_config or {}).get("show_plot", True)
+
     def run_waveform_analysis(self, auto: bool = False):
 
         plot = not auto
         interactive = False
+        if plot and not self._ensure_plot_output_dir():
+            return
 
         if self.surf_projects is None:
             print("No subprojects to process.")
@@ -366,11 +372,11 @@ class AnalysisEvents:
                             print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
                     # Save output only in auto mode
-                    if auto and self.output:
+                    if (auto or self._headless_plot()) and self.output:
                         self._write_files(full_stream)
 
                     # Prompt only in interactive mode
-                    if plot:
+                    if plot and not self._headless_plot():
                         user_choice = input(
                             f"\n[Prompt] Finished subproject {i}. Type 'c' to continue, "
                             f"'r' to reprocess this event, or 'e' to exit: "
@@ -405,6 +411,9 @@ class AnalysisEvents:
 
         plot = not auto
         interactive = False
+
+        if plot and not self._ensure_plot_output_dir():
+            return
 
         if self.surf_projects is None:
             print("No projects to process.")
@@ -490,11 +499,11 @@ class AnalysisEvents:
                                 print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
                         # --- Save output if requested ---
-                        if auto and self.output:
+                        if (auto or self._headless_plot()) and self.output:
                             self._write_files(full_stream)
 
                         # --- User prompt for next action ---
-                        if plot:
+                        if plot and not self._headless_plot():
                             user_choice = input(
                                 f"\n[Prompt] Finished subproject {i}, event {j}. Type 'c' to continue, "
                                 f"'r' to reprocess this event, or 'e' to exit: "
@@ -536,8 +545,12 @@ class AnalysisEvents:
         plot = not auto
         interactive = False
 
+        if plot and not self._ensure_plot_output_dir():
+            return
+
         if merge:
             self.time_segment = True
+
 
         # Convert string-based time segment (if set) to UTCDateTime
         if hasattr(self, "time_segment_start") and isinstance(self.time_segment_start, str):
@@ -620,11 +633,11 @@ class AnalysisEvents:
                     except Exception as e:
                         print(f"[WARNING] Post-script (after plotting) failed: {e}")
 
-                if auto and self.output:
+                if (auto or self._headless_plot()) and self.output:
                     self._write_files(full_stream)
 
                 # --- User prompt for next action ---
-                if plot:
+                if plot and not self._headless_plot():
                     user_choice = input(
                         f"\n[Prompt] Finished processing. Type 'c' to continue, "
                         f"'r' to reprocess this event, or 'e' to exit: "
@@ -737,3 +750,33 @@ class AnalysisEvents:
                 print(f"[WARNING] Script {script_path} must define a callable `run(stream, inventory, event=None)`")
         except Exception as e:
             print(f"[ERROR] Failed to import post-script {script_path}: {e}")
+
+    def _ensure_plot_output_dir(self):
+        """
+        Check the figure output folder BEFORE processing.
+        Returns False if the process must stop (user declined or folder could not be created).
+        """
+        out_dir = (self.plot_config or {}).get("plot_output_path")
+        if not out_dir:
+            return True                      # figures are not being saved
+
+        out_dir = os.path.abspath(out_dir)
+        if os.path.isdir(out_dir):
+            return True
+
+        if sys.stdin.isatty():
+            answer = input(f"[WARN] Plot output folder does not exist:\n  {out_dir}\n"
+                           f"Create it and continue? [y/N]: ").strip().lower()
+            if answer not in ("y", "yes", "s", "si", "sí"):
+                print("[INFO] Process aborted: output folder was not created.")
+                return False
+        else:
+            # batch / cron / pipe: nobody can answer, never hang
+            print(f"[INFO] Plot output folder does not exist, creating it: {out_dir}")
+
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except OSError as e:
+            print(f"[ERROR] Could not create {out_dir}: {e}")
+            return False
+        return True

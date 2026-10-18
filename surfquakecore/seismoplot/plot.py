@@ -76,7 +76,7 @@ class PlotProj:
             "show_plot": True,  # <-- NEW: set False for headless/batch saving
             "format_save": "png",
             "fast": False,  # QDP-style min/max decimated plotting
-            "fast_points": 1000, # No exposed to the user
+            "fast_points": 1000,
             "back2future": False,
             "backend": "TkAgg"}
 
@@ -271,7 +271,8 @@ class PlotProj:
         use_fast = self.plot_config.get("fast", False)
         #fast_points = self.plot_config.get("fast_points")
         if use_fast:
-            fast_points = 1000
+            fast_points = self.plot_config.get("fast_points", 1000)
+
 
         # Plot each trace
         for ax_idx, (ax, tr) in enumerate(zip(self.axs, sub_traces)):
