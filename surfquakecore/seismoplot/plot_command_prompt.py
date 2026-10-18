@@ -40,6 +40,7 @@ class PlotCommandPrompt:
             "rmean": self._cmd_rmean,
             "flip": self._cmd_flip,
             "reverse": self._cmd_reverse,
+            "back2future": self._cmd_back2future,
             "taper": self._cmd_taper,
             "spectrogram": self._cmd_spectrogram,
             "spec": self._cmd_spectrogram,
@@ -314,6 +315,26 @@ class PlotCommandPrompt:
 
         print(f"[INFO] Flipped applied to {reverse_count} traces.")
         self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
+    def _cmd_back2future(self, args):
+        """
+        Restore the traces to their original state (as loaded), undoing all
+        processing applied in this session (filter, rmean, taper, cut, rotate...).
+
+        Usage:
+            back2future
+        Example:
+            >> filter bandpass 0.1 1.0
+            >> back2future
+        """
+        if not getattr(self.plot_proj, "original_traces", None):
+            print("[WARN] back2future is disabled. Enable it in yout plot config file, back2future: True ")
+            return
+
+        self.plot_proj.restore_original()
+        print(f"[INFO] Original waveforms restored ({len(self.plot_proj.trace_list)} traces).")
         self.prompt_active = False
         self._exit_code = "replot"
 
@@ -1818,6 +1839,7 @@ class PlotCommandPrompt:
                 ("n", "Next trace page"),
                 ("b", "Previous trace page"),
                 ("p", "Return to picking mode"),
+                ("back2future", "Restore original waveforms (undo all processing)"),
                 ("exit", "Close interactive session"),
                 ("history [N]", "Show the last N commands entered at the prompt (default 10)")
             ],
@@ -1909,6 +1931,15 @@ class PlotCommandPrompt:
                 >> history
                 >> history 20
         """,
+            "back2future": """
+        Restore the traces to their original state (as loaded), undoing all
+        processing applied in this session (filter, rmean, taper, cut, rotate...).
+        
+            Example:
+                >> filter bandpass 0.1 1.0
+                >> back2future
+            """
+            ,
             "algebra": """
             Apply algebraic expression to the displayed stream traces (tr1, tr2...trN)
             algebra --expression <python_math_expression>

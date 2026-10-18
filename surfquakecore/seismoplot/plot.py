@@ -76,15 +76,23 @@ class PlotProj:
             "show_plot": True,  # <-- NEW: set False for headless/batch saving
             "format_save": "png",
             "fast": False,  # QDP-style min/max decimated plotting
-            "fast_points": None,
+            "fast_points": 1000, # No exposed to the user
+            "back2future": False,
             "backend": "TkAgg"}
 
 
         self.available_types = ['standard', 'record', 'overlay']
         self.enable_command_prompt = kwargs.pop("interactive", False)
+
         # Override defaults with user config if provided
         if plot_config:
             self.plot_config.update(plot_config)
+
+        # NEW: pristine backup only if requested (copy can be slow for large datasets)
+        if self.plot_config.get("back2future", False):
+            self.original_traces = [tr.copy() for tr in self.trace_list]
+        else:
+            self.original_traces = None
 
         if self.plot_config["show_help"]:
             self._print_help_table()
@@ -101,6 +109,9 @@ class PlotProj:
         self._last_click_info = None  # stores (ax, xdata) after 'e' press
         self._hover = None  # (trace_id, line, label, pick_time) when hovering a pick
         self._hover_tol_px = 8  # pixel tolerance for hover hit testing
+
+        self.trace_list = list(stream)
+
 
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(path) if path else None
@@ -2000,6 +2011,12 @@ class PlotProj:
         if self.fig:
             plt.close(self.fig)
             self.fig = None
+
+    def restore_original(self):
+        """Replace trace_list with a fresh copy of the traces as originally loaded."""
+        self.trace_list = [tr.copy() for tr in self.original_traces]
+        self.current_page = 0
+        self.clear_plot()
 
     def _clear_hover_style(self):
         """Remove hover style from previously hovered pick, if any."""
