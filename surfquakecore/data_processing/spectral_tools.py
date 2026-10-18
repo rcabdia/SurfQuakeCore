@@ -12,7 +12,7 @@ import nitime.algorithms as tsa  # awesome !!!
 class SpectrumTool:
 
     @staticmethod
-    def compute_spectrum(data, delta, mode="multitaper"):
+    def compute_spectrum(data, delta, mode="fft"):
         """
         Return the amplitude spectrum using multitaper and compare with FFT.
 

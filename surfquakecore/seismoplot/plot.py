@@ -1173,11 +1173,11 @@ class PlotProj:
         else:
             print("[INFO] No reference times found to remove.")
 
-    def _plot_single_spectrum(self, idx, axis_type):
+    def _plot_single_spectrum(self, idx, axis_type, mode="fft"):
 
         self._exit = False
         trace = self.displayed_traces[idx]
-        spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
+        spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta, mode=mode)
 
         try:
             stime = self.utc_start
@@ -1194,13 +1194,19 @@ class PlotProj:
         fig, ax = plt.subplots()
 
         if axis_type == "loglog":
-            ax.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+            ax.loglog(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
         elif axis_type == "xlog":
-            ax.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
+            ax.semilogx(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
         elif axis_type == "ylog":
-            ax.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
+            ax.semilogy(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
+        elif axis_type == "linlin":
+            ax.plot(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
 
-        ax.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
+        if axis_type != "linlin":
+            ax.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
+
+        ax.set_xlim(freqs[1], freqs[-1])
+
         ax.set_xlabel("Frequency (Hz)")
         ax.set_ylabel("Amplitude")
         ax.set_title(f"Spectrum for {trace.id}")
@@ -1217,7 +1223,7 @@ class PlotProj:
         fig.canvas.mpl_disconnect(cid)
         plt.show(block=False)  # non-blocking, return immediately to run()
 
-    def _plot_all_spectra(self, axis_type):
+    def _plot_all_spectra(self, axis_type, mode="fft"):
 
         self._exit = False
         self.fig_spec, self.ax_spec = plt.subplots()
@@ -1242,7 +1248,7 @@ class PlotProj:
         print("Spectrum window: ", stime_trim, etime_trim)
 
         for trace in st:
-            spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta)
+            spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta, mode=mode)
             if axis_type == "loglog":
                 self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
             elif axis_type == "xlog":

@@ -981,20 +981,57 @@ class PlotCommandPrompt:
             print("Error: index, win_sec, overlap%, clip, nw, k must be numeric where applicable.")
 
     def _cmd_spectrum(self, args):
+        """
+        Plot amplitude spectrum.
+
+        Usage:
+            spectrum <index>|all [axis_type] [--mode fft|multitaper]
+        Examples:
+            spectrum 0
+            spectrum all loglog --mode multitaper
+        """
+        usage = "Usage: spectrum <index>|all [axis_type] [--mode fft|multitaper]"
+
+        # --- extract --mode (accepts "--mode x" and "--mode=x") ---
+        mode = "fft"
+        rest = []
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if a == "--mode":
+                if i + 1 >= len(args):
+                    print(f"[ERROR] --mode needs a value. {usage}")
+                    return
+                mode = args[i + 1].lower()
+                i += 2
+                continue
+            if a.startswith("--mode="):
+                mode = a.split("=", 1)[1].lower()
+                i += 1
+                continue
+            rest.append(a)
+            i += 1
+        args = rest
+
+        if mode not in ("fft", "multitaper"):
+            print(f"[ERROR] Invalid mode '{mode}'. Use fft or multitaper.")
+            return
 
         if len(args) < 2 or len(args) > 3:
-            print("Usage: spectrum <index>|all [axis_type]")
+            print(usage)
             return
 
         target = args[1]
-        axis_type = args[2] if len(args) == 3 else 'loglog'
+        axis_type = args[2] if len(args) == 3 else "loglog"
+
+        if axis_type not in ("loglog", "xlog", "ylog", "linlin"):
+            print("[ERROR] axis_type must be loglog, xlog or ylog.")
+            return
 
         if target == "all":
-            self.plot_proj._plot_all_spectra(axis_type=axis_type)
-
+            self.plot_proj._plot_all_spectra(axis_type=axis_type, mode=mode)
         elif target.isdigit():
-            self.plot_proj._plot_single_spectrum(int(target), axis_type=axis_type)
-
+            self.plot_proj._plot_single_spectrum(int(target), axis_type=axis_type, mode=mode)
         else:
             print("[ERROR] Invalid spectrum command")
 
@@ -2245,7 +2282,23 @@ class PlotCommandPrompt:
             >> rotate ->ZNE
         
         
-        """
+        """,
+            "spectrum": """
+       spectrum <index>|all [axis_type] [--mode fft|multitaper]
+            Plot the amplitude spectrum of one trace or of all displayed traces.
+
+            Parameters:
+                index      : Index of the trace in the current plot, or 'all'
+                axis_type  : loglog (default), xlog or ylog
+                --mode     : Spectral estimator, fft (default) or multitaper
+
+            Examples:
+                >> spectrum 0
+                >> spectrum all loglog --mode multitaper
+                >> sp 2 xlog --mode fft
+        
+        """,
+
 
         }
 

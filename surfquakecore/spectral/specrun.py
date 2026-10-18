@@ -40,17 +40,20 @@ class TraceSpectrumResult:
         fig, ax = plt.subplots()
 
         if axis_type == "loglog":
-            ax.loglog(self.freq, self.spectrum, linewidth=0.75)
+            ax.loglog(self.freq[1:], self.spectrum[1:], linewidth=0.75)
         elif axis_type == "xlog":
-            ax.semilogx(self.freq, self.spectrum, linewidth=0.75)
+            ax.semilogx(self.freq[1:], self.spectrum[1:], linewidth=0.75)
         elif axis_type == "ylog":
-            ax.semilogy(self.freq, self.spectrum, linewidth=0.75)
+            ax.semilogy(self.freq[1:], self.spectrum[1:], linewidth=0.75)
         elif axis_type == "linlin":
-            ax.plot(self.freq, self.spectrum, linewidth=0.75)
+            ax.plot(self.freq[1:], self.spectrum[1:], linewidth=0.75)
         else:
             print("No accepted axis_type: available loglog, xlog and ylog")
 
-        ax.set_ylim(self.spectrum.min() / 10.0, self.spectrum.max() * 100.0)
+        if axis_type != "linlin":
+            ax.set_ylim(self.spectrum.min() / 10.0, self.spectrum.max() * 100.0)
+        
+        ax.set_xlim(self.freq[1], self.freq[-1])
         ax.set_xlabel("Frequency (Hz)")
         ax.set_ylabel("Amplitude")
         ax.set_title(f"Spectrum for {self.trace.id}")
