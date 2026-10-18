@@ -1,25 +1,183 @@
+# =============================================================================
+#  SurfQuakeCore - plotting configuration
+# =============================================================================
+#  Pass this file with:   --plot_config plot_config_example.yaml
+#
+#  Every key is OPTIONAL. Any key you remove falls back to its default value
+#  (shown as "default:" in each comment).
+#
+#  YAML reminders:
+#    - Booleans:  true / false   (True / False also work)
+#    - None:      null           (or simply leave the key commented out)
+#    - Do NOT end a line with a comma. "fast: false," is read as the TEXT
+#      "false," (which counts as true!), not as a boolean.
+# =============================================================================
+
 plotting:
-  traces_per_fig: 3
-  sort_by: distance
-  vspace: 0.05
-  show_legend: true
-  title_fontsize: 9
+
+  # ---------------------------------------------------------------------------
+  #  LAYOUT
+  # ---------------------------------------------------------------------------
+
+  # Plot type.
+  #   standard : one trace per subplot, several subplots per figure (pages)
+  #   record   : record section, all traces ordered by distance in one axis
+  #   overlay  : all traces superimposed in the same axis
+  # default: standard
   plot_type: standard
+
+  # Number of traces (subplots) per figure page. Applies to plot_type: standard.
+  # With more traces than this value the figure is split in several pages.
+  # default: 6
+  traces_per_fig: 3
+
+  # Order of the traces in the figure.
+  #   distance    : by epicentral distance (needs geodetic info in the headers)
+  #   backazimuth : by back-azimuth       (needs geodetic info in the headers)
+  #   false       : keep the input order
+  # default: false
+  sort_by: distance
+
+  # Vertical space between subplots (fraction of the subplot height).
+  # Use 0 for stacked traces touching each other.
+  # default: 0.05
+  vspace: 0.05
+
+  # Share the Y axis between all the subplots of a figure.
+  #   true  : same amplitude scale, lets you compare amplitudes between traces
+  #   false : each trace is auto-scaled independently
+  # default: false
+  sharey: false
+
+  # Show the legend (trace id) in every subplot.
+  # default: true
+  show_legend: true
+
+  # Font size of the subplot titles.
+  # default: 9
+  title_fontsize: 9
+
+  # ---------------------------------------------------------------------------
+  #  RECORD SECTION  (only used when plot_type: record)
+  # ---------------------------------------------------------------------------
+
+  # X axis of the record section.
+  #   dates   : absolute UTC time
+  #   seconds : seconds relative to the start of each trace
+  #   egf     : lag time in seconds, with a red dashed line at t = 0
+  #             (empirical Green's functions / cross-correlations)
+  # default: dates
   record_option: dates
+
+  # Amplitude multiplier of the traces in the record section.
+  # Increase it to make the traces overlap neighbours, decrease it to shrink them.
+  # default: 1
   scale_factor: 1
-  sharey: False
-  show_arrivals: False
+
+  # ---------------------------------------------------------------------------
+  #  ARRIVALS AND PICKS
+  # ---------------------------------------------------------------------------
+
+  # Draw the origin time (blue) and the theoretical phase arrivals (green,
+  # dashed, labelled with the phase name) when they are stored in the traces.
+  # default: false
+  show_arrivals: false
+
+  # File where your picks are saved (double click on a trace to pick).
+  # default: ./picks.csv
   pick_output_file: ./picks.csv
-  auto_load_pick_file: False
-  show_info_picks: False
-  show_crosshair: False
-  plot_output_path: False
-  show_plot: True
-  format_save: pdf
-  back2future: False
+
+  # Load the picks of pick_output_file automatically when the figure opens.
+  # default: false
+  auto_load_pick_file: false
+
+  # Show an information box on the figure with the data of the current pick.
+  # default: false
+  show_info_picks: false
+
+  # Show a crosshair (horizontal + vertical line) following the mouse in every
+  # subplot. Useful for precise picking. Only for interactive plots.
+  # default: false
+  show_crosshair: false
+
+  # ---------------------------------------------------------------------------
+  #  SAVING FIGURES  (see the table at the end of this section)
+  # ---------------------------------------------------------------------------
+
+  # Folder where the figures are saved automatically.
+  #   null / commented out : figures are not saved
+  #   ./figures            : saved there (the folder should exist; the tools
+  #                          warn you and offer to create it if it does not)
+  # default: null
+  plot_output_path: null
+  # plot_output_path: ./figures
+
+  # Image format of the saved figures: png, pdf, svg, jpg...
+  # default: png
+  format_save: png
+
+  # Display the figures on screen.
+  #   true  : interactive window (zoom, picking, command prompt)
+  #   false : headless / batch mode. Nothing is displayed, ALL pages are written
+  #           to plot_output_path and the process does not ask any question.
+  #           This is the mode to automate plotting (scripts, cron, servers).
+  # default: true
+  show_plot: true
+
+  #   show_plot | plot_output_path | result
+  #   ----------+------------------+-----------------------------------------
+  #   true      | null             | displayed, not saved
+  #   true      | ./figures        | displayed and saved
+  #   false     | ./figures        | NOT displayed, saved (batch mode)
+  #   false     | null             | nothing happens (nothing shown or saved)
+
+  # ---------------------------------------------------------------------------
+  #  PERFORMANCE AND INTERACTION
+  # ---------------------------------------------------------------------------
+
+  # Print the table with the keyboard shortcuts when the figure opens.
+  # default: true
+  show_help: true
+
+  # Quick-and-dirty (QDP style) plotting: every trace is drawn as a min/max
+  # decimated line (min/max envelope). Much faster for long or numerous traces,
+  # at the cost of some detail in the drawn line.
+  # Note: the command line option -f / --fast of "quick" activates this mode
+  # and ignores the rest of this file.
+  # default: false
+  fast: false
+
+  # Number of points used by the fast mode. In the current version the code
+  # uses a fixed value of 1000, so changing this key has no effect yet.
+  # default: 1000
+  fast_points: 1000
+
+  # Keep a pristine copy of the loaded traces so the interactive command
+  # "back2future" can undo all the processing (filter, cut, rotate...).
+  # The copy doubles the memory used by the traces and takes some time on large
+  # datasets, so it is disabled by default.
+  # default: false
+  back2future: false
+
+  # ---------------------------------------------------------------------------
+  #  MATPLOTLIB BACKEND
+  # ---------------------------------------------------------------------------
+
+  # Graphical engine used to draw the figures.
+  #   TkAgg    : maximum robustness (default, recommended)
+  #   MacOSX   : macOS only, fully recommended there
+  #   Qt5Agg   : fast, but picking and interactive commands may raise problems
+  # In headless mode (show_plot: false) the non-interactive "Agg" backend is
+  # used automatically, so this key is ignored.
+  # default: TkAgg
   backend: TkAgg
 
-#backend: TkAgg (maximum robustness, default), MacOSX (only for mac, fully recommended), Qt5Agg (fast but picking
-#& interactive commands raise problems)
-
-#If show_plot: True and plot_output_path to your folder automatically wil be saved the plots
+# Option -a,show_plot,plot_output_path,Plot created,Shown on screen,Figures saved,Processed data to -o
+# yes	true	null	no	no	no	no	no	yes
+# yes	true	folder	no	no	no (path ignored)	no	no	yes
+# yes	false	null	no	no	no	no	no	yes
+# yes	false	folder	yes	no	yes	never (creates it)	no	yes
+# no	true	null	yes	yes	no	n/a	yes	no
+# no	true	folder	yes	yes	yes	yes, if terminal and folder missing	yes	no
+# no	false	folder	yes	no	yes	yes, if terminal and folder missing	no	yes
+# no	false	null	no, warning printed	no	no	n/a	no

@@ -72,7 +72,6 @@ class AnalysisEvents:
         if self.reference is None:
             self.reference = "event_time"
 
-
         if config_file is not None:
             self.config = self.load_analysis_configuration(config_file)
             self.source_config = self.load_source_configuration(config_file)
@@ -101,8 +100,8 @@ class AnalysisEvents:
                 print(f"[WARNING] Plot config not loaded: {e}")
 
         if fast:
-            self.plot_config = {}
             print("Quick and Dirty mode activated")
+            self.plot_config = dict(self.plot_config or {})
             self.plot_config["fast"] = True
             self.plot_config["fast_points"] = 1000
 
@@ -111,7 +110,7 @@ class AnalysisEvents:
             self._load_post_script(post_script)
 
         self._SOURCE_HEADER_KEYS = {"network", "station", "location", "channel",
-                       "sampling_rate", "duration", "starttime"}
+                                    "sampling_rate", "duration", "starttime"}
 
     def load_analysis_configuration(self, config_file: str):
         with open(config_file, 'r') as file:
@@ -287,9 +286,10 @@ class AnalysisEvents:
 
     def run_waveform_analysis(self, auto: bool = False):
 
-        plot = not auto
+        plot = self._should_plot(auto)
         interactive = False
-        if plot and not self._ensure_plot_output_dir():
+
+        if plot and not self._ensure_plot_output_dir(auto):
             return
 
         if self.surf_projects is None:
@@ -409,10 +409,10 @@ class AnalysisEvents:
         from obspy.taup import TauPyModel
         model = TauPyModel("iasp91")
 
-        plot = not auto
+        plot = self._should_plot(auto)
         interactive = False
 
-        if plot and not self._ensure_plot_output_dir():
+        if plot and not self._ensure_plot_output_dir(auto):
             return
 
         if self.surf_projects is None:
@@ -542,15 +542,14 @@ class AnalysisEvents:
         Skips event/model logic, cuts, and segment filters.
         """
 
-        plot = not auto
+        plot = self._should_plot(auto)
         interactive = False
 
-        if plot and not self._ensure_plot_output_dir():
+        if plot and not self._ensure_plot_output_dir(auto):
             return
 
         if merge:
             self.time_segment = True
-
 
         # Convert string-based time segment (if set) to UTCDateTime
         if hasattr(self, "time_segment_start") and isinstance(self.time_segment_start, str):
@@ -751,32 +750,62 @@ class AnalysisEvents:
         except Exception as e:
             print(f"[ERROR] Failed to import post-script {script_path}: {e}")
 
-    def _ensure_plot_output_dir(self):
+    def _ensure_plot_output_dir(self, auto=False):
         """
-        Check the figure output folder BEFORE processing.
-        Returns False if the process must stop (user declined or folder could not be created).
+        Check (and if needed create) the figure output folder BEFORE processing.
+
+        Parameters
+        ----------
+        auto : bool
+            True when running with -a / --auto. In that case the method never
+            asks anything: a missing folder is created automatically.
+
+        Returns
+        -------
+        bool
+            True  -> the folder is ready (or figures are not being saved), keep going.
+            False -> the process must stop (user declined or folder could not be created).
         """
         out_dir = (self.plot_config or {}).get("plot_output_path")
         if not out_dir:
-            return True                      # figures are not being saved
+            return True  # figures are not being saved, nothing to check
 
-        out_dir = os.path.abspath(out_dir)
+        out_dir = os.path.abspath(os.path.expanduser(out_dir))
         if os.path.isdir(out_dir):
             return True
 
-        if sys.stdin.isatty():
+        # Ask only if a person can answer: not in -a mode and with a real terminal
+        can_ask = (not auto) and sys.stdin.isatty()
+
+        if can_ask:
             answer = input(f"[WARN] Plot output folder does not exist:\n  {out_dir}\n"
                            f"Create it and continue? [y/N]: ").strip().lower()
             if answer not in ("y", "yes", "s", "si", "sí"):
                 print("[INFO] Process aborted: output folder was not created.")
                 return False
         else:
-            # batch / cron / pipe: nobody can answer, never hang
+            # -a mode, cron, pipe, script: nobody can answer, never hang
             print(f"[INFO] Plot output folder does not exist, creating it: {out_dir}")
 
         try:
             os.makedirs(out_dir, exist_ok=True)
         except OSError as e:
             print(f"[ERROR] Could not create {out_dir}: {e}")
+            return False
+
+        return True
+
+    def _saves_plots(self):
+        cfg = self.plot_config or {}
+        return (not cfg.get("show_plot", True)) and bool(cfg.get("plot_output_path"))
+
+    def _should_plot(self, auto):
+        if self._saves_plots():
+            return True
+        if auto:
+            return False
+        if self._headless_plot():
+            print("[WARN] show_plot is false and plot_output_path is not set: "
+                  "nothing to display or save, plotting skipped.")
             return False
         return True

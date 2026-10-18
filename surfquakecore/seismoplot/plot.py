@@ -112,9 +112,8 @@ class PlotProj:
 
         self.trace_list = list(stream)
 
-
     def make_abs(self, path: Optional[str]) -> Optional[str]:
-        return os.path.abspath(path) if path else None
+        return os.path.abspath(os.path.expanduser(path)) if path else None
 
     def _print_help_table(self):
         """Print available keyboard commands in a table format."""
