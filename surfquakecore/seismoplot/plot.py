@@ -1332,6 +1332,7 @@ class PlotProj:
             spec_x = t
             ax_spec.set_xlabel("Time [s]")
 
+        ax_waveform.set_xlim(spec_x[0], spec_x[-1])
         # --- Plot waveform ---
         ax_waveform.plot(waveform_x, trace.data, linewidth=0.75)
         ax_waveform.set_title(f"Spectrogram for {trace.id}")
@@ -2019,8 +2020,45 @@ class PlotProj:
             self.fig = None
 
     def restore_original(self):
-        """Replace trace_list with a fresh copy of the traces as originally loaded."""
-        self.trace_list = [tr.copy() for tr in self.original_traces]
+        """Replace trace_list with a fresh copy of the traces as originally loaded,
+        keeping the references placed so far (also those set on rotated channels)."""
+
+        current_ids = {tr.id for tr in self.trace_list}
+        orig_ids = {tr.id for tr in self.original_traces}
+
+        def station_key(tr):
+            return (tr.stats.network, tr.stats.station, tr.stats.location)
+
+        # 1) Collect current references
+        refs_by_id = {}  # channels that still exist in the originals
+        refs_by_station = {}  # renamed channels (e.g. after rotate)
+        for tr in self.trace_list:
+            refs = getattr(tr.stats, "references", None)
+            if not refs:
+                continue
+            if tr.id in orig_ids:
+                refs_by_id.setdefault(tr.id, []).extend(refs)
+            else:
+                refs_by_station.setdefault(station_key(tr), []).extend(refs)
+
+        # 2) Fresh copies of the pristine traces
+        restored = [tr.copy() for tr in self.original_traces]
+
+        # 3) Re-attach references (without duplicates)
+        for tr in restored:
+            new_refs = list(refs_by_id.get(tr.id, []))
+            if tr.id not in current_ids:
+                # channel renamed away by rotate: inherit the station-level references
+                new_refs += refs_by_station.get(station_key(tr), [])
+            if not new_refs:
+                continue
+            current = list(getattr(tr.stats, "references", []))
+            for ref in new_refs:
+                if ref not in current:
+                    current.append(ref)
+            tr.stats.references = current
+
+        self.trace_list = restored
         self.current_page = 0
         self.clear_plot()
 

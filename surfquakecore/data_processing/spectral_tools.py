@@ -225,10 +225,10 @@ class SpectrumTool:
         #
         # Give time at CENTER of every analysis window
         # ----------------------------------------------------
-        # t = (starts + (win - 1) / 2.0) * dt
+        t = (starts + (win - 1) / 2.0) * dt
 
         # we prefer starts at beginning
-        t = starts * dt
+        #t = starts * dt
 
         return spectrum, num_steps, t, f
 

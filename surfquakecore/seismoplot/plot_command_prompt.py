@@ -1958,6 +1958,7 @@ class PlotCommandPrompt:
             help               → show list of all commands
             help <command>     → show detailed help for that command
         """
+
         # Detailed help content per command
         detailed_help = {
             "history": """
@@ -2305,6 +2306,14 @@ class PlotCommandPrompt:
         # Check if specific command is requested
         if len(args) > 1:
             cmd = args[1].lower()
+
+            # Map command aliases to the key used in detailed_help
+            aliases = {
+                "sp": "spectrum",
+                "spec": "spectrogram",
+            }
+            cmd = aliases.get(cmd, cmd)
+
             if cmd in detailed_help:
                 print(detailed_help[cmd])
             else:

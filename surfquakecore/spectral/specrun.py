@@ -259,6 +259,8 @@ class TraceSpectrogramResult:
             waveform_x = self.trace.times()
             spec_x = time
 
+        x_lim = (spec_x[0], spec_x[-1])
+
         # ======================================================
         # NORMAL MODE
         # ======================================================
@@ -309,6 +311,9 @@ class TraceSpectrogramResult:
             # --------------------------------------------------
             # X axis
             # --------------------------------------------------
+
+            ax_waveform.set_xlim(*x_lim)
+
             if plot_date:
 
                 locator = mdates.AutoDateLocator()
@@ -544,6 +549,8 @@ class TraceSpectrogramResult:
 
                 ax_low.yaxis.set_major_formatter(
                     FuncFormatter(lambda value, _: f"{value:g}"))
+
+            ax_waveform_low.set_xlim(*x_lim)
 
             # ==================================================
             # X axis
