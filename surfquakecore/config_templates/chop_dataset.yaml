@@ -1,0 +1,6 @@
+Analysis:
+  process_1:
+    name: 'chop'
+    chunk_length: 3600
+    min_length: 900
+    output_dir: "/root_data/dataset_path"

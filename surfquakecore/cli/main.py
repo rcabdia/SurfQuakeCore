@@ -305,7 +305,8 @@ def _make_config():
         spectral_config  ->  Template for generate spectrum, spectrogram and continuous wavelet transform
         ch_functions     ->  Characteristic functions (Kurtosis, SNRs... and so on)
         plotting_config  ->  Template for plotting
-        test_sign_config ->  template for generate test sinthetic signals
+        test_sign_config ->  Template for generate test sinthetic signals
+        chop_dataset     ->  Template for chop big datasets
         events           ->  Event file template
         rename           ->  Template config to rename seismogram files header (Network, station...)
         algebra          ->  Template for manipulate traces using basic algebraic expressions
@@ -334,7 +335,7 @@ def _make_config():
     available_configs = ["typical_config", "config_all", "stream_config", "spectral_config", "events",
                          "plotting_config", "script_template", "real_config", "nll_config", "mti_config", "rename",
                          "algebra", "ch_functions", "script_air_1", "script_air_2", "script_air_3", "test_sign_config",
-                         "sspec_config"]
+                         "sspec_config", "chop_dataset"]
 
     arg_parse.add_argument("-c", "--config_type", help="Config type name", type=str, required=True)
 

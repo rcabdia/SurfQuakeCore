@@ -57,7 +57,7 @@ Analysis:
     window_size: 10
     sigma: 4
   process_15:
-    name: "wiener_filter"
+    name: "wiener_smoothing"
     time_window: 1.0
     noise_power: 0
   process_16:
@@ -102,3 +102,7 @@ Analysis:
       name: 'reverse'
   process_26:
     name: 'flip'
+  process_27:
+    name: 'wiener'
+    window_start: 0
+    window_end: 20
