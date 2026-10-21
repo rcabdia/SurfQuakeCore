@@ -909,15 +909,15 @@ def _source():
         It uses spectral fitting of P- and/or S-wave displacement spectra, following SourceSpec methodology.
 
     Usage Example:
-        > surfquake source -i inventory.xml -p my_project.json -c source_config.yaml -l ./nlloc_outputs -o ./source_results
+        > surfquake source -i inventory.xml -p my_project.pkl -c source_config.csv -l ./nlloc_outputs -o ./source_results
 
     Key Arguments:
         -i, --inventory_file     [REQUIRED] Path to station metadata (XML, RESP)
         -p, --project_file       [REQUIRED] Path to project file
-        -c, --config_file        [REQUIRED] YAML configuration for SourceSpec
+        -c, --config_file        [REQUIRED] Configuration for SourceSpec
         -l, --hypocenter_dir     [REQUIRED] Directory containing NonLinLoc *.hyp files
         -o, --output_folder      [REQUIRED] Output folder for source parameter results
-        -t, --large_scale        [OPTIONAL] Automatic long cut of teleseism event waveforms
+        -t, --large_scale        [OPTIONAL] Automatic long cut of teleseismic event waveforms
 
     Reference:
         Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave displacement spectra. 
@@ -989,10 +989,10 @@ def _mti():
         using a Bayesian inversion approach, based on the Bayesian ISOLA method.
 
     Usage Example:
-        surfquake mti -i inventory.xml -p my_project.json -c mti_config.ini -o ./mti_output -s
+        surfquake mti -i inventory.xml -p my_project.pkl -c mti_config.ini -o ./mti_output -s
 
     Key Arguments:
-        -i, --inventory_file    [REQUIRED] Path to station metadata file (XML, RESP)
+        -i, --inventory_file    [REQUIRED] Path to station metadata file
         -p, --project_file      [REQUIRED] Path to the project file with waveforms and event metadata
         -c, --config_file       [REQUIRED] INI configuration file for inversion settings
         -o, --output_dir        [REQUIRED] Output directory for inversion results

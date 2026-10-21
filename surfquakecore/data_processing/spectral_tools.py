@@ -7,6 +7,7 @@ spectral_tools
 import math
 import numpy as np
 import nitime.algorithms as tsa  # awesome !!!
+from scipy.signal import welch, csd
 # from spectrum import pmtm # might be for the future
 
 class SpectrumTool:
@@ -236,3 +237,98 @@ class SpectrumTool:
     def find_nearest(array, value):
         idx, val = min(enumerate(array), key=lambda x: abs(x[1] - value))
         return idx, val
+
+    @staticmethod
+    def compute_cross_spectra(x, y, delta, method="welch", win=None, overlap_percent=50.0, nw=4.0,
+                              linf=0.0, lsup=None):
+        """
+        Auto- and cross-spectral densities between a reference signal x (input)
+        and a target signal y (output).
+
+        Convention: Gxy = E[ conj(X) * Y ], so the transfer function x -> y is
+        H = Gxy / Gxx, and a pure delay tau of y with respect to x gives
+        phase(H) = -2*pi*f*tau.
+
+        Coherence / transfer function are NOT computed here on purpose: they are
+        cheap to derive from (Gxx, Gyy, Gxy) and keeping the three spectra allows
+        H1 = Gxy/Gxx, H2 = Gyy/conj(Gxy), phase, etc. later without recomputing.
+
+        Parameters
+        ----------
+        x, y : 1D arrays, same length
+            Reference (input) and target (output) time series.
+        delta : float
+            Sample spacing in seconds.
+        method : str
+            'welch'      -> segment averaging (Hann window, demeaned segments).
+            'multitaper' -> DPSS tapers via nitime (averaging over tapers).
+            Coherence is identically 1 without averaging, so a single plain FFT
+            is deliberately not offered.
+        win : int or None
+            Segment length in samples (welch only). None -> max(16, N // 8).
+        overlap_percent : float
+            Segment overlap in percent (welch only).
+        nw : float
+            Time-bandwidth product (multitaper only).
+        linf, lsup : float
+            Frequency band (Hz) to keep. lsup=None -> Nyquist.
+
+        Returns
+        -------
+        dict with keys
+            freq : 1D array (Hz)
+            gxx, gyy : 1D real arrays (auto spectral densities)
+            gxy : 1D complex array (cross spectral density)
+            n_avg : int, number of averaged segments / tapers (needed for the
+                    coherence significance level)
+        """
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        if x.ndim != 1 or x.shape != y.shape:
+            raise ValueError("x and y must be 1D arrays of the same length.")
+        n = len(x)
+        fs = 1.0 / delta
+        x = x - np.mean(x)
+        y = y - np.mean(y)
+
+        if method.lower() == "welch":
+            nperseg = int(win) if win else max(16, n // 8)
+            nperseg = min(nperseg, n)
+            noverlap = int(round(nperseg * overlap_percent / 100.0))
+            noverlap = min(noverlap, nperseg - 1)
+            nfft = 2 ** math.ceil(math.log2(nperseg))
+            kw = dict(fs=fs, window="hann", nperseg=nperseg, noverlap=noverlap, nfft=nfft,
+                      detrend="constant", scaling="density", return_onesided=True)
+            freq, gxx = welch(x, **kw)
+            _, gyy = welch(y, **kw)
+            _, gxy = csd(x, y, **kw)  # scipy: conj(X) * Y
+            step = nperseg - noverlap
+            n_avg = 1 + (n - nperseg) // step
+
+        elif method.lower() == "multitaper":
+            nfft = 2 ** math.ceil(math.log2(n))
+            freq, c = tsa.multi_taper_csd(np.vstack([x, y]), Fs=fs, NW=nw, adaptive=False,
+                                          low_bias=True, NFFT=nfft)
+            gxx = np.real(c[0, 0])
+            gyy = np.real(c[1, 1])
+            gxy = c[1, 0]  # nitime stores conj(Y)*X in [0,1]; [1,0] = conj(X)*Y
+            _, eigs = tsa.dpss_windows(n, nw, int(2 * nw))
+            n_avg = max(1, int(np.sum(eigs > 0.9)))
+        else:
+            raise ValueError("method must be 'welch' or 'multitaper'")
+
+        if lsup is None:
+            lsup = fs / 2.0
+        mask = (freq >= linf) & (freq <= lsup)
+        return {"freq": freq[mask], "gxx": gxx[mask], "gyy": gyy[mask], "gxy": gxy[mask],
+                "n_avg": int(n_avg)}
+
+    @staticmethod
+    def coherence_threshold(n_avg, alpha=0.05):
+        """
+        Coherence value above which the estimate is significant at level alpha
+        (null hypothesis: true coherence = 0), for n_avg independent averages.
+        """
+        if n_avg < 2:
+            return 1.0
+        return float(1.0 - alpha ** (1.0 / (n_avg - 1)))

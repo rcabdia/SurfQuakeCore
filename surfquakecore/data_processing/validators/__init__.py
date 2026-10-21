@@ -23,7 +23,8 @@ from .filter import validate_filter
 from .shift import validate_shift
 from .remove_response import validate_remove_response
 from .differentiate import validate_differentiate
-from .wiener_filter import validate_wiener_filter
+from .wiener import validate_wiener
+from .wiener_smoothing import validate_wiener_smoothing
 from .add_noise import validate_add_white_noise
 from .whitening import validate_whitening
 from .remove_spikes import validate_remove_spikes
@@ -48,7 +49,7 @@ CHECK_DISPATCH = {
     'shift': validate_shift,
     'remove_response': validate_remove_response,
     'differentiate': validate_differentiate,
-    'wiener_filter': validate_wiener_filter,
+    'wiener_filter': validate_wiener_smoothing,
     'add_noise': validate_add_white_noise,
     'whitening': validate_whitening,
     'remove_spikes': validate_remove_spikes,
@@ -79,7 +80,8 @@ CHECK_DISPATCH = {
     'chop': validate_chop_cont,
     'reverse': validate_reverse,
     'flip': validate_flip,
-    'convolve': validate_convolve}
+    'convolve': validate_convolve,
+    'wiener': validate_wiener}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

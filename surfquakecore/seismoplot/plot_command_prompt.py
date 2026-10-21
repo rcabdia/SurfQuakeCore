@@ -2207,9 +2207,9 @@ class PlotCommandPrompt:
             --no_compress       write uncompressed pickle files
 
         Examples:
-            >> save spectrum 0 --folder_path ./spectra
-            >> save spec all --folder_path ./spectra --win 10 --overlap 75 --method multitaper
-            >> save cwt 0 --folder_path ./spectra --wavelet cm --param 6 --fmin 1 --fmax 20
+            >> save_tf spectrum 0 --folder_path ./spectra
+            >> save_tf spec all --folder_path ./spectra --win 10 --overlap 75 --method multitaper
+            >> save_tf cwt 0 --folder_path ./spectra --wavelet cm --param 6 --fmin 1 --fmax 20
             """,
             "back2future": """
         Restore the traces to their original state (as loaded), undoing all

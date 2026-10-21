@@ -665,3 +665,216 @@ class TraceSpectrogramResult:
             raise TypeError("Pickle file does not contain a TraceSpectrogramResult object.")
 
         return obj
+
+
+class TraceCrossSpectralResult:
+    """
+    Cross-spectral analysis between a reference trace (input) and a target
+    trace (output): coherence and transfer function.
+
+    What is stored are the primitives (freq, gxx, gyy, gxy, n_avg). Coherence,
+    transfer function, amplitude and phase are derived properties, so nothing
+    has to be recomputed to plot or export a different view.
+
+    Convention: gxy = E[conj(X) * Y], H = gxy / gxx (reference -> target).
+    """
+
+    def __init__(self, ref_trace, trace):
+        self.ref_trace = ref_trace
+        self.trace = trace
+        self.stats = trace.stats
+        self.ref_stats = ref_trace.stats
+        self.method = None
+        self.freq = None
+        self.gxx = None
+        self.gyy = None
+        self.gxy = None
+        self.n_avg = None
+
+    # ------------------------------------------------------------------ compute
+    def compute(self, method="welch", win=None, overlap_percent=50.0, nw=4.0, linf=0.0, lsup=None):
+        """
+        win : window length in SECONDS (welch only). None -> N/8 samples.
+        """
+        n = min(self.ref_trace.stats.npts, self.trace.stats.npts)
+        delta = self.trace.stats.delta
+        win_samples = round(win / delta) if win else None
+        res = SpectrumTool.compute_cross_spectra(self.ref_trace.data[:n], self.trace.data[:n], delta,
+                                                 method=method, win=win_samples,
+                                                 overlap_percent=overlap_percent, nw=nw,
+                                                 linf=linf, lsup=lsup)
+        self.method = method
+        self.freq = res["freq"]
+        self.gxx = res["gxx"]
+        self.gyy = res["gyy"]
+        self.gxy = res["gxy"]
+        self.n_avg = res["n_avg"]
+
+    @classmethod
+    def from_stream(cls, stream, reference=0, include_reference=False, trim=True, **kwargs):
+        """
+        Same logic as apply_cross_correlation: one trace of the stream is the
+        reference and every other trace is analysed with respect to it.
+
+        kwargs are passed to compute() (method, win, overlap_percent, nw, linf, lsup).
+
+        Returns
+        -------
+        list of TraceCrossSpectralResult (one per target trace)
+        """
+        st = stream.copy()
+        if len(st) < 2:
+            print("[WARNING] Need at least two traces for coherence / transfer function")
+            return []
+
+        sr = st[0].stats.sampling_rate
+        for tr in st:
+            if not np.isclose(tr.stats.sampling_rate, sr):
+                raise ValueError("Inconsistent sampling rates in stream.")
+
+        if trim:
+            # Common window only, no zero padding (padding would bias the coherence)
+            common_start = max(tr.stats.starttime for tr in st)
+            common_end = min(tr.stats.endtime for tr in st)
+            if common_end <= common_start:
+                raise ValueError("Traces have no common time window.")
+            st.trim(starttime=common_start, endtime=common_end)
+
+        ref_trace = st[reference]
+        results = []
+        for i, tr in enumerate(st):
+            if i == reference and not include_reference:
+                continue
+            try:
+                r = cls(ref_trace, tr)
+                r.compute(**kwargs)
+            except Exception as e:
+                print(f"[WARNING] Failed cross-spectral analysis {ref_trace.id} -> {tr.id}: {e}")
+                continue
+            results.append(r)
+        return results
+
+    # ------------------------------------------------------- derived quantities
+    @property
+    def coherence(self):
+        """Magnitude-squared coherence, 0..1."""
+        with np.errstate(divide="ignore", invalid="ignore"):
+            coh = np.abs(self.gxy) ** 2 / (self.gxx * self.gyy)
+        return np.clip(np.nan_to_num(coh), 0.0, 1.0)
+
+    @property
+    def transfer(self):
+        """Complex transfer function H1 = Gxy / Gxx (reference -> target)."""
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return self.gxy / self.gxx
+
+    @property
+    def amplitude(self):
+        return np.abs(self.transfer)
+
+    @property
+    def phase_deg(self):
+        return np.degrees(np.angle(self.transfer))
+
+    def coherence_threshold(self, alpha=0.05):
+        return SpectrumTool.coherence_threshold(self.n_avg, alpha)
+
+    # --------------------------------------------------------------------- plot
+    def plot(self, kind="both", axis_type="loglog", alpha=0.05, save_path: str = None,
+             type_spec: str = "coh", extension: str = "png"):
+        """
+        kind      : 'both' (amplitude + phase + coherence), 'transfer' or 'coherence'
+        axis_type : 'loglog' (log f, log |H|), 'xlog' (log f) or 'linlin'
+        alpha     : significance level of the dashed coherence threshold
+        """
+        import matplotlib as mplt
+        if platform.system() == 'Darwin':
+            mplt.use("MacOSX")
+        else:
+            mplt.use("QtAgg")
+        import matplotlib.pyplot as plt
+
+        if kind not in ("both", "transfer", "coherence"):
+            raise ValueError("kind must be 'both', 'transfer' or 'coherence'")
+
+        f = self.freq[1:]  # skip 0 Hz, as in TraceSpectrumResult
+        panels = {"both": ["amp", "phase", "coh"], "transfer": ["amp", "phase"], "coherence": ["coh"]}[kind]
+        height = {1: 3.5, 2: 5.5, 3: 7.5}[len(panels)]
+        fig, axes = plt.subplots(len(panels), 1, sharex=True, figsize=(9, height))
+        axes = np.atleast_1d(axes)
+
+        for ax, p in zip(axes, panels):
+            if p == "amp":
+                ax.plot(f, self.amplitude[1:], linewidth=0.75)
+                if axis_type == "loglog":
+                    ax.set_yscale("log")
+                ax.set_ylabel("|H|")
+                ax.set_title(f"Transfer function / coherence  {self.ref_trace.id} -> {self.trace.id}")
+            elif p == "phase":
+                ax.plot(f, self.phase_deg[1:], linewidth=0.75)
+                ax.set_ylim(-180, 180)
+                ax.set_yticks([-180, -90, 0, 90, 180])
+                ax.set_ylabel("Phase [deg]")
+            else:
+                ax.plot(f, self.coherence[1:], linewidth=0.75)
+                ax.axhline(self.coherence_threshold(alpha), color="r", linestyle="--", linewidth=0.8,
+                           label=f"{100 * (1 - alpha):g}% significance")
+                ax.set_ylim(0, 1.02)
+                ax.set_ylabel("Coherence")
+                ax.legend(loc="lower right", fontsize=8)
+            if axis_type in ("loglog", "xlog"):
+                ax.set_xscale("log")
+            ax.grid(True, which="both", linestyle="--", alpha=0.4)
+
+        axes[-1].set_xlabel("Frequency (Hz)")
+        axes[-1].set_xlim(f[0], f[-1])
+        fig.tight_layout()
+
+        if save_path:
+            starttime = self.trace.stats.starttime
+            textstr = (str(starttime.julday) + "_" + str(starttime.year) + "_"
+                       + starttime.strftime("%Y_%m_%d_%H_%M_%S"))
+            file_name = (self.ref_trace.id + "__" + self.trace.id + "." + textstr + "."
+                         + type_spec + "." + extension)
+            fig.savefig(os.path.join(save_path, file_name), dpi=300)
+            plt.close(fig)
+        else:
+            plt.show()
+
+    # ------------------------------------------------------------------- pickle
+    def to_pickle(self, folder_path: str, compress: bool = True):
+        """Serialize the full object to a pickle file (.coh)."""
+        if not folder_path:
+            print("[ERROR] --folder_path must be specified")
+            return
+        if not os.path.exists(folder_path):
+            try:
+                os.makedirs(folder_path)
+                print(f"[INFO] Created folder: {folder_path}")
+            except Exception as e:
+                print(f"[ERROR] Failed to create folder '{folder_path}': {e}")
+                return
+
+        t1 = self.trace.stats.starttime
+        base_name = f"{self.ref_trace.id}__{self.trace.id}.D.{t1.year}.{t1.julday}"
+        path_output = os.path.join(folder_path, base_name)
+        counter = 1
+        while os.path.exists(path_output + ".coh"):
+            path_output = os.path.join(folder_path, f"{base_name}_{counter}")
+            counter += 1
+        path_output += ".coh"
+
+        open_func = gzip.open if compress else open
+        with open_func(path_output, 'wb') as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"[INFO] {self.ref_trace.id} -> {self.trace.id} - Writing cross-spectral result to {path_output}")
+
+    @staticmethod
+    def from_pickle(filepath: str, compress: bool = True):
+        """Load the full object from a pickle file."""
+        open_func = gzip.open if compress else open
+        with open_func(filepath, 'rb') as f:
+            obj = pickle.load(f)
+        if not isinstance(obj, TraceCrossSpectralResult):
+            raise TypeError("Pickle file does not contain a TraceCrossSpectralResult object.")
+        return obj

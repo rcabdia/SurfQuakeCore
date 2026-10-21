@@ -7,10 +7,13 @@ processing_methods
 
 import copy
 import os
+import warnings
+
 import scipy, numpy as np
 import math
 import pywt
 from matplotlib import pyplot as plt
+from numba import njit
 from obspy import UTCDateTime, Trace, Stream, read
 from obspy.signal.cross_correlation import correlate_template
 from obspy.signal.polarization import flinn
@@ -236,7 +239,7 @@ def spectral_derivative(trace, taper_pct=0.05, taper_type="cosine", pad_to_pow2=
     return tr
 
 
-def wiener_filter(tr, time_window, noise_power):
+def wiener_smoothing(tr, time_window, noise_power):
     data = tr.data
 
     if time_window == 0 and noise_power == 0:
@@ -1017,7 +1020,107 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
 
     return cc_stream
 
+def deconvolve(stream, reference=0, water_level=0.01, gaussian_width=None,
+               tshift=0.0, normalize=True, trim=True, taper_pct=0.05):
+    """
+    Deconvolve all traces in the stream with respect to a reference trace using
+    the water-level spectral-domain method (Clayton & Wiggins, 1976).
 
+        D(f) = U(f) * conj(R(f)) / max(|R(f)|^2, c * max|R(f)|^2) * G(f)
+
+    Parameters
+    ----------
+    stream : obspy.Stream
+        Input stream (it is copied, the original is not modified).
+    reference : int
+        Index of the reference trace (the "source" being deconvolved out).
+    water_level : float
+        Water-level fraction c of the maximum reference power spectrum
+        (typical 0.001-0.1). Larger = more stable but lower resolution.
+    gaussian_width : float or None
+        If given, applies a Gaussian low-pass G(f) = exp(-(2*pi*f)^2 / (4*a^2)),
+        with a = gaussian_width (a=2.5 -> ~1 Hz, as in receiver functions).
+    tshift : float
+        Seconds of delay applied to the output so that acausal lags are kept.
+        Output starttime is shifted by -tshift, so t=0 is zero lag.
+    normalize : bool
+        If True, scale so that the reference deconvolved with itself has a peak of 1.
+    trim : bool
+        If True, trim all traces to the common time window (as apply_cross_correlation).
+    taper_pct : float
+        Cosine taper fraction applied after demeaning (0 to disable).
+
+    Returns
+    -------
+    Stream: deconvolved traces (same length as each input trace).
+    """
+    st = stream.copy()
+    if len(st) == 0:
+        print("[WARNING] Empty stream for deconvolution")
+        return Stream()
+    if water_level < 0:
+        raise ValueError("water_level must be >= 0.")
+
+    sr = st[0].stats.sampling_rate
+    for tr in st:
+        if not np.isclose(tr.stats.sampling_rate, sr):
+            raise ValueError("Inconsistent sampling rates in stream.")
+
+    if trim:
+        common_start = max(tr.stats.starttime for tr in st)
+        common_end = min(tr.stats.endtime for tr in st)
+        st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
+        npts = st[0].stats.npts
+        for tr in st:
+            if tr.stats.npts != npts:
+                raise ValueError("Traces do not have same number of samples after trimming.")
+
+    st.detrend("demean")
+    if taper_pct and taper_pct > 0:
+        st.taper(max_percentage=taper_pct, type="cosine")
+
+    ref_trace = st[reference]
+    nfft = next_power_of_2(max(tr.stats.npts for tr in st))
+    freqs = np.fft.rfftfreq(nfft, d=1.0 / sr)
+    omega = 2.0 * np.pi * freqs
+
+    # Reference spectrum and water-level denominator
+    R = np.fft.rfft(ref_trace.data.astype(np.float64), n=nfft)
+    R_pow = np.abs(R) ** 2
+    if R_pow.max() == 0:
+        raise ValueError("Reference trace is all zeros.")
+    denom = np.maximum(R_pow, water_level * R_pow.max())
+
+    # Optional Gaussian low-pass and time shift
+    filt = np.ones_like(freqs)
+    if gaussian_width is not None:
+        filt = np.exp(-omega ** 2 / (4.0 * gaussian_width ** 2))
+    if tshift:
+        filt = filt * np.exp(-1j * omega * tshift)
+
+    scale = 1.0
+    if normalize:
+        spike = np.fft.irfft(R * np.conj(R) / denom * filt, n=nfft)
+        scale = np.max(np.abs(spike))
+
+    dc_stream = Stream()
+    for tr in st:
+        try:
+            U = np.fft.rfft(tr.data.astype(np.float64), n=nfft)
+            d = np.fft.irfft(U * np.conj(R) / denom * filt, n=nfft)[:tr.stats.npts] / scale
+        except Exception as e:
+            print(f"[WARNING] Failed to deconvolve {tr.id} with {ref_trace.id}: {e}")
+            continue
+
+        dc_tr = Trace(data=d.astype(np.float32))
+        dc_tr.stats.sampling_rate = sr
+        dc_tr.stats.starttime = tr.stats.starttime - tshift
+        dc_tr.stats.network = tr.stats.network
+        dc_tr.stats.station = ref_trace.stats.station + "_" + tr.stats.station
+        dc_tr.stats.channel = tr.stats.channel
+        dc_stream.append(dc_tr)
+
+    return dc_stream
 
 def rename_trace(trace: Trace, config: dict) -> Trace:
     """
@@ -1611,4 +1714,179 @@ def write_tr_chop(tr, hour_start, available_length=None, largest_gap=None, outpu
     except Exception as exc:
         print(f"Exception while writing "f"{tr.id}: {exc}")
 
+@njit(cache=True)
+def _adaptive_filter(x, a, mu, lms):
+    """
+    Per-sample adaptive prediction-error filter.
+    a   : [1, A_1..A_p] initial Yule-Walker coefficients
+    lms : False -> SAC update  A_k -= mu * x[n] * x[n-k]   (as in wiener.c)
+          True  -> LMS update  A_k -= mu * e[n] * x[n-k]   (e = prediction error)
+    """
+    n = x.size
+    p = a.size - 1
+    coef = a[1:].copy()
+    u = np.zeros(p)                      # [x[n-1], ..., x[n-p]]
+    out = np.empty(n)
+    for i in range(n):
+        xi = x[i]
+        e = xi
+        for k in range(p):
+            e += coef[k] * u[k]
+        out[i] = e
+        g = mu * (e if lms else xi)
+        for k in range(p):
+            coef[k] -= g * u[k]
+        for k in range(p - 1, 0, -1):
+            u[k] = u[k - 1]
+        u[0] = xi
+    return out
+
+def wiener(trace, window=(0.0, 10.0), ncoeff=30, mu="off", epsilon="off",
+           update="sac", inplace=False):
+
+    from scipy.signal import lfilter
+
+    def autocorrelation(x, start, wlen, nlags):
+        """Unnormalised autocorrelation rho[0..nlags-1] inside x[start:start+wlen]."""
+        seg = x[start:start + wlen]
+        return np.array([np.dot(seg[:len(seg) - k], seg[k:]) for k in range(nlags)])
+
+    def levinson(r):
+        """
+        Levinson-Durbin as in SAC levin.c.
+        r : autocorrelation lags 0..p
+        Returns a = [1, A_1..A_p] (prediction-error filter) and
+        reflection coefficients (SAC sign convention, only |.| is used).
+        """
+        p = len(r) - 1
+        a = np.zeros(p + 1)
+        refl = np.zeros(p)
+        a[0] = 1.0
+        a[1] = -r[1] / r[0]
+        refl[0] = a[1]
+        for L in range(2, p + 1):
+            j = np.arange(1, L)
+            num = r[L] + np.dot(a[j], r[L - j])
+            den = r[0] + np.dot(a[j], r[j])
+            k = -num / den
+            refl[L - 1] = k
+            a[1:L] = a[1:L] + k * a[L - j]  # RHS evaluated before assignment
+            a[L] = k
+        return a, refl
+
+    MAX_NCOEFF = 100  # SAC limit (fixed-size arrays in the C code)
+    KAPPA_LIMIT = 0.999  # SAC stability threshold on reflection coefficients
+    EPS_SEQUENCE = (0.0, 1e-5, 1e-4, 1e-3, 1e-2)  # tried when EPSILON is OFF
+
+    """
+    Design and apply a SAC-style adaptive Wiener (prediction-error) filter.
+
+    Parameters
+    ----------
+    trace   : obspy.Trace
+    window  : (t0, t1) design window. Floats = seconds from trace start
+              (SAC "B t0 t1"); UTCDateTime = absolute times.
+    ncoeff  : SAC NCOEFF, filter length INCLUDING the leading 1
+              (prediction order = ncoeff-1). 2..100. Default 30.
+    mu      : "off"/0 -> non-adaptive; "on" -> mu = 1.95 / sum|rho(0..p)|;
+              float -> that value.
+    epsilon : "off" -> try 0, 1e-5, ..., 1e-2 until stable (SAC default);
+              "on" -> single pass with epsilon = 0;
+              float -> single pass with that ridge value (relative:
+              rho(0) <- rho(0) * (1 + epsilon)).
+    update  : adaptive-mode coefficient update (only used when mu != 0):
+              "sac" -> exactly as SAC's wiener.c: A_k -= mu * x[n] * x[n-k]
+                       (uses the input sample, no feedback from the error);
+              "lms" -> standard LMS: A_k -= mu * e[n] * x[n-k]. Results
+                       differ from SAC. For "lms", mu="on" is a SAC-style
+                       heuristic; a safe LMS step is mu < 2/(p*rho(0)/M).
+    inplace : modify the given trace instead of a copy.
+
+    Returns
+    -------
+    obspy.Trace with the residual (whitened) signal. Design info is stored in
+    tr.stats.wiener = {"epsilon", "stable", "mu", "ncoeff"}.
+    """
+
+    if not 2 <= ncoeff <= MAX_NCOEFF:
+        raise ValueError(f"ncoeff must be between 2 and {MAX_NCOEFF}")
+
+    tr = trace if inplace else trace.copy()
+    x = np.asarray(tr.data, dtype=np.float64)
+    n = x.size
+    dt = tr.stats.delta
+    p = ncoeff - 1
+
+    # --- design window -> sample indices (SAC getatw: offset + length) ----
+    t0, t1 = window
+    if isinstance(t0, UTCDateTime):
+        t0 = t0 - tr.stats.starttime
+    if isinstance(t1, UTCDateTime):
+        t1 = t1 - tr.stats.starttime
+    if t1 <= t0 or t1 < 0 or t0 > (n - 1) * dt:
+        raise ValueError("design window is outside the trace or empty")
+    start = max(int(round(t0 / dt)), 0)
+    stop = min(int(round(t1 / dt)), n - 1)
+    wlen = stop - start + 1
+    if wlen <= ncoeff:
+        raise ValueError("design window too short for this ncoeff")
+    if t0 < 0 or t1 > (n - 1) * dt:
+        warnings.warn("design window partially outside the trace; clipped")
+
+    # --- autocorrelation, then ridge + Levinson with epsilon search ------
+    rho = autocorrelation(x, start, wlen, ncoeff)
+    rho0 = rho[0]
+    if rho0 == 0.0:
+        raise ValueError("zero energy in design window")
+
+    if isinstance(epsilon, str):
+        key = epsilon.lower()
+        if key == "off":
+            eps_list = EPS_SEQUENCE
+        elif key == "on":
+            eps_list = (0.0,)
+        else:
+            raise ValueError("epsilon must be 'on', 'off' or a number")
+    else:
+        eps_list = (float(epsilon),)
+
+    for eps in eps_list:
+        r = rho.copy()
+        r[0] = rho0 * (1.0 + eps)
+        a, refl = levinson(r)
+        stable = bool(np.all(np.abs(refl) <= KAPPA_LIMIT))
+        if stable:
+            break
+        if len(eps_list) > 1 and eps != eps_list[-1]:
+            warnings.warn(f"wiener: unstable Levinson recursion, "
+                          f"increasing epsilon beyond {eps:g}")
+    if not stable:
+        warnings.warn("wiener: filter still unstable with the last epsilon "
+                      "(SAC also applies it, with a warning)")
+
+    # --- mu ---------------------------------------------------------------
+    if isinstance(mu, str):
+        key = mu.lower()
+        if key == "off":
+            mu_val = 0.0
+        elif key == "on":
+            mu_val = float(abs(1.95 / np.sum(np.abs(r))))   # regularised rho, as SAC
+        else:
+            raise ValueError("mu must be 'on', 'off' or a number")
+    else:
+        mu_val = float(mu)
+
+    # --- apply to the whole trace (zero initial buffer) -------------------
+    if update not in ("sac", "lms"):
+        raise ValueError("update must be 'sac' or 'lms'")
+    if mu_val == 0.0:
+        out = lfilter(a, [1.0], x)
+    else:
+        out = _adaptive_filter(x, a, mu_val, update == "lms")
+
+    tr.data = out
+    tr.stats.wiener = {"epsilon": eps, "stable": stable,
+                       "mu": mu_val, "ncoeff": ncoeff,
+                       "update": update}
+    return tr
 

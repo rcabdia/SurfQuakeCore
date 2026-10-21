@@ -4,9 +4,10 @@
 check_processing
 """
 
-ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_filter',
+ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_smoothing',
                  'shift', 'remove_response', 'add_white_noise', 'whitening', 'remove_spikes',
-                 'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'flip', 'reverse']
+                 'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'flip', 'reverse',
+                 'wiener']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 

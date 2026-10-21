@@ -1,13 +1,11 @@
 from obspy import Stream, Trace, UTCDateTime, Inventory
 import numpy as np
-
-
 from surfquakecore.arrayanalysis.beamrun import TraceBeamResult
 from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
-    wiener_filter, add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
+    add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
-    rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip
+    rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing
 
 try:
     from surfquakecore.cython_module.hampel import hampel
@@ -116,8 +114,8 @@ class SeismogramData:
                     tr = filter_trace(tr, _config['type'], _config['fmin'], _config['fmax'],
                                       zerophase=_config['zerophase'], corners=_config['corners'])
 
-                if _config['name'] == 'wiener_filter':
-                    tr = wiener_filter(tr, time_window=_config['time_window'],
+                if _config['name'] == 'wiener_smoothing':
+                    tr = wiener_smoothing(tr, time_window=_config['time_window'],
                                        noise_power=_config['noise_power'])
 
                 if _config['name'] == 'remove_response':
@@ -274,6 +272,13 @@ class SeismogramData:
 
                 if _config['name'] == 'flip':
                     tr = flip(tr)
+
+                if _config['name'] == 'wiener':
+                    window = (_config['window_start'], _config['window_end'])
+                    ncoeff = _config.pop("ncoeff", 30)
+                    mu = _config.pop("mu", "off")
+                    epsilon = _config.pop("epsilon", "off")
+                    tr = wiener(tr, window=window, ncoeff=ncoeff, mu=mu, epsilon=epsilon)
 
             return tr
 
