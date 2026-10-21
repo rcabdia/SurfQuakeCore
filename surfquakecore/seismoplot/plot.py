@@ -1245,6 +1245,8 @@ class PlotProj:
                 self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
             elif axis_type == "ylog":
                 self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
+            if axis_type != "linlin":
+                self.ax_spec.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
 
         self.ax_spec.set_xlabel("Frequency (Hz)")
         self.ax_spec.set_ylabel("Amplitude")
