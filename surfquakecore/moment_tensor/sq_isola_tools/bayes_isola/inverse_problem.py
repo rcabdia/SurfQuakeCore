@@ -70,7 +70,11 @@ def invert(point_id, d_shifts, norm_d, Cd_inv, Cd_inv_shifts, nr, comps, station
 	Remark: because of parallelisation, this wrapper cannot be part of class :class:`ISOLA`.
 	"""
 	if len(progress) > 0:
-		print("Progress ", int((progress[0]/progress[1])*100), "%", " Threads ", progress[2])
+		print(
+			f"\r\033[KProgress {int(progress[0] / progress[1] * 100)}% "
+			f"Threads {progress[2]}",
+			end="",
+			flush=True)
 	# params: grid[i]['id'], self.d_shifts, self.Cd_inv, self.nr, self.components, self.stations, self.npts_elemse, self.npts_slice, self.elemse_start_origin, self.deviatoric, self.decompose
 	if deviatoric: ne=5
 	else: ne=6

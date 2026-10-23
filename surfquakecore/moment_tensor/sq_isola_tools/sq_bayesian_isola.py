@@ -42,7 +42,7 @@ def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
 
 class BayesianIsolaCore:
     def __init__(self, project: Union[SurfProject, Stream], inventory_file: Union[str, Inventory],
-                 output_directory: str,  save_plots=False):
+                 output_directory: str, save_green=False, use_precalculated_Green=False,  save_plots=False):
         """
 
         :param project: Either a SurfProject object or an obspy Stream
@@ -53,7 +53,8 @@ class BayesianIsolaCore:
 
         self.working_directory: Optional[str] = None
         self.inventory_file = inventory_file
-
+        self.use_precalculated_Green = use_precalculated_Green
+        self.save_green = save_green
         # Handle input type
         if isinstance(project, SurfProject):
             self.project = project
@@ -112,27 +113,37 @@ class BayesianIsolaCore:
         return tuple(read_isola_result(result_file) for result_file in self.results)
 
     @contextmanager
-    def _load_work_directory(self):
+    def _load_work_directory(self, local_folder, save_green=False, use_precalculated_Green=False):
         """
         Context manager to create and delete working directory.
         Returns:
         """
-        temp_dir = None
-        try:
-            if self.working_directory is None:
-                kw = {"ignore_cleanup_errors": True} if get_python_major_version() > 9 else {}
-                temp_dir = TemporaryDirectory(**kw)
-                self.working_directory = temp_dir.name
-                print("Working Directory at temporal Folder ", self.working_directory)
+
+        if use_precalculated_Green:
+            self.working_directory = os.path.join(local_folder, "green")
+            yield self.working_directory
+        elif save_green:
+            self.working_directory = os.path.join(local_folder, "green")
             if not os.path.isdir(self.working_directory):
                 os.mkdir(self.working_directory)
             yield self.working_directory
-        finally:
-            if temp_dir:
-                temp_dir.cleanup()
+        else:
+            temp_dir = None
+            try:
+                if self.working_directory is None:
+                    kw = {"ignore_cleanup_errors": True} if get_python_major_version() > 9 else {}
+                    temp_dir = TemporaryDirectory(**kw)
+                    self.working_directory = temp_dir.name
+                    print("Working Directory at temporal Folder ", self.working_directory)
+                if not os.path.isdir(self.working_directory):
+                    os.mkdir(self.working_directory)
+                yield self.working_directory
+            finally:
+                if temp_dir:
+                    temp_dir.cleanup()
 
-            if os.path.isdir(self.working_directory):
-                shutil.rmtree(self.working_directory)
+                if os.path.isdir(self.working_directory):
+                    shutil.rmtree(self.working_directory)
 
     def _get_files_from_config(self, mti_config: MomentTensorInversionConfig):
 
@@ -198,16 +209,16 @@ class BayesianIsolaCore:
     def _run_inversion(self, mti_config: MomentTensorInversionConfig, files_list=None, save_stream_plot=False,
                        map_stations=None):
 
-
-        # TODO: might be is good idea to include option to remove previuos inversions
         # cleaning working directory
         try:
             out_dir_key = generate_mti_id_output(mti_config=mti_config)
             local_folder = os.path.join(self.output_directory, out_dir_key)
+
             if not os.path.exists(local_folder):
                 os.makedirs(local_folder)
 
             print("Processing Seismic Waveforms")
+
             # Determine the stream to use
             if self.stream:
                 # Directly use the preprocessed stream
@@ -215,11 +226,12 @@ class BayesianIsolaCore:
                 try:
                     st = MTIManager.rotate_to_ne(st, self.inventory)
                 except:
-                    print("coudn't rotate components")
+                    print("Couldn't rotate components")
             else:
                 # Process files from the project
                 if not files_list:
-                    raise ValueError("No files provided for processing and no stream is available.")
+                    raise ValueError("No files provided for processing and no stream is available")
+
                 st = MTIManager.default_processing(
                     files_path=files_list,
                     origin_time=mti_config.origin_date,
@@ -227,10 +239,10 @@ class BayesianIsolaCore:
                     output_directory=local_folder,
                     regional=True,
                     remove_response=mti_config.signal_processing_parameters.remove_response,
-                    save_stream_plot=save_stream_plot
-                )
+                    save_stream_plot=save_stream_plot)
 
-            with self._load_work_directory() as green_func_dir:
+            with self._load_work_directory(local_folder, save_green=self.save_green,
+                                           use_precalculated_Green=self.use_precalculated_Green) as green_func_dir:
 
                 inputs = InversionDataManager(outdir=local_folder)
                 inputs.set_event_info(lat=mti_config.latitude, lon=mti_config.longitude, depth=mti_config.depth_km,
@@ -242,12 +254,8 @@ class BayesianIsolaCore:
                     mti_config.inversion_parameters.max_dist = 2 ** (mti_config.magnitude * 2.)  # km
 
 
-                mt = MTIManager(
-                    stream=st,
-                    inventory=self.inventory,
-                    working_directory=green_func_dir,
-                    mti_config=mti_config,
-                )
+                mt = MTIManager(stream=st, inventory=self.inventory,
+                                working_directory=green_func_dir, mti_config=mti_config)
 
                 # fill the steam with dummy traces just in case no exist
                 mt.fill_stream_with_inferred_channels()
@@ -304,17 +312,16 @@ class BayesianIsolaCore:
                     working_directory=green_func_dir,
                     grid=grid,
                     threads=self._cpu_count,
-                    use_precalculated_Green=False,
+                    use_precalculated_Green=self.use_precalculated_Green,
                     fmin=mti_config.signal_processing_parameters.min_freq,
                     fmax=mti_config.signal_processing_parameters.max_freq,
-                    correct_data=False
-                )
+                    correct_data=False)
 
                 cova = bayes_isola.CovarianceMatrix(data)
                 cova.covariance_matrix_noise(
                     crosscovariance=mti_config.inversion_parameters.covariance,
-                    save_non_inverted=True
-                )
+                    save_non_inverted=True)
+
                 # deviatoric=True: force isotropic component to be zero
                 print("Processing Inversion")
                 solution = ResolveMt(
@@ -322,8 +329,7 @@ class BayesianIsolaCore:
                     cova=cova,
                     working_directory=green_func_dir,
                     deviatoric=mti_config.inversion_parameters.deviatoric,
-                    from_axistra=True
-                )
+                    from_axistra=True)
 
                 inputs.save_inversion_results(mti_config.to_dict())
 

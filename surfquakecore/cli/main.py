@@ -1105,7 +1105,7 @@ def _mti():
         using a Bayesian inversion approach, based on the Bayesian ISOLA method.
 
     Usage Example:
-        surfquake mti -i inventory.xml -p my_project.pkl -c mti_config.ini -o ./mti_output -s
+        surfquake mti -i ./inventory.xml -p ./my_project.pkl -c ./mti_config.ini -o ./mti_output -s
 
     Key Arguments:
         -i, --inventory_file    [REQUIRED] Path to station metadata file
@@ -1113,7 +1113,13 @@ def _mti():
         -c, --config_file       [REQUIRED] INI configuration file for inversion settings
         -o, --output_dir        [REQUIRED] Output directory for inversion results
         -s, --save_plots        [OPTIONAL] If set, saves plots of MT solutions and fits
-
+            --save_green        [OPTIONAL] If set, green functions are saved at output_dir/green
+            --use_pre_green     [OPTIONAL] If set, green functions are directly load from output_dir/green
+    
+    Warning:  --save_green leads over --use_pre_green
+    Comments: --use_pre_green, makes only sense for improve an old solution by selecting stations/channels.
+              However, green functions are frequency dependent, so do not change the frequency range.
+    
     Reference:
         Vackář et al. (2017). Bayesian ISOLA: New Tool for Automated Centroid Moment Tensor Inversion,
         Geophysical Journal International, 210(2), 693–705. https://doi.org/10.1093/gji/ggx180
@@ -1138,6 +1144,12 @@ def _mti():
     arg_parse.add_argument("-s", "--save_plots", help=" In case user wants to save all output plots",
                            action="store_true")
 
+    arg_parse.add_argument( "--save_green", help=" In case user wants to save green_functions for later use",
+                           action="store_true")
+
+    arg_parse.add_argument("--use_pre_green", help=" In want to directly proceed with inversion",
+                           action="store_true")
+
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
@@ -1149,9 +1161,10 @@ def _mti():
         inventory_file=make_abs(parsed_args.inventory_file_path),
         output_directory=make_abs(parsed_args.output_dir_path),
         save_plots=parsed_args.save_plots,
-    )
+        save_green=parsed_args.save_green,
+        use_precalculated_Green=parsed_args.use_pre_green)
 
-    print("Starting Inversion")
+    print("Starting Bayesian Inversion")
     bic.run_inversion(mti_config=make_abs(parsed_args.config_files_path))
 
     print("Writing Summary")
