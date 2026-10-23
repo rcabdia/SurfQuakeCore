@@ -178,7 +178,12 @@ def _create_actions():
             description="Automatic Frequency-Time Analysis of group and phase velocity dispersion from EGFs or Earthquakes"),
 
         "make_config": _CliActions(name="make_config",  run=_make_config,
-        description="Generate Sample Config files")}
+        description="Generate Sample Config files"),
+
+        "config": _CliActions(
+            name="config", run=_config,
+            description="Show/set global SurfQuake defaults (e.g. waveform read format, check_compression).")
+    }
 
     return _actions
 
@@ -223,7 +228,7 @@ def _print_main_help(actions: dict):
 def _command_groups():
     return {
         "Section 1: Project / Metadata": [
-            "project", "make_config", "csv2xml", "buildcatalog", "buildmticonfig",
+            "project", "make_config", "config", "csv2xml", "buildcatalog", "buildmticonfig",
         ],
         "Section 2: Waveform Processing / Inspection": ["quick", "info", "explore",
                                                         "processing", "processing_daily",
@@ -270,6 +275,116 @@ def main():
         _print_main_help(actions)
         sys.exit(1)
 
+
+def _config():
+    """
+    Command-line interface to view and edit the global SurfQuake configuration (INI file).
+    """
+    from surfquakecore.config.global_config import (
+        OPTIONS, get_config, set_value, reset_value, format_value,
+        user_config_path, project_config_path,
+    )
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} config",
+        description="View and edit global SurfQuake defaults",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+
+        Overview:
+            Global defaults used by all SurfQuake tools, stored in an INI file.
+            Precedence (highest first): explicit argument > environment variable >
+            project file (./surfquake.ini) > user file > built-in default.
+
+        Actions:
+            show                    Print the effective values and where each one comes from
+            get   KEY               Print the effective value of one key
+            set   KEY VALUE         Save a value (user file; use --project for ./surfquake.ini)
+            reset [KEY]             Remove KEY (or the whole file) from the user/project file
+            path                    Print the config file locations
+
+        Available keys:
+{keys}
+
+        Usage Examples:
+            surfquake config show
+            surfquake config set read.format MSEED
+            surfquake config set read.format auto
+            surfquake config set read.check_compression false
+            surfquake config set read.check_compression false --project
+            surfquake config reset read.format
+            surfquake config reset            (removes the whole user file)
+
+        Notes:
+            'auto' (also none/null) stores None, which lets ObsPy guess the file format.
+            The user file location can be redirected with the SURFQUAKE_CONFIG environment
+            variable. Any key can be overridden for one session with an environment variable,
+            e.g. SURFQUAKE_READ_FORMAT=SAC.
+        """.replace("{keys}", "\n".join(f"            {k:<26}{o.help}" for k, o in OPTIONS.items())),
+    )
+    sub = arg_parse.add_subparsers(dest="action", metavar="<action>")
+
+    sub.add_parser("show", help="Print effective values and their source")
+
+    p_get = sub.add_parser("get", help="Print the effective value of a key")
+    p_get.add_argument("key", type=str)
+
+    p_set = sub.add_parser("set", help="Save a value")
+    p_set.add_argument("key", type=str)
+    p_set.add_argument("value", type=str)
+    p_set.add_argument("--project", action="store_true",
+                       help="Write to ./surfquake.ini instead of the user file")
+
+    p_reset = sub.add_parser("reset", help="Remove a key (or the whole file)")
+    p_reset.add_argument("key", type=str, nargs="?", default=None)
+    p_reset.add_argument("--project", action="store_true",
+                         help="Act on ./surfquake.ini instead of the user file")
+
+    sub.add_parser("path", help="Print the config file locations")
+
+    parsed = arg_parse.parse_args()
+
+    if parsed.action is None:
+        arg_parse.print_help()
+        return
+
+    if parsed.action == "show":
+        cfg = get_config(reload=True)
+        user_p, proj_p = user_config_path(), project_config_path()
+        print("SurfQuake configuration")
+        print(f"  user file    : {user_p}{'' if user_p.is_file() else '  (not found)'}")
+        print(f"  project file : {proj_p}{'' if proj_p.is_file() else '  (not found)'}\n")
+        width = max(len(k) for k in OPTIONS)
+        print(f"  {'key':<{width}}  {'value':<8}  source")
+        for key, value, source in cfg.items():
+            print(f"  {key:<{width}}  {format_value(value):<8}  {source}")
+        return
+
+    try:
+        if parsed.action == "get":
+            print(format_value(get_config(reload=True).get(parsed.key)))
+
+        elif parsed.action == "set":
+            path, value = set_value(parsed.key, parsed.value,
+                                    scope="project" if parsed.project else "user")
+            print(f"[config] {parsed.key.lower()} = {format_value(value)}   ({path})")
+
+        elif parsed.action == "reset":
+            path = reset_value(parsed.key, scope="project" if parsed.project else "user")
+            if path is None:
+                print("[config] Nothing to reset.")
+            else:
+                what = parsed.key.lower() if parsed.key else "all keys"
+                print(f"[config] Reset {what}   ({path})")
+
+        elif parsed.action == "path":
+            print(f"user    : {user_config_path()}")
+            print(f"project : {project_config_path()}")
+
+    except (KeyError, ValueError) as exc:
+        msg = exc.args[0] if isinstance(exc, KeyError) and exc.args else exc
+        print(f"[ERROR] {msg}")
+        sys.exit(1)
 
 def _make_config():
     """

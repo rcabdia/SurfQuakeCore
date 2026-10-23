@@ -11,6 +11,7 @@ import sys
 import traceback
 import yaml
 from obspy import read_inventory, UTCDateTime
+from surfquakecore.config.global_config import read_stream
 import os
 from surfquakecore.data_processing.parser.config_parser import parse_configuration_file
 from typing import Optional, List, Union
@@ -155,7 +156,7 @@ class AnalysisEvents:
             # Read & merge all files for this station
             st = Stream()
             for trace_path, _ in file_group:
-                st += read(trace_path)
+                st += read_stream(trace_path)
             st.merge(method=1, fill_value='interpolate')
 
             if len(st) == 0:
@@ -563,7 +564,7 @@ class AnalysisEvents:
 
         for file_path in data_files:
             try:
-                st = read(file_path, headonly=True)
+                st = read_stream(file_path, headonly=True)
 
                 for tr in st:
                     key = f"{tr.stats.network}.{tr.stats.station}"
@@ -673,7 +674,7 @@ class AnalysisEvents:
         try:
             st = Stream()
             for trace_path, _ in file_group:
-                st += read(trace_path)
+                st += read_stream(trace_path)
 
             # TODO: This line is very important, default behaviour is not merging traces /
             #  in processing_daily when time_segment automatically merge the stream
