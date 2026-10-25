@@ -6,11 +6,13 @@ Analysis:
       method: 'multitaper'
       output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
   
+# Multitaper Spectrum
 # process_1:
 #    name: 'spectrum'
 #    method: 'multitaper'
 #    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
 
+# Continuous Wavelet Transform
 #  process_1:
 #    name: 'cwt'
 #    wavelet: 'cm'
@@ -18,3 +20,13 @@ Analysis:
 #    fmin: 0.5
 #    fmax: 8.0
 #    output_path: "/Users/admin/Desktop/surf_test/cut/spec"
+
+# Cross Spectrum --> Coherence & Transfer Function
+#  process_1:
+#    name: 'cross_spectrum'
+#    reference_idx: 0
+#    method: 'welch'
+#    win: 20.0
+#    overlap_percent: 75.0
+#    nw: 4.0
+#    output_path: /surf_test/mti/spec_out

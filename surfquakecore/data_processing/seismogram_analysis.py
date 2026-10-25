@@ -16,7 +16,7 @@ from obspy.signal.util import stack
 from obspy.signal.cross_correlation import correlate_template
 from surfquakecore.data_processing.seismicUtils import SeismicUtils
 from surfquakecore.spectral.cwtrun import TraceCWTResult
-from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
+from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult, TraceCrossSpectralResult
 from typing import Optional
 
 
@@ -293,7 +293,7 @@ class StreamProcessing:
     """
 
     STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis", "cut_stream", "algebra", "chop", "deconv"}
+                      "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -322,6 +322,8 @@ class StreamProcessing:
                     self.stream = self.apply_stack(step)
                 elif method_name == "cross_correlate":
                     self.stream = self.apply_cross_correlation(step)
+                elif method_name == "cross_spectrum":
+                    self.stream = self.apply_cross_spectrum(step)
                 elif method_name == "convolve":
                     self.stream = self.apply_cross_correlation(step, conv=True)
                 elif method_name == "rotate":
@@ -385,7 +387,129 @@ class StreamProcessing:
 
         return self.stream
 
+        # Quantities that can be written into Trace.data by apply_cross_spectrum
 
+    CROSS_SPECTRUM_OUTPUTS = {"amplitude", "phase", "real", "imag", "coherence",
+                              "transfer_amplitude", "transfer_phase"}
+
+    def apply_cross_spectrum(self, step_config):
+        """
+        Cross-spectral analysis of every trace of the stream with respect to a reference trace.
+        Same logic as apply_cross_correlation / apply_deconv: n traces in -> n traces out
+        (the reference trace is included and gives its own auto-spectrum).
+
+        The output traces live in the FREQUENCY domain: Trace.data is sampled in frequency,
+        with stats.delta = df (Hz) and stats.freq_min = first frequency (Hz). Frequency axis:
+        f = stats.freq_min + np.arange(npts) * stats.delta
+
+        Parameters:
+            step_config (dict):
+                - "reference" (or "reference_idx"): index of the reference trace (default: 0)
+                - "output": quantity stored in Trace.data (default: "amplitude")
+                      "amplitude"           |Gxy|  (cross-spectral density magnitude)
+                      "phase"               angle(Gxy) in degrees
+                      "real" / "imag"       Re(Gxy) / Im(Gxy)
+                      "coherence"           magnitude-squared coherence, 0..1
+                      "transfer_amplitude"  |Gxy / Gxx|  (reference -> trace)
+                      "transfer_phase"      angle(Gxy / Gxx) in degrees
+                - "method": "welch" (default) or "multitaper"
+                - "win": window length in seconds (welch only; None -> N/8 samples)
+                - "overlap_percent": window overlap in % (default: 50.0)
+                - "nw": time-bandwidth product (multitaper, default: 4.0)
+                - "linf", "lsup": frequency band limits in Hz (default: 0.0, None)
+                - "trim": trim all traces to their common time window (default: True)
+
+        Convention: Gxy = E[conj(X) * Y], X = reference, Y = trace.
+        The complex Gxy and the coherence are always kept in stats.csd and stats.coherence,
+        whatever "output" is, so nothing is lost.
+
+        Returns:
+            Stream: new stream with one cross-spectrum trace per input trace.
+        """
+        reference_idx = step_config.get("reference", step_config.get("reference_idx", 0))
+        output = step_config.get("output", "amplitude")
+        trim = step_config.get("trim", True)
+
+        if output not in self.CROSS_SPECTRUM_OUTPUTS:
+            raise ValueError(f"Unknown cross_spectrum output '{output}'. "
+                             f"Valid options: {sorted(self.CROSS_SPECTRUM_OUTPUTS)}")
+
+        if len(self.stream) < 2:
+            print("[WARNING] Need at least two traces for cross-spectrum")
+            return self.stream
+
+        if not 0 <= reference_idx < len(self.stream):
+            raise IndexError(f"Reference index {reference_idx} out of range (stream has {len(self.stream)} traces)")
+
+        kwargs = {"method": step_config.get("method", "welch"),
+                  "win": step_config.get("win"),
+                  "overlap_percent": step_config.get("overlap_percent", 50.0),
+                  "nw": step_config.get("nw", 4.0),
+                  "linf": step_config.get("linf", 0.0),
+                  "lsup": step_config.get("lsup", None),
+                  "output_path": step_config.get("output_path", "./")}
+
+        results = TraceCrossSpectralResult.from_stream(self.stream, reference=reference_idx,
+                                                       include_reference=True, trim=trim,
+                                                       overlap_percent=kwargs["overlap_percent"],
+                                                       win=kwargs["win"],
+                                                       method=kwargs["method"],
+                                                       nw=kwargs["nw"],
+                                                       linf=kwargs["linf"],
+                                                       lsup=kwargs["lsup"])
+
+        # cs_stream = Stream()
+        # for res in results:
+        #     freq = np.asarray(res.freq, dtype=float)
+        #     if len(freq) < 2:
+        #         print(f"[WARNING] Cross-spectrum of {res.trace.id} has fewer than 2 frequency samples, skipped")
+        #         continue
+        #
+        #     if output == "amplitude":
+        #         data = np.abs(res.gxy)
+        #     elif output == "phase":
+        #         data = np.degrees(np.angle(res.gxy))
+        #     elif output == "real":
+        #         data = np.real(res.gxy)
+        #     elif output == "imag":
+        #         data = np.imag(res.gxy)
+        #     elif output == "coherence":
+        #         data = res.coherence
+        #     elif output == "transfer_amplitude":
+        #         data = res.amplitude
+        #     else:  # transfer_phase
+        #         data = res.phase_deg
+        #
+        #     df = float(freq[1] - freq[0])
+        #     ref, tr = res.ref_trace, res.trace
+        #
+        #     cs_tr = Trace(data=np.nan_to_num(np.asarray(data, dtype=np.float64)))
+        #     cs_tr.stats.starttime = tr.stats.starttime
+        #     cs_tr.stats.delta = df  # sampling in frequency (Hz), not in time
+        #     cs_tr.stats.network = tr.stats.network
+        #     cs_tr.stats.station = ref.stats.station + "_" + tr.stats.station
+        #     cs_tr.stats.channel = tr.stats.channel[0:1] + "S" + tr.stats.channel[-1]
+        #     cs_tr.stats.spectral_domain = True
+        #     cs_tr.stats.freq_min = float(freq[0])
+        #     cs_tr.stats.cross_spectrum_with = ref.id
+        #     cs_tr.stats.original_trace = tr.id
+        #     cs_tr.stats.is_autospectrum = res.trace is res.ref_trace
+        #     cs_tr.stats.cross_spectrum_output = output
+        #     cs_tr.stats.cross_spectrum_method = res.method
+        #     cs_tr.stats.n_avg = res.n_avg
+        #     cs_tr.stats.csd = np.asarray(res.gxy)
+        #     cs_tr.stats.coherence = np.asarray(res.coherence)
+        #     cs_stream.append(cs_tr)
+        #
+        # if len(cs_stream) != len(self.stream):
+        #     print(f"[WARNING] cross_spectrum: {len(self.stream)} traces in, {len(cs_stream)} traces out")
+
+        output_dir = step_config.get("output_path")
+        if output_dir:
+            for res in results:
+                res.to_pickle(output_dir, compress=step_config.get("compress", True))
+
+        return self.stream
 
     def apply_chop(self, step_config):
 

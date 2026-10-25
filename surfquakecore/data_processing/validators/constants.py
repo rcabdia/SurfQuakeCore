@@ -10,7 +10,7 @@ ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'f
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
                  'cross_correlate', 'convolve', 'stack', 'synch', 'envelope', 'cut', 'cut_stream', 'concat', 'spectrum',
                  'spectrogram', 'cwt', 'entropy', 'snr', 'raw', 'beam', 'particle_motion', 'rename', 'kurtosis',
-                 'algebra', 'flip', 'reverse', 'chop', 'wiener', 'deconv']
+                 'algebra', 'flip', 'reverse', 'chop', 'wiener', 'deconv', 'cross_spectrum']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 
@@ -30,6 +30,8 @@ WAVELET_METHODS = ['db2','db4','db6','db8','db10','db12','db14','db16','db18','d
 INTEGRATE_METHODS = ['cumtrapz', 'spline', 'spectral']
 
 CROSS_CORRELATE_MODE = ['full', 'valid', 'same']
+
+CROSS_SPECTRUM_METHODS = ['welch', 'multitaper']
 
 FILTER_METHODS = ['bandpass', 'bandstop', 'lowpass', 'highpass', 'cheby1', 'cheby2', 'elliptic', 'bessel']
 

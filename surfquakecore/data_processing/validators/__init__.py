@@ -1,6 +1,7 @@
 from .beam import validate_beam
 from .concat import validate_concat
 from .convolve import validate_convolve
+from .cross_spectrum import validate_cross_spectrum
 from .cut import validate_cut
 from .cut_stream import validate_cut_stream
 from .cwt import validate_cwt
@@ -83,7 +84,8 @@ CHECK_DISPATCH = {
     'flip': validate_flip,
     'convolve': validate_convolve,
     'wiener': validate_wiener,
-    'deconv': validate_deconv}
+    'deconv': validate_deconv,
+    'cross_spectrum': validate_cross_spectrum}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-cross_correlate
+cross_correlate --> Modify per convolution
 """
 from surfquakecore.data_processing.validators.constants import CROSS_CORRELATE_MODE
 from surfquakecore.data_processing.validators.utils import require_keys, require_type

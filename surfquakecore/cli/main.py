@@ -11,6 +11,8 @@
 import warnings
 import os
 
+from surfquakecore.spectral.specrun import TraceCrossSpectralResult
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore")
 import sys
@@ -2160,6 +2162,11 @@ def _specplot():
     if ext == ".sp":
         obj = TraceSpectrumResult.from_pickle(filepath)
         obj.plot_spectrum(save_path=args.save_path, axis_type=args.axis_type, type_spec="sp", extension=args.extension)
+
+    elif ext == ".coh":
+        obj = TraceCrossSpectralResult.from_pickle(filepath)
+        obj.plot(kind="both", axis_type=args.axis_type, alpha=0.05, type_spec="coh", extension=args.extension,
+                 save_path=args.save_path)
 
     elif ext == ".spec":
         obj = TraceSpectrogramResult.from_pickle(filepath)
