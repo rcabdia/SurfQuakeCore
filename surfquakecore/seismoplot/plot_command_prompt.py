@@ -54,6 +54,8 @@ class PlotCommandPrompt:
             "stack": self._cmd_stack,
             "xcorr": self._cmd_xcorr,
             "conv": self._cmd_conv,
+            "deconv": self._cmd_deconv,
+            "deconvolve": self._cmd_deconv,
             "plot_type": self._cmd_type,
             "cut": self._cmd_cut,
             "rotate": self._cmd_rotate,
@@ -1770,6 +1772,119 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Cross-correlation failed: {e}")
 
+    @staticmethod
+    def _as_bool(value):
+        v = value.lower()
+        if v in ("true", "t", "yes", "1"):
+            return True
+        if v in ("false", "f", "no", "0"):
+            return False
+        raise ValueError("use True or False")
+
+    def _cmd_deconv(self, args):
+        """
+        Water-level spectral deconvolution of the displayed traces with respect
+        to a reference trace (Clayton & Wiggins, 1976).
+
+        Usage:
+            deconv [--ref <index|trace_id>] [--water <c>] [--gauss <a>] [--tshift <sec>]
+                   [--normalize True|False] [--trim True|False] [--taper <fraction>]
+
+        Example:
+            >> deconv --ref ES.ELOB..HHZ --water 0.01 --gauss 2.5 --tshift 10
+        """
+        from obspy import Stream
+        from surfquakecore.data_processing.processing_methods import deconvolve
+
+        trace_list = list(getattr(self.plot_proj, "displayed_traces", []))
+        if not trace_list:
+            print("[WARN] No traces currently displayed.")
+            return
+
+        # Defaults (names match deconvolve())
+        params = {
+            "water_level": 0.01,
+            "gaussian_filter": None,
+            "tshift": 0.0,
+            "normalize": True,
+            "trim": True,
+            "taper_pct": 0.05,
+        }
+        ref_arg = "0"
+
+        # Parse arguments
+        it = iter(args[1:])
+        opt = None
+        try:
+            for opt in it:
+                if opt == "--ref":
+                    ref_arg = next(it)
+                elif opt in ("--water", "--water_level"):
+                    params["water_level"] = float(next(it))
+                elif opt in ("--gauss", "--gaussian"):
+                    params["gaussian_filter"] = float(next(it))
+                elif opt == "--tshift":
+                    params["tshift"] = float(next(it))
+                elif opt == "--normalize":
+                    params["normalize"] = self._as_bool(next(it))
+                elif opt == "--trim":
+                    params["trim"] = self._as_bool(next(it))
+                elif opt == "--taper":
+                    params["taper_pct"] = float(next(it))
+                else:
+                    print(f"[ERROR] Unknown option: {opt}. Type 'help deconv'.")
+                    return
+        except StopIteration:
+            print(f"[ERROR] Missing value for {opt}.")
+            return
+        except ValueError as e:
+            print(f"[ERROR] Invalid value for {opt}: {e}")
+            return
+
+        # Reference: position among the displayed traces, or a trace id
+        ids = [tr.id for tr in trace_list]
+        if ref_arg in ids:
+            ref = ids.index(ref_arg)
+        else:
+            try:
+                ref = int(ref_arg)
+            except ValueError:
+                print(f"[ERROR] --ref must be an index or one of the displayed trace ids, got '{ref_arg}'.")
+                return
+        if not 0 <= ref < len(trace_list):
+            print(f"[ERROR] --ref out of range, use 0..{len(trace_list) - 1}.")
+            return
+        params["reference"] = ref
+
+        # Sanity checks
+        if params["water_level"] < 0:
+            print("[ERROR] --water must be >= 0.")
+            return
+        if params["gaussian_filter"] is not None and params["gaussian_filter"] <= 0:
+            print("[ERROR] --gauss must be > 0.")
+            return
+        if not 0 <= params["taper_pct"] <= 0.5:
+            print("[ERROR] --taper must be between 0 and 0.5.")
+            return
+
+        print(f"[INFO] Deconvolving {len(trace_list)} traces with reference "
+              f"{trace_list[ref].id}: {params}")
+
+        try:
+            dc_stream = deconvolve(Stream(trace_list), **params)
+            if len(dc_stream) == 0:
+                print("[ERROR] Deconvolution produced no traces.")
+                return
+
+            self.plot_proj.trace_list = list(dc_stream)
+            self.plot_proj.current_page = 0
+            self.plot_proj.clear_plot()
+            self.prompt_active = False
+            self._exit_code = "replot"
+            print(f"[INFO] Deconvolution complete. {len(dc_stream)} traces.")
+        except Exception as e:
+            print(f"[ERROR] Deconvolution failed: {e}")
+
     def _apply_algebra(self, args):
         """
         Apply algebraic expression to the stream traces
@@ -2131,6 +2246,7 @@ class PlotCommandPrompt:
                 ("stack", "Trace stacking"),
                 ("xcorr", "Cross-correlate traces"),
                 ("conv", "Convolve traces"),
+                ("deconv", "Water-level deconvolution against a reference trace"),
             ],
 
             "Polarization & Picking": [
@@ -2541,6 +2657,30 @@ class PlotCommandPrompt:
                 >> sp 2 xlog --mode fft
         
         """,
+            "deconv": """
+                    deconv [--ref <index|trace_id>] [--water <c>] [--gauss <a>] [--tshift <sec>]
+                           [--normalize True|False] [--trim True|False] [--taper <fraction>]
+                        Deconvolve the displayed traces with respect to a reference trace
+                        (water-level spectral division, Clayton & Wiggins 1976).
+
+                        Parameters:
+                            --ref        Reference trace: position on this page or trace id (default: 0)
+                            --water      Water level, fraction of the max reference power (default: 0.01)
+                            --gauss      Gaussian low-pass width a, G(f)=exp(-(2*pi*f)^2/(4*a^2));
+                                         a=2.5 is about 1 Hz, as in receiver functions (default: off)
+                            --tshift     Seconds of delay so acausal lags are kept; t=0 stays zero lag
+                                         (default: 0)
+                            --normalize  Scale so the reference deconvolved with itself peaks at 1
+                                         (default: True)
+                            --trim       Trim all traces to the common time window (default: True)
+                            --taper      Cosine taper fraction after demeaning, 0 = off (default: 0.05)
+
+                        Examples:
+                            >> deconv
+                            >> deconv --ref 0 --water 0.01 --gauss 2.5 --tshift 0
+                            >> deconv --ref ES.ELOB..HHZ --water 0.01 --gauss 2.5 --tshift 10
+                           
+                    """,
 
 
         }
