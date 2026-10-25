@@ -5,7 +5,7 @@ from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
-    rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing
+    rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing, deconvolve
 
 try:
     from surfquakecore.cython_module.hampel import hampel
@@ -293,7 +293,7 @@ class StreamProcessing:
     """
 
     STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis", "cut_stream", "algebra", "chop"}
+                      "kurtosis", "cut_stream", "algebra", "chop", "deconv"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -344,8 +344,48 @@ class StreamProcessing:
                     self.apply_algebra(step)
                 elif method_name == "chop":
                     self.apply_chop(step)
+                elif method_name == "deconv":
+                    self.apply_deconv(step)
 
             return self.stream
+
+
+    def apply_deconv(self, step_config):
+        """
+        Cross-correlate all traces in the stream with respect to a reference trace.
+
+        Parameters:
+            step_config (dict):
+                - "normalize": normalization type (default: 'full')
+                - "mode": correlation mode ('full', 'valid', 'same')
+                - "reference": index of the reference trace (default: 0)
+                - "strict": if True, all traces must align in time (default: True)
+                - "conv": if True, Performs convolution instead of correlation
+        Returns:
+            Stream: New stream with correlation functions as Trace objects.
+        """
+
+        reference_idx = step_config.get("reference_idx", 0)
+        normalize = step_config.get("normalize", 'full')
+        strict = step_config.get("trim", False)
+
+        if "water_level" in step_config.keys():
+            water_level = step_config["water_level"]
+        else:
+            water_level = 0.001
+
+        if "gaussian_filter" in step_config.keys():
+            gaussian_filter = step_config["gaussian_filter"]
+        else:
+            gaussian_filter = None
+
+        self.stream = deconvolve(self.stream, reference=reference_idx, water_level=water_level,
+               tshift=0.0, normalize=normalize, trim=strict, taper_pct=0.05, gaussian_filter=gaussian_filter)
+
+
+        return self.stream
+
+
 
     def apply_chop(self, step_config):
 

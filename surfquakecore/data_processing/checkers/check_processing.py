@@ -7,7 +7,7 @@ check_processing
 ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'filter', 'wiener_smoothing',
                  'shift', 'remove_response', 'add_white_noise', 'whitening', 'remove_spikes',
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'flip', 'reverse',
-                 'wiener']
+                 'wiener', 'deconv']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 

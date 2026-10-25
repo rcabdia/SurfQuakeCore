@@ -106,3 +106,10 @@ Analysis:
     name: 'wiener'
     window_start: 0
     window_end: 20
+  process_28:
+    name: 'deconv'
+    reference_idx: 0
+    water_level: 0.0001
+    normalize: True
+    trim: True
+    gauss_filter: 2.5

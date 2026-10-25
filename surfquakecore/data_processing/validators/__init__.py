@@ -4,6 +4,7 @@ from .convolve import validate_convolve
 from .cut import validate_cut
 from .cut_stream import validate_cut_stream
 from .cwt import validate_cwt
+from .deconv import validate_deconv
 from .entropy import validate_entropy
 from .flip import validate_flip
 from .particle import validate_particle
@@ -81,7 +82,8 @@ CHECK_DISPATCH = {
     'reverse': validate_reverse,
     'flip': validate_flip,
     'convolve': validate_convolve,
-    'wiener': validate_wiener}
+    'wiener': validate_wiener,
+    'deconv': validate_deconv}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

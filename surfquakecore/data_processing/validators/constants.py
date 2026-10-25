@@ -10,7 +10,7 @@ ANALYSIS_KEYS = ['rmean', 'taper', 'normalize', 'differentiate', 'integrate', 'f
                  'time_normalization', 'wavelet_denoise', 'resample', 'fill_gaps', 'smoothing', 'rotate',
                  'cross_correlate', 'convolve', 'stack', 'synch', 'envelope', 'cut', 'cut_stream', 'concat', 'spectrum',
                  'spectrogram', 'cwt', 'entropy', 'snr', 'raw', 'beam', 'particle_motion', 'rename', 'kurtosis',
-                 'algebra', 'flip', 'reverse', 'chop', 'wiener']
+                 'algebra', 'flip', 'reverse', 'chop', 'wiener', 'deconv']
 
 RMEAN_METHODS = ['simple', 'linear', 'constant', 'demean', 'polynomial', 'spline']
 

@@ -1020,7 +1020,7 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
 
     return cc_stream
 
-def deconvolve(stream, reference=0, water_level=0.01, gaussian_width=None,
+def deconvolve(stream, reference=0, water_level=0.01, gaussian_filter=None,
                tshift=0.0, normalize=True, trim=True, taper_pct=0.05):
     """
     Deconvolve all traces in the stream with respect to a reference trace using
@@ -1093,8 +1093,8 @@ def deconvolve(stream, reference=0, water_level=0.01, gaussian_width=None,
 
     # Optional Gaussian low-pass and time shift
     filt = np.ones_like(freqs)
-    if gaussian_width is not None:
-        filt = np.exp(-omega ** 2 / (4.0 * gaussian_width ** 2))
+    if gaussian_filter is not None:
+        filt = np.exp(-omega ** 2 / (4.0 * gaussian_filter ** 2))
     if tshift:
         filt = filt * np.exp(-1j * omega * tshift)
 
