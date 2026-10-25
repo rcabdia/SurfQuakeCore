@@ -560,6 +560,11 @@ class PlotProj:
             else:
                 ax.plot(t, tr.data, linewidth=0.8, alpha=0.7, label=tr.id)
 
+        # X axis from the earliest start to the latest end of all traces
+        x_min = min(tr.stats.starttime.matplotlib_date for tr in traces)
+        x_max = max(tr.stats.endtime.matplotlib_date for tr in traces)
+        ax.set_xlim(x_min, x_max)
+            
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Amplitude")
         ax.xaxis_date()

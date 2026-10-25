@@ -1,78 +1,92 @@
-import cython
-cimport numpy as np
+# cython: boundscheck=False, wraparound=False, cdivision=True, language_level=3
 import numpy as np
+from libc.math cimport fabs
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
-def hampel(np.ndarray data, int window_size, float n_sigma):
+
+cdef inline double _select(double* a, int n, int k) noexcept nogil:
+    """k-th smallest of a[0:n] (Wirth's quickselect); partially reorders a."""
+    cdef int lo = 0, hi = n - 1, i, j
+    cdef double x, t
+    while lo < hi:
+        x = a[k]
+        i = lo
+        j = hi
+        while True:
+            while a[i] < x:
+                i += 1
+            while x < a[j]:
+                j -= 1
+            if i <= j:
+                t = a[i]
+                a[i] = a[j]
+                a[j] = t
+                i += 1
+                j -= 1
+            if i > j:
+                break
+        if j < k:
+            lo = i
+        if k < i:
+            hi = j
+    return a[k]
+
+
+def hampel(data, int window_size, double n_sigma):
     """
-    Applies the Hampel filter to a 1-dimensional numpy array for outlier detection.
+    Hampel filter (rolling median / MAD) for a 1-D array.
 
-    This function replaces outliers in the input data with the median value within a moving window.
-
-    Parameters:
-        data (numpy.ndarray): The input 1-dimensional numpy array to be filtered.
-        window_size (int, optional): The size of the moving window for outlier detection.
-        n_sigma (float, optional): The number of standard deviations for outlier detection.
-
-    Returns:
-        Tuple[numpy.ndarray, List[int], numpy.ndarray, numpy.ndarray]: A tuple containing:
-            - Filtered data (numpy.ndarray): A copy of the input data with outliers replaced by median values within the specified window.
-            - Indices of outliers (List[int]): A list of indices where outliers were found.
-            - Local medians (numpy.ndarray): An array containing local median values for each element of the input data.
-            - Estimated standard deviations (numpy.ndarray): An array containing estimated standard deviations for each element of the input data.
+    Same inputs and outputs as the original implementation:
+        filtered, outlier_indices, medians, mads, thresholds
+    but the rolling medians are computed in C (no Python calls inside the loop).
+    Samples within window_size//2 of either edge are not filtered; their entries
+    in medians / mads / thresholds are 0.
     """
-    # Ensure data is 1D
-    if data.ndim != 1:
+    arr = np.asarray(data)
+    if arr.ndim != 1:
         raise ValueError("Input data must be a 1D array")
+    arr = np.ascontiguousarray(arr, dtype=np.float64)
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Input data contains NaN or Inf values")
 
-    # Convert input to float64 for consistent processing
-    if data.dtype != np.float64:
-        data = np.ascontiguousarray(data, dtype=np.float64)
+    cdef double[::1] x = arr
+    cdef int n = x.shape[0]
+    cdef int half = window_size // 2
+    cdef int w = 2 * half + 1
 
-    cdef np.ndarray[np.float64_t, ndim=1] data_view = data
-    cdef int data_len = data_view.shape[0]
-    cdef int half_window = window_size // 2
+    filtered = arr.copy()
+    medians = np.zeros(n, dtype=np.float64)
+    mads = np.zeros(n, dtype=np.float64)
+    thresholds = np.zeros(n, dtype=np.float64)
+    outliers = np.empty(n, dtype=np.int32)
 
-    # Preallocate output arrays
-    cdef np.ndarray[np.float64_t, ndim=1] filtered_data = data_view.copy()
-    cdef np.ndarray[np.float64_t, ndim=1] thresholds = np.empty(data_len, dtype=np.float64)
-    cdef np.ndarray[np.float64_t, ndim=1] median_absolute_deviations = np.empty(data_len, dtype=np.float64)
-    cdef np.ndarray[np.float64_t, ndim=1] medians = np.empty(data_len, dtype=np.float64)
-    cdef np.ndarray[np.int32_t, ndim=1] outlier_indices = np.empty(data_len, dtype=np.int32)
+    cdef double[::1] f = filtered
+    cdef double[::1] med_v = medians
+    cdef double[::1] mad_v = mads
+    cdef double[::1] thr_v = thresholds
+    cdef int[::1] out_v = outliers
+    buf = np.empty(w, dtype=np.float64)
+    cdef double[::1] b = buf
 
-    cdef:
-        int i, j, window_length, num_outliers = 0
-        np.ndarray[np.float64_t, ndim=1] window
-        float median, mad, threshold
+    cdef int i, j, n_out = 0
+    cdef double med, mad, thr
 
-    for i in range(half_window, data_len - half_window):
-        window = data_view[i - half_window: i + half_window + 1].copy()
-        window_length = len(window)
-        median = np.median(window)
+    if half >= 1 and n >= w:
+        with nogil:
+            for i in range(half, n - half):
+                for j in range(w):
+                    b[j] = x[i - half + j]
+                med = _select(&b[0], w, half)
+                for j in range(w):
+                    b[j] = fabs(b[j] - med)
+                mad = _select(&b[0], w, half)
+                thr = n_sigma * 1.4826 * mad
 
-        for j in range(window_length):
-            window[j] = abs(window[j] - median)
+                med_v[i] = med
+                mad_v[i] = mad
+                thr_v[i] = thr
+                if fabs(x[i] - med) > thr:
+                    f[i] = med
+                    out_v[n_out] = i
+                    n_out += 1
 
-        mad = np.median(window)
-        threshold = n_sigma * 1.4826 * mad
-
-        thresholds[i] = threshold
-        medians[i] = median
-        median_absolute_deviations[i] = mad
-
-        if abs(data_view[i] - median) > threshold:
-            filtered_data[i] = median
-            outlier_indices[num_outliers] = i
-            num_outliers += 1
-
-    outlier_indices = outlier_indices[:num_outliers]
-
-    return (
-        filtered_data,
-        outlier_indices,
-        medians,
-        median_absolute_deviations,
-        thresholds
-    )
+    return filtered, outliers[:n_out].copy(), medians, mads, thresholds

@@ -42,6 +42,7 @@ class PlotCommandPrompt:
             "reverse": self._cmd_reverse,
             "back2future": self._cmd_back2future,
             "taper": self._cmd_taper,
+            "remove_spikes": self._cmd_remove_spikes,
             "spectrogram": self._cmd_spectrogram,
             "spec": self._cmd_spectrogram,
             "spectrum": self._cmd_spectrum,
@@ -260,6 +261,76 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"Error displaying info: {e}")
 
+    def _cmd_remove_spikes(self, args):
+        """
+        Remove spikes from the traces with the Hampel filter (median / MAD).
+
+        Usage:
+            remove_spikes [--window <sec>] [--sigma <float>]
+        Example:
+            >> remove_spikes
+            >> remove_spikes --window 2 --sigma 6
+        """
+        try:
+            from surfquakecore.cython_module.hampel import hampel
+        except ImportError:
+            print("[ERROR] Hampel no compiled. Install gcc compiler and reinstall surfquake")
+            return
+
+        window = 1.0  # seconds
+        sigma = 5.0
+
+        it = iter(args[1:])
+        opt = None
+        try:
+            for opt in it:
+                if opt == "--window":
+                    window = float(next(it))
+                elif opt == "--sigma":
+                    sigma = float(next(it))
+                else:
+                    print(f"[ERROR] Unknown option: {opt}. Type 'help remove_spikes'.")
+                    return
+        except StopIteration:
+            print(f"[ERROR] Missing value for {opt}.")
+            return
+        except ValueError:
+            print(f"[ERROR] Invalid value for {opt}.")
+            return
+
+        if window <= 0 or sigma <= 0:
+            print("[ERROR] --window and --sigma must be > 0.")
+            return
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to process.")
+            return
+
+        n_traces = 0
+        n_spikes = 0
+        for tr in traces:
+            try:
+                window_samples = int(round(window * tr.stats.sampling_rate))
+                if window_samples < 3:
+                    print(f"[ERROR] {tr.id}: window of {window} s is shorter than 3 samples.")
+                    continue
+                filtered, outliers, medians, mads, thresholds = hampel(tr.data, window_samples, sigma)
+                tr.data = filtered
+                n_traces += 1
+                n_spikes += len(outliers)
+                if len(outliers):
+                    print(f"[INFO] {tr.id}: {len(outliers)} spike(s) removed.")
+            except Exception as e:
+                print(f"[ERROR] Failed to remove spikes from {tr.id}: {e}")
+
+        print(f"[INFO] remove_spikes (window={window} s, sigma={sigma}): "
+              f"{n_spikes} spike(s) removed in {n_traces} traces.")
+
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
     def _cmd_flip(self, args):
         """
         Flip the polarity of a seismic trace in-place (amplitude inversion)
@@ -426,6 +497,7 @@ class PlotCommandPrompt:
         for tr in traces:
             try:
                 tr.taper(max_percentage=max_percentage, type=taper_type)
+                taper_count += 1
             except Exception as e:
                 print(f"[ERROR] Failed to taper {tr.id}: {e}")
 
@@ -1885,6 +1957,7 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Deconvolution failed: {e}")
 
+
     def _apply_algebra(self, args):
         """
         Apply algebraic expression to the stream traces
@@ -2224,13 +2297,14 @@ class PlotCommandPrompt:
                 ("rmean", "Remove mean on traces"),
                 ("taper", "Apply taper window on traces"),
                 ("flip", "Flip the polarity of a seismic trace"),
+                ("remove_spikes", "Remove spikes with the Hampel filter (median/MAD)"),
                 ("reverse", "Reverse the data points of seismic traces"),
                 ("filter", "Apply signal filtering"),
                 ("cut", "Trim traces using picks or UTC times"),
                 ("concat", "Merge trace segments, no parameters needed"),
                 ("rotate", "Rotate seismic components"),
                 ("shift", "Align traces by phase arrivals"),
-                ("write", "Export traces to HDF5, write --folder_path <path> [--all]"),
+                ("write", "Export traces to HDF5"),
             ],
 
             "Spectral Analysis": [
@@ -2680,9 +2754,25 @@ class PlotCommandPrompt:
                             >> deconv --ref 0 --water 0.01 --gauss 2.5 --tshift 0
                             >> deconv --ref ES.ELOB..HHZ --water 0.01 --gauss 2.5 --tshift 10
                            
+         """,
+            "remove_spikes": """
+                    remove_spikes [--window <sec>] [--sigma <float>]
+                        Remove spikes from all traces with the Hampel filter: samples that depart
+                        from the moving median by more than sigma * 1.4826 * MAD are replaced
+                        by that median.
+
+                        Parameters:
+                            --window   Moving window length in seconds (default: 1.0)
+                            --sigma    Detection threshold in robust standard deviations (default: 5)
+
+                        Examples:
+                            >> remove_spikes
+                            >> remove_spikes --window 2 --sigma 6
                     """,
 
-
+            "write": """
+                    write --folder_path <path> [--all]
+            """,
         }
 
         # Check if specific command is requested
