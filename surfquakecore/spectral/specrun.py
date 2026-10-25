@@ -9,6 +9,8 @@ import os
 import pickle
 import gzip
 import platform
+import sys
+
 import numpy as np
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
@@ -788,11 +790,10 @@ class TraceCrossSpectralResult:
         alpha     : significance level of the dashed coherence threshold
         """
         import matplotlib as mplt
-        if platform.system() == 'Darwin':
-            mplt.use("MacOSX")
-        else:
-            mplt.use("QtAgg")
         import matplotlib.pyplot as plt
+
+        if "matplotlib.pyplot" not in sys.modules:  # only choose a backend if none is active yet
+            mplt.use("MacOSX" if platform.system() == "Darwin" else "QtAgg")
 
         if kind not in ("both", "transfer", "coherence"):
             raise ValueError("kind must be 'both', 'transfer' or 'coherence'")

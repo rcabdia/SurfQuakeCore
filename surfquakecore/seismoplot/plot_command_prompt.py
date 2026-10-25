@@ -9,7 +9,7 @@ import os
 import readline
 import atexit
 from typing import Optional
-from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers, flip, reverse
+from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers
 
 
 class PlotCommandPrompt:
@@ -48,6 +48,8 @@ class PlotCommandPrompt:
             "spectrum": self._cmd_spectrum,
             "sp": self._cmd_spectrum,
             "cwt": self._cmd_cwt,
+            "coh": self._cmd_coherence,
+            "tf": self._cmd_coherence,
             "pm": self._cmd_pm,
             "p": self._cmd_pick,
             "beam": self._cmd_beam,
@@ -506,6 +508,121 @@ class PlotCommandPrompt:
         self.plot_proj.clear_plot()
         self.prompt_active = False
         self._exit_code = "replot"
+
+    def _cmd_coherence(self, args):
+        """
+        Coherence / transfer function of the displayed traces with respect to a reference trace.
+
+        Usage:
+            coh [--ref <index|trace_id>] [--kind both|transfer|coherence] [--axis loglog|xlog|linlin]
+                [--method welch|multitaper] [--win <sec>] [--overlap <pct>] [--nw <n>]
+                [--fmin <Hz>] [--fmax <Hz>] [--alpha <a>] [--trim True|False]
+                [--folder_path <folder>] [--no_compress] [--no_plot]
+
+        Example:
+            >> coh --ref 0 --kind both --win 20 --folder_path ./coh
+        """
+        from obspy import Stream
+        from surfquakecore.spectral.specrun import TraceCrossSpectralResult
+
+        displayed = list(getattr(self.plot_proj, "displayed_traces", []))
+        if len(displayed) < 2:
+            print("[WARN] Need at least two displayed traces.")
+            return
+
+        ref_arg, kind, axis_type, alpha = "0", "both", "loglog", 0.05
+        trim, folder, compress, do_plot = True, None, True, True
+        kw = {"method": "welch", "win": None, "overlap_percent": 50.0, "nw": 4.0,
+              "linf": 0.0, "lsup": None}
+
+        it = iter(args[1:])
+        opt = None
+        try:
+            for opt in it:
+                if opt == "--ref":
+                    ref_arg = next(it)
+                elif opt == "--kind":
+                    kind = next(it).lower()
+                elif opt == "--axis":
+                    axis_type = next(it).lower()
+                elif opt == "--method":
+                    kw["method"] = next(it).lower()
+                elif opt == "--win":
+                    kw["win"] = float(next(it))
+                elif opt == "--overlap":
+                    kw["overlap_percent"] = float(next(it))
+                elif opt == "--nw":
+                    kw["nw"] = float(next(it))
+                elif opt == "--fmin":
+                    kw["linf"] = float(next(it))
+                elif opt == "--fmax":
+                    kw["lsup"] = float(next(it))
+                elif opt == "--alpha":
+                    alpha = float(next(it))
+                elif opt == "--trim":
+                    trim = self._as_bool(next(it))
+                elif opt == "--folder_path":
+                    folder = self.make_abs(next(it))
+                elif opt == "--no_compress":
+                    compress = False
+                elif opt == "--no_plot":
+                    do_plot = False
+                else:
+                    print(f"[ERROR] Unknown option: {opt}. Type 'help coh'.")
+                    return
+        except StopIteration:
+            print(f"[ERROR] Missing value for {opt}.")
+            return
+        except ValueError as e:
+            print(f"[ERROR] Invalid value for {opt}: {e}")
+            return
+
+        if kind not in ("both", "transfer", "coherence") or axis_type not in ("loglog", "xlog", "linlin") \
+                or kw["method"] not in ("welch", "multitaper"):
+            print("[ERROR] --kind: both|transfer|coherence, --axis: loglog|xlog|linlin, "
+                  "--method: welch|multitaper.")
+            return
+
+        ids = [tr.id for tr in displayed]
+        if ref_arg in ids:
+            ref = ids.index(ref_arg)
+        else:
+            try:
+                ref = int(ref_arg)
+            except ValueError:
+                print(f"[ERROR] --ref must be an index or a displayed trace id, got '{ref_arg}'.")
+                return
+        if not 0 <= ref < len(displayed):
+            print(f"[ERROR] --ref out of range, use 0..{len(displayed) - 1}.")
+            return
+
+        # same time window as the plot (and as 'save'), on copies
+        traces = [self._trace_in_window(tr) for tr in displayed]
+        if any(tr.stats.npts < 2 for tr in traces):
+            print("[ERROR] Empty or too short time window.")
+            return
+
+        try:
+            results = TraceCrossSpectralResult.from_stream(Stream(traces), reference=ref,
+                                                           include_reference=False, trim=trim, **kw)
+        except Exception as e:
+            print(f"[ERROR] Coherence failed: {e}")
+            return
+        if not results:
+            print("[ERROR] No cross-spectral result was computed.")
+            return
+
+        for r in results:
+            try:
+                if folder:
+                    r.to_pickle(folder, compress=compress)
+                if do_plot:
+                    r.plot(kind=kind, axis_type=axis_type, alpha=alpha)
+            except Exception as e:
+                print(f"[ERROR] {r.trace.id}: {e}")
+
+        print(f"[INFO] Coherence/transfer computed for {len(results)} trace(s) w.r.t. "
+              f"{displayed[ref].id}" + (f", saved in {folder}" if folder else "."))
 
     def _cmd_stack(self, args):
         """
@@ -2311,6 +2428,7 @@ class PlotCommandPrompt:
                 ("spectrum / sp", "Plot amplitude spectrum"),
                 ("spectrogram / spec", "Plot multitaper spectrogram"),
                 ("cwt", "Continuous wavelet transform"),
+                ("coh / tf", "Coherence and Transfer Function"),
                 ("save_tf", "Save Time-Frequency Anlysis"),
             ],
 
@@ -2771,8 +2889,28 @@ class PlotCommandPrompt:
                     """,
 
             "write": """
+            
+            write displayed traces to folder in format HDF5, preserving the traces header (picks, refrences, geodetic info ..)
+            
+            Usage:
                     write --folder_path <path> [--all]
             """,
+
+            "coh": """
+        Coherence / transfer function of the displayed traces with respect to a reference trace.
+            
+        Usage:
+            
+            coh [--ref <index|trace_id>] [--kind both|transfer|coherence] [--axis loglog|xlog|linlin]
+                [--method welch|multitaper] [--win <sec>] [--overlap <pct>] [--nw <n>]
+                [--fmin <Hz>] [--fmax <Hz>] [--alpha <a>] [--trim True|False]
+                [--folder_path <folder>] [--no_compress] [--no_plot]
+                
+        - Use 'coh' or 'tf' — both work the same.
+        
+        Example:
+            >> coh --ref 0 --kind both --win 20 --folder_path ./spect_folder
+        """,
         }
 
         # Check if specific command is requested
@@ -2783,6 +2921,7 @@ class PlotCommandPrompt:
             aliases = {
                 "sp": "spectrum",
                 "spec": "spectrogram",
+                "tf": "coh",
             }
             cmd = aliases.get(cmd, cmd)
 
