@@ -19,7 +19,6 @@ from surfquakecore.data_processing.seismogram_analysis import SeismogramData, St
 from surfquakecore.project.surf_project import SurfProject
 from multiprocessing import Pool, cpu_count
 from obspy.geodetics import gps2dist_azimuth
-from obspy import read
 from obspy.core.stream import Stream, Trace
 from surfquakecore.seismoplot.plot import PlotProj
 from collections import defaultdict
