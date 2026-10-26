@@ -26,6 +26,7 @@ from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.utils.system_utils import get_python_major_version
 from obspy import Stream
 
+
 def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
     """
     Create an id for the output results of moment tensor inversion. This is used for generate folder names
@@ -42,7 +43,7 @@ def generate_mti_id_output(mti_config: MomentTensorInversionConfig) -> str:
 
 class BayesianIsolaCore:
     def __init__(self, project: Union[SurfProject, Stream], inventory_file: Union[str, Inventory],
-                 output_directory: str, save_green=False, use_precalculated_Green=False,  save_plots=False):
+                 output_directory: str, save_green=False, use_precalculated_Green=False, save_plots=False):
         """
 
         :param project: Either a SurfProject object or an obspy Stream
@@ -77,10 +78,8 @@ class BayesianIsolaCore:
             except Exception as error:
                 print("An exception occurred:", error)
 
-
         self._cpu_count = max(1, os.cpu_count() - 1)
         self._inventory: Optional[Inventory] = None
-
 
     def __enter__(self):
         return self
@@ -253,7 +252,6 @@ class BayesianIsolaCore:
                     mti_config.inversion_parameters.min_dist = (2 * inputs.rupture_length) * 1E-3  # km
                     mti_config.inversion_parameters.max_dist = 2 ** (mti_config.magnitude * 2.)  # km
 
-
                 mt = MTIManager(stream=st, inventory=self.inventory,
                                 working_directory=green_func_dir, mti_config=mti_config)
 
@@ -286,6 +284,10 @@ class BayesianIsolaCore:
                     print("Stations/Channels automatically Filtered by RMS THRESHOLD ")
                     mt.get_participation()
                     inputs.stations, inputs.stations_index = mt.filter_mti_inputTraces(stations, stations_index)
+
+                # Dummy components (added by fill_stream_with_inferred_channels) must never be used in the
+                # inversion, neither with the manual selection nor with the RMS threshold
+                mt.disable_dummy_components(inputs.stations_index)
 
                 # read crustal file and writes in green folder, read_crust(source, output='green/crustal.dat')
                 inputs.read_crust(mti_config.inversion_parameters.earth_model_file,
@@ -357,6 +359,6 @@ class BayesianIsolaCore:
                     print("coudn't release plotting memory usage")
 
                 gc.collect()
-        
+
         except Exception as e:
             print(f"An exception occurred for {files_list}: {e}")

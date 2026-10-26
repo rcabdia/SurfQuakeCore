@@ -28,6 +28,17 @@ from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
 
 class MTIManager:
 
+    # Role of each component letter (last character of the channel code) in the MTI pipeline.
+    # BayesISOLA works with 3 components per station ordered Z, N, E. In a "Z,1,2" or "Z,Y,X" station the
+    # second and third channels play the role of N and E (see sort_stream and
+    # InversionDataManager.set_use_components), so 1/Y -> useN and 2/X -> useE.
+    _COMPONENT_FLAG = {"Z": "useZ",
+                       "N": "useN", "1": "useN", "Y": "useN",
+                       "E": "useE", "2": "useE", "X": "useE"}
+
+    # Possible (first horizontal, second horizontal) naming schemes
+    _HORIZONTAL_PAIRS = (("N", "E"), ("1", "2"), ("Y", "X"))
+
     def __init__(self, stream: Stream, inventory: Inventory,
                  working_directory: str, mti_config: MomentTensorInversionConfig):
         """
@@ -65,13 +76,16 @@ class MTIManager:
         file_list = []
         dist1 = []
         for tr in self.__st:
+            if self._is_dummy(tr):
+                # Dummy traces have no metadata: the coordinates of a station always come from a real trace
+                continue
             net = tr.stats.network
             station = tr.stats.station
             channel = tr.stats.channel
-            coords = self.__inv.get_coordinates(tr.id)
-            lat = coords['latitude']
-            lon = coords['longitude']
             if station not in self.stations_index:
+                coords = self.__inv.get_coordinates(tr.id)
+                lat = coords['latitude']
+                lon = coords['longitude']
 
                 dist, _, _ = gps2dist_azimuth(self.lat, self.lon, lat, lon, a=6378137.0, f=0.0033528106647474805)
 
@@ -101,11 +115,18 @@ class MTIManager:
     def get_participation(self):
 
         """
-        Find which traces from self.stream are above RMS Threshold
+        Find which traces from self.stream are above RMS Threshold.
+        Dummy traces (see fill_stream_with_inferred_channels) never participate.
         """
 
         for st in self.streams:
             for tr in st:
+
+                key = self._station_key(tr) + tr.stats.channel[-1]
+
+                if self._is_dummy(tr):
+                    self.check_rms[key] = False
+                    continue
 
                 coords = self.__inv.get_coordinates(tr.id)
                 lat = coords['latitude']
@@ -124,22 +145,37 @@ class MTIManager:
                     # Go for estimate earthquake duration from expected Rayleigh Wave
                     rms = self.get_rms_times(tr, p_arrival_time, dist * 1E-3, self.magnitude, freqmin=0.05, freqmax=1.0)
 
-                if rms >= self.threshold:
-                    self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = True
-                else:
-                    self.check_rms[tr.stats.network + "_" + tr.stats.station + "__" + tr.stats.channel] = False
+                self.check_rms[key] = bool(rms >= self.threshold)
 
     def filter_mti_inputTraces(self, stations, stations_list):
-        # guess that starts everything inside stations and stations_list to False
         # stations is a list
-        # stations_list is a dictionary of dictionaries
-        for key in self.check_rms.keys():
+        # stations_list is a dictionary of dictionaries (InversionDataManager.stations_index)
+        # The use{Z,N,E} flags start as False and are only switched on for the traces above the threshold.
+        for key, participates in self.check_rms.items():
 
-            if self.check_rms[key]:
+            if participates:
                 stations_list = self.__find_in_stations_list(stations_list, key)
-                # stations = self.__find_in_stations(stations, key) #not necessary, it is done automatically
 
         return stations, stations_list
+
+    def disable_dummy_components(self, stations_list):
+        """
+        Force use{Z,N,E} = False for every component that is a dummy trace, whatever the way the flags
+        were set (RMS threshold or manual selection with map_stations).
+        Must be called after get_stations_index() and after the flags have been set.
+
+        :param stations_list: dictionary of dictionaries (InversionDataManager.stations_index)
+        """
+        for st in self.streams or []:
+            for tr in st:
+                if not self._is_dummy(tr):
+                    continue
+                flag = self._COMPONENT_FLAG.get(tr.stats.channel[-1])
+                entry = stations_list.get(self._station_key(tr))
+                if flag is not None and entry is not None:
+                    entry[flag] = False
+
+        return stations_list
 
     def filter_stations_stream(self, st: Stream, stations_input: list):
         stations_check = []
@@ -162,26 +198,13 @@ class MTIManager:
 
     def __find_in_stations_list(self, stations_list, key_check):
         # stations_list is a dictionary with dictionaries inside
-        key_search = 'use' + key_check[-1]
-        key_check_find = key_check[0:-1]
-        if key_check_find in stations_list.keys():
-            stations_list[key_check_find][key_search] = self.check_rms[key_check]
+        # key_check = "<net>_<station>__<band/instrument><component>", e.g. "XX_AAA__HH1"
+        station_key, component = key_check[:-1], key_check[-1]
+        flag = self._COMPONENT_FLAG.get(component)  # Z -> useZ, 1/Y/N -> useN, 2/X/E -> useE
+        if flag is not None and station_key in stations_list:
+            stations_list[station_key][flag] = self.check_rms[key_check]
+
         return stations_list
-
-    def __find_in_stations(self, stations, key):
-        # stations is a list of dictionaries
-        network, code, loc, channelcode = key.split("_")
-        for _iter, index_dict in enumerate(stations):
-            if (index_dict["channelcode"] == channelcode[0:2] and index_dict["code"] == code and
-                    index_dict["network"] == network):
-                if channelcode[-1] == "Z" or channelcode[-1] == 3:
-                    stations[_iter]["useZ"] = self.check_rms[key]
-                elif channelcode[-1] == "N" or channelcode[-1] == "Y" or channelcode[-1] == 1:
-                    stations[_iter]["useN"] = self.check_rms[key]
-                elif channelcode[-1] == "E" or channelcode[-1] == "X" or channelcode[-1] == 2:
-                    stations[_iter]["useN"] = self.check_rms[key]
-
-        return stations
 
     def sort_stream(self, dist1):
 
@@ -297,111 +320,117 @@ class MTIManager:
         return st
 
     @classmethod
-    def rotate_to_ne(cls, stream, inventory):
+    def rotate_to_ne(cls, stream, inventory, min_angle=5.0):
 
         """
-        Rotates horizontal components in a stream to NE orientation if needed.
+        Rotates the horizontal components of every station to the N/E directions if needed.
+
+        The two horizontal channels of a station ("1","2" or "Y","X") are rotated using the azimuth of each
+        channel in the inventory. The data are replaced IN PLACE and the channel names are NOT changed:
+        afterwards the "1"/"Y" trace contains North and the "2"/"X" trace contains East (the metadata and
+        BayesISOLA keep working with the original names). Stations that already have N/E channels, or whose
+        horizontals are already oriented N/E within ``min_angle`` degrees, are left untouched.
+
+        Rotated traces are flagged with ``stats.mti_rotated = True``, so calling this method again on the
+        same traces (e.g. a preprocessed stream reused for several events) does not rotate them twice.
 
         Parameters:
             stream (Stream): ObsPy Stream containing multiple traces.
             inventory (Inventory): ObsPy Inventory containing metadata for traces.
-            save_path (str): Optional path to save the rotated stream.
+            min_angle (float): tolerance in degrees to consider a channel already oriented N/E.
 
         Returns:
-            Stream: Original stream with rotated traces substituted.
+            Stream: Original (sorted) stream with the rotated data.
         """
 
-        rotated_ids = set()  # Track rotated trace IDs for removal
-
+        # group by (network, station, location, band/instrument code) -> {component letter: [traces]}
+        groups = {}
         for trace in stream:
-            trace_id = trace.id
+            s = trace.stats
+            key = (s.network, s.station, s.location, s.channel[:2])
+            groups.setdefault(key, {}).setdefault(s.channel[-1], []).append(trace)
 
-            # Skip if already processed
-            if trace_id in rotated_ids:
-                continue
-
-            # Retrieve station and channel information
-            station = trace.stats.station
-            network = trace.stats.network
-            channel = trace.stats.channel
-            location = trace.stats.location
-
-            # Find corresponding station metadata in the inventory
-            try:
-                station_metadata = inventory.get_channel_metadata(trace.id)
-            except KeyError:
-                continue  # Skip if no metadata is available
-
-            # Extract azimuth and dip
-            azimuth = station_metadata['azimuth']
-            dip = station_metadata['dip']
-
-            # Skip non-horizontal traces
-            if not (-5 <= dip <= 5):
-                continue
-
-            # Skip if already in NE orientation
-            if channel[-1] in ["N", "E"]:
-                continue
-
-            # Find paired horizontal channel
-            paired_channel = None
-            for tr in stream:
-                if (
-                        tr.stats.station == station and
-                        tr.stats.network == network and
-                        tr.stats.location == location and
-                        tr.stats.channel != channel and
-                        tr.stats.channel[-1] in ["1", "2", "R", "T", "Y", "X"]
-                ):
-                    paired_channel = tr
+        for (net, sta, loc, band), comps in groups.items():
+            for first, second in (("1", "2"), ("Y", "X")):
+                if first in comps and second in comps:
+                    if len(comps[first]) > 1 or len(comps[second]) > 1:
+                        print(f"Rotation skipped for {net}.{sta}.{loc}.{band}: more than one trace per component")
+                    else:
+                        cls._rotate_pair(comps[first][0], comps[second][0], inventory, min_angle)
                     break
 
-            if not paired_channel:
-                continue  # Skip if no pair found
+        return stream.sort()
 
-            # Retrieve metadata for paired channel
-            try:
-                paired_metadata = inventory.get_channel_metadata(paired_channel.id)
-                paired_azimuth = paired_metadata["azimuth"]
-            except KeyError:
-                continue
+    @staticmethod
+    def _angle_diff(a, b):
+        """Smallest absolute difference between two angles, in degrees"""
+        return abs((a - b + 180.0) % 360.0 - 180.0)
 
-            # Rotate if azimuth difference is significant
-            if np.abs(azimuth) >= 5:
+    @classmethod
+    def _rotate_pair(cls, tr1, tr2, inventory, min_angle=5.0):
+        """
+        Replaces, in place, the data of two horizontal traces by the North (tr1) and East (tr2) components.
+        tr1 is the "1"/"Y" channel and tr2 the "2"/"X" channel. Names are kept.
 
+        Each channel records  c_i = N * cos(az_i) + E * sin(az_i)  (az = azimuth from North, clockwise), so
+        the 2x2 system is solved for N and E. It works for any pair of non-parallel horizontal channels
+        (not only for orthogonal right-handed ones).
 
-                # Extract correct azimuth from north:
-                if trace.stats.channel in ["1", "R",  "Y"]:
-                    pass
-                elif trace.stats.channel in ["2", "T",  "X"]:
-                    azimuth = paired_azimuth
+        Returns:
+            bool: True if the data were rotated.
+        """
+        pair_id = f"{tr1.id} / {tr2.id}"
 
+        if tr1.stats.get("mti_rotated", False) or tr2.stats.get("mti_rotated", False):
+            return False  # already rotated
 
-                # Extract data
-                tr1_data = trace.data
-                tr2_data = paired_channel.data
+        try:
+            meta1 = inventory.get_channel_metadata(tr1.id, datetime=tr1.stats.starttime)
+            meta2 = inventory.get_channel_metadata(tr2.id, datetime=tr2.stats.starttime)
+        except Exception as error:  # ObsPy raises a plain Exception if the channel is not in the inventory
+            print(f"Rotation skipped for {pair_id}: {error}")
+            return False
 
-                # Perform RT -> NE rotation
-                print("Rotating Traces: ", trace.id, paired_channel.id)
-                baz = azimuth+180
-                if baz >= 360:
-                    baz = baz-360
-                if trace.stats.channel[-1] in ["1", "R",  "Y"]:
-                    n_data, e_data = rotate_ne_rt(tr1_data, tr2_data, baz)
-                elif trace.stats.channel in ["2", "T",  "X"]:
-                    n_data, e_data = rotate_ne_rt(tr2_data, tr1_data, baz)
+        az1, az2 = meta1.get("azimuth"), meta2.get("azimuth")
+        dip1, dip2 = meta1.get("dip"), meta2.get("dip")
+        if az1 is None or az2 is None or dip1 is None or dip2 is None:
+            print(f"Rotation skipped for {pair_id}: azimuth or dip missing in the inventory")
+            return False
 
-                # Replace original traces with rotated data
-                trace.data = n_data
-                paired_channel.data = e_data
+        if abs(dip1) > 5 or abs(dip2) > 5:
+            return False  # not horizontal channels
 
-                # Mark as processed
-                rotated_ids.add(trace_id)
-                rotated_ids.add(paired_channel.id)
+        if cls._angle_diff(az1, 0.0) < min_angle and cls._angle_diff(az2, 90.0) < min_angle:
+            return False  # already oriented N/E
 
-        stream = stream.sort()
-        return stream
+        s1, s2 = tr1.stats, tr2.stats
+        if (s1.npts != s2.npts or not np.isclose(s1.sampling_rate, s2.sampling_rate)
+                or abs(s1.starttime - s2.starttime) > 0.5 * s1.delta):
+            print(f"Rotation skipped for {pair_id}: traces differ in npts, sampling rate or start time")
+            return False
+
+        if np.ma.is_masked(tr1.data) or np.ma.is_masked(tr2.data):
+            print(f"Rotation skipped for {pair_id}: traces have gaps (masked data)")
+            return False
+
+        a1, a2 = np.radians(az1), np.radians(az2)
+        det = np.sin(a2 - a1)
+        if abs(det) < 1E-3:
+            print(f"Rotation skipped for {pair_id}: both channels have the same orientation")
+            return False
+
+        d1 = tr1.data.astype(np.float64)
+        d2 = tr2.data.astype(np.float64)
+        north = (d1 * np.sin(a2) - d2 * np.sin(a1)) / det
+        east = (d2 * np.cos(a1) - d1 * np.cos(a2)) / det
+
+        print("Rotating Traces: ", tr1.id, tr2.id)
+        tr1.data = north
+        tr2.data = east
+        tr1.stats.mti_rotated = True
+        tr2.stats.mti_rotated = True
+
+        return True
 
     @classmethod
     def rotate_to_ne_change_name(cls, stream, inventory):
@@ -627,107 +656,133 @@ class MTIManager:
 
         return sum_total <= tol
 
-    from obspy import Stream, Trace
-    import numpy as np
+    @staticmethod
+    def _is_dummy(trace) -> bool:
+        """True for the traces created by fill_stream_with_inferred_channels"""
+        return bool(trace.stats.get("mti_dummy", False))
 
-    def fill_stream_with_inferred_channels(self):
+    @staticmethod
+    def _station_key(trace) -> str:
         """
-        Automatically deduce the channel configuration for each station and fill missing channels with dummy traces.
+        Key of the station in InversionDataManager.stations_index: '<net>_<station>_<location>_<band/instrument>'.
+        The location is always empty there because stations.txt (see get_stations_index) does not write it.
+        """
+        return f"{trace.stats.network}_{trace.stats.station}__{trace.stats.channel[:2]}"
+
+    def fill_stream_with_inferred_channels(self, amplitude_ratio: float = 1E-3, seed: int = 0) -> None:
+        """
+        Completes every station of the stream to three components (Z + two horizontals), the 3-trace
+        structure BayesISOLA expects. Missing components are filled with low-amplitude white-noise dummy traces.
+
+        - Dummy traces are flagged with ``stats.mti_dummy = True``. They never participate in the inversion
+          (see get_participation and disable_dummy_components) and they are never looked up in the inventory.
+        - The horizontal naming (N/E, 1/2 or Y/X) follows the traces the station already has; a station with
+          only the vertical follows the naming that is most frequent in the stream.
+        - Amplitude of a dummy: ``amplitude_ratio`` x the maximum of a real trace of the station (the vertical
+          when available). The same ``seed`` always gives the same noise.
+        - Only one (location, band/instrument) set per station is completed: the one of the first trace of the
+          station, which is the one get_stations_index() uses.
+
+        The result replaces ``self.__st``; nothing is returned.
+        """
+        rng = np.random.default_rng(seed)
+
+        # groups: (net, sta, loc, band) -> traces.   primary: (net, sta) -> group of the first trace
+        groups = {}
+        primary = {}
+        for tr in self.__st:
+            s = tr.stats
+            group_key = (s.network, s.station, s.location, s.channel[:2])
+            groups.setdefault(group_key, []).append(tr)
+            primary.setdefault((s.network, s.station), group_key)
+
+        default_pair = self._dominant_horizontal_pair(groups.values())
+        filled = Stream(traces=list(self.__st))
+
+        for (net, sta), group_key in primary.items():
+            location, band = group_key[2], group_key[3]
+
+            others = [k for k in groups if k[:2] == (net, sta) and k != group_key]
+            if others:
+                print(f"Station {net}.{sta}: more than one location/channel set found "
+                      f"({', '.join(f'{k[2]}.{k[3]}' for k in [group_key] + others)}). "
+                      f"Only {location}.{band} is completed")
+
+            traces = groups[group_key]
+            existing = {tr.stats.channel[-1] for tr in traces}
+            missing = sorted(self._expected_components(existing, default_pair) - existing)
+            if not missing:
+                continue
+
+            # reference trace: the vertical if available
+            ref = next((tr for tr in traces if tr.stats.channel[-1] == "Z"), traces[0])
+            data = np.nan_to_num(np.ma.filled(ref.data.astype(np.float64), 0.0))
+            peak = float(np.max(np.abs(data))) if data.size else 0.0
+            max_amplitude = amplitude_ratio * peak if peak > 0 else 1E-12
+
+            for component in missing:
+                header = {"network": net, "station": sta, "location": location, "channel": band + component,
+                          "sampling_rate": ref.stats.sampling_rate, "starttime": ref.stats.starttime}
+                dummy = Trace(data=self._generate_white_noise(ref.stats.npts, max_amplitude, rng), header=header)
+                dummy.stats.mti_dummy = True
+                filled.append(dummy)
+                print(f"Station {net}.{sta}: component {band + component} missing, dummy trace added")
+
+        self.__st = filled
+
+    @classmethod
+    def _dominant_horizontal_pair(cls, groups_traces):
+        """
+        Horizontal naming scheme used by most of the stations that have both horizontals.
+        N/E is returned if there is a tie or if no station has both horizontals.
+        """
+        suffix_sets = [{tr.stats.channel[-1] for tr in traces} for traces in groups_traces]
+        votes = [sum(set(pair) <= suffixes for suffixes in suffix_sets) for pair in cls._HORIZONTAL_PAIRS]
+        return cls._HORIZONTAL_PAIRS[int(np.argmax(votes))]
+
+    @classmethod
+    def _expected_components(cls, existing, default_pair):
+        """
+        Components a station should have, given the ones it has.
 
         Parameters:
-            stream (Stream): The input ObsPy Stream object.
+            existing (set): last letters of the channels the station has, e.g. {"Z", "1"}.
+            default_pair (tuple): horizontal naming used when the station has no horizontal at all.
 
         Returns:
-            Stream: A Stream object where missing channels are filled with dummy traces.
+            set: expected components, e.g. {"Z", "1", "2"}. If the existing channels do not fit any known
+            naming scheme (e.g. "N" together with "1") the existing ones are returned: nothing is guessed.
         """
-        # Group traces by station (network, station)
-        stations = {}
-        for trace in self.__st:
-            station_id = (trace.stats.network, trace.stats.station)
-            if station_id not in stations:
-                stations[station_id] = []
-            stations[station_id].append(trace)
-
-        # Create a new Stream to hold the filled data
-        filled_stream = Stream()
-
-        for (network, station), traces in stations.items():
-            # Get existing channels for this station
-            existing_channels = {trace.stats.channel[-1] for trace in traces}
-
-            # Automatically infer the channel configuration
-            inferred_config = self.__infer_channel_configuration(existing_channels)
-
-            # Identify missing channels
-            missing_channels = set(inferred_config) - existing_channels
-
-            # Add existing traces to the new stream
-            for trace in traces:
-                filled_stream.append(trace)
-
-            # Fill missing channels with dummy traces
-            for channel in missing_channels:
-                # Create dummy data based on the first trace's properties, or default values
-                if traces:
-                    npts = traces[0].stats.npts
-                    sampling_rate = traces[0].stats.sampling_rate
-                    starttime = traces[0].stats.starttime
-                    channel = traces[0].stats.channel[0:2] + channel
-                    header = {"network": traces[0].stats.network, "station": traces[0].stats.station,
-                              "sampling_rate": sampling_rate, "channel": channel, "location": traces[0].stats.location,
-                              "starttime": starttime, "npts": npts}
-
-                    # dummy_data = np.zeros(npts)
-                    dummy_data = self._generate_white_noise(npts, 1E-3*np.max(np.abs(traces[0].data)))
-                    dummy_trace = Trace(data=dummy_data, header=header)
-                    filled_stream.append(dummy_trace)
-
-        self.__st = filled_stream
-
-    def __infer_channel_configuration(self, existing_channels):
-        """
-        Infers the most likely channel configuration based on available channels.
-
-        Parameters:
-            existing_channels (set): Set of existing channel names for a given station.
-
-        Returns:
-            list: The inferred channel configuration.
-        """
-        # Define possible channel naming schemes and their corresponding configurations
-        configurations = [
-            ["Z", "1", "2"],  # Vertical, Horizontal 1, Horizontal 2
-            ["Z", "N", "E"],  # Vertical, North, East
-            ["Z", "Y", "X"]  # Vertical, North, East (with different naming)
-        ]
-
-        # Check which configuration the existing channels most closely match
-        for config in configurations:
-            if all(channel in config for channel in existing_channels):
-                return config
-
-        # If no configuration is fully matched, return the most common channel naming scheme
-        # (We assume "Z" is always present if the station has a vertical component)
-        if "Z" in existing_channels:
-            return ["Z", "1", "2"]  # Default configuration: Vertical, Horizontal 1, Horizontal 2
+        for pair in cls._HORIZONTAL_PAIRS:
+            if existing & set(pair):
+                expected = {"Z", *pair}
+                break
         else:
-            return list(existing_channels)  # Fallback, return whatever channels exist
+            expected = {"Z", *default_pair}
 
-    def _generate_white_noise(self, length, max_amplitude):
+        if not existing <= expected:
+            print(f"Unrecognised channel naming {sorted(existing)}: no dummy traces added")
+            return set(existing)
+
+        return expected
+
+    def _generate_white_noise(self, length, max_amplitude, rng=None):
         """
         Generates a vector of white noise.
 
         Parameters:
             length (int): Length of the vector (number of samples).
             max_amplitude (float): Maximum amplitude of the noise (absolute value).
+            rng (np.random.Generator): optional, for reproducible noise.
 
         Returns:
             np.ndarray: A vector of white noise.
         """
+        rng = np.random.default_rng() if rng is None else rng
+
         # Generate random values from a normal distribution (mean=0, std=1)
-        noise = np.random.randn(length)
+        noise = rng.standard_normal(length)
 
         # Scale the noise to have the desired maximum amplitude
-        noise = max_amplitude * noise / np.max(np.abs(noise))
+        return max_amplitude * noise / np.max(np.abs(noise))
 
-        return noise
