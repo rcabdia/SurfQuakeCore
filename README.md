@@ -9,7 +9,7 @@ static stress drop, apparent stress) from the inversion of P-wave and S-wave and
 
 # Install
 
-Current version 1.7.0
+Current version 1.8.0
 >> (environment) pip install surfquake
 
 surfquake core is automatically installed with Integrated Seismic Program

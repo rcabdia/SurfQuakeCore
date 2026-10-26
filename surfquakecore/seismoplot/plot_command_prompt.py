@@ -2968,7 +2968,7 @@ class PlotCommandPrompt:
         - To save the results use: save_tf coh
         
         Example:
-            >> coh --ref 0 --kind both --win 20 --folder_path ./spect_folder
+            >> coh --ref 0 --kind both --win 20
         """,
         }
 
