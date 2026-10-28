@@ -36,6 +36,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from obspy import read
 
 CONFIG_ENV_VAR = "SURFQUAKE_CONFIG"
 PROJECT_CONFIG_NAME = "surfquake.ini"
@@ -329,13 +330,14 @@ def read_kwargs(**overrides) -> Dict[str, Any]:
 
 
 def read_stream(pathname_or_url=None, format=_UNSET, check_compression=_UNSET, **kwargs):
+
     """Drop-in replacement for obspy.read that applies the global defaults.
 
     Passing format / check_compression explicitly (even format=None) overrides
     the configuration. Any other obspy.read keyword (headonly, starttime,
     endtime, ...) is forwarded unchanged.
     """
-    from obspy import read
+
 
     cfg = get_config()
     if format is _UNSET:

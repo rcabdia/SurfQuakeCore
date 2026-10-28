@@ -12,24 +12,21 @@
 import os
 import pandas as pd
 import numpy as np
+from surfquakecore.config.global_config import read_stream
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import shutil
-import time as _time
-import datetime
-from obspy import read, UTCDateTime, Stream
+from obspy import UTCDateTime, Stream
 from collections import namedtuple
 from scipy.interpolate import interp1d
 from datetime import datetime, timedelta
-import json
 from surfquakecore import model_dir
 import warnings
 
 # Adjust the warning behavior globally
 warnings.simplefilter("ignore")
 
-
 tf.compat.v1.disable_eager_execution()
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 def py_func_decorator(output_types=None, output_shapes=None, name=None):
@@ -72,7 +69,8 @@ class Config:
 
 class PhasenetISP:
     def __init__(self, files, batch_size=3, highpass_filter=0.5, min_p_prob=0.3, min_s_prob=0.3,
-                 min_peak_distance=50, amplitude=False, plot_figure=False, save_prob=False, output=None):
+                 min_peak_distance=50, amplitude=False, plot_figure=False, save_prob=False, output=None,
+                 device="auto"):
         """
 
         Main class to initialize the picker
@@ -127,6 +125,8 @@ class PhasenetISP:
 
         self.data_reader = None
 
+        self.device = device
+
         if output is not None:
             # check if output dir exists otherwise try to crate it
             if os.path.isdir(output):
@@ -161,6 +161,11 @@ class PhasenetISP:
 
         session_config = tf.compat.v1.ConfigProto()
         session_config.gpu_options.allow_growth = True
+
+        if self.device == "cpu":
+            session_config.device_count['GPU'] = 0
+        elif self.device == "gpu" and not tf.config.list_physical_devices('GPU'):
+            raise RuntimeError("device='gpu' requested but no GPU was found")
 
         with tf.compat.v1.Session(config=session_config) as session:
             picks = []
@@ -236,11 +241,11 @@ class PhasenetReader:
         if "highpass_filter" in kwargs:
             self.highpass_filter = kwargs["highpass_filter"]
 
-        #if format == "mseed":
+        # if format == "mseed":
         self.data_dir = kwargs["data_dir"]
         self.data_list = kwargs["data_list"]
         self.num_data = len(self.data_list)
-        #else:
+        # else:
         #    raise Exception(f"{format} not support!")
 
         self.X_shape = self.get_data_shape()
@@ -254,13 +259,10 @@ class PhasenetReader:
 
         return meta["data"].shape
 
-    from obspy import read, Stream
-    import numpy as np
-
     def read(self, fname):
         # Read and preprocess the seismic data
-        st = read(fname)
-        print('FNAME:', fname)
+        st = read_stream(fname)
+        print("Processing", st[0].id)
         st = st.detrend("spline", order=2, dspline=5 * st[0].stats.sampling_rate)
         st = st.merge(fill_value=0)
 
@@ -300,20 +302,14 @@ class PhasenetReader:
 
     @staticmethod
     def ensure_24(tr):
-        random_list = np.random.choice(len(tr), 100)
-        times_posix = tr.times(type="timestamp")
-        days_prob = times_posix[random_list.tolist()]
-        days_prob_max = days_prob.tolist()
-        max_prob = max(set(days_prob_max), key=days_prob_max.count)
-        year = int(datetime.utcfromtimestamp(max_prob).strftime('%Y'))
-        month = int(datetime.utcfromtimestamp(max_prob).strftime('%m'))
-        day = int(datetime.utcfromtimestamp(max_prob).strftime('%d'))
 
-        check_starttime = UTCDateTime(year=year, month=month, day=day, hour=00, minute=00, microsecond=00)
-        check_endtime = UTCDateTime(year=year, month=month, day=day, hour=23, minute=59, second=59, microsecond=999999)
+        day = tr.stats.starttime
+        check_starttime = UTCDateTime(year=day.year, month=day.month, day=day.day)
+        check_endtime = UTCDateTime(year=day.year, month=day.month, day=day.day,
+                                    hour=23, minute=59, second=59, microsecond=999999)
 
         tr.trim(starttime=check_starttime, endtime=check_endtime, pad=False, nearest_sample=True, fill_value=0)
-        print("TR: ", tr)
+
         return tr
 
     def __getitem__(self, i):
@@ -323,8 +319,10 @@ class PhasenetReader:
         if meta == -1:
             return np.zeros(self.X_shape, dtype=self.dtype), base_name
 
-        raw_amp = np.zeros(self.X_shape, dtype=self.dtype)
-        raw_amp[: meta["data"].shape[0], ...] = meta["data"][: self.X_shape[0], ...]
+        if self.amplitude:
+            raw_amp = np.zeros(self.X_shape, dtype=self.dtype)
+            raw_amp[: meta["data"].shape[0], ...] = meta["data"][: self.X_shape[0], ...]
+
         sample = np.zeros(self.X_shape, dtype=self.dtype)
         sample[: meta["data"].shape[0], ...] = PhasenetUtils.normalize_long(meta["data"])[: self.X_shape[0], ...]
 
@@ -353,13 +351,14 @@ class PhasenetReader:
             dataset = PhasenetUtils.dataset_map(self,
                                                 output_types=(self.dtype, self.dtype, "string", "string", "string"),
                                                 output_shapes=(self.X_shape, self.X_shape, None, None, None),
-                                                num_parallel_calls=num_parallel_calls, shuffle=shuffle,)
+                                                num_parallel_calls=num_parallel_calls, shuffle=shuffle, )
         else:
             dataset = PhasenetUtils.dataset_map(self,
                                                 output_types=(self.dtype, "string", "string", "string"),
                                                 output_shapes=(self.X_shape, None, None, None),
-                                                num_parallel_calls=num_parallel_calls, shuffle=shuffle,)
+                                                num_parallel_calls=num_parallel_calls, shuffle=shuffle, )
         dataset = dataset.batch(batch_size, drop_remainder=drop_remainder).prefetch(batch_size * 2)
+
         return dataset
 
 
@@ -442,8 +441,6 @@ class PhasenetUNet:
         self.add_prediction_op()
 
         if mode in ["train", "valid", "test"]:
-            self.add_loss_op()
-            self.add_training_op()
             self.summary_train = tf.compat.v1.summary.merge(self.summary_train)
             self.summary_valid = tf.compat.v1.summary.merge(self.summary_valid)
 
@@ -509,7 +506,7 @@ class PhasenetUNet:
                 if depth < self.depths - 1:
                     net = tf.compat.v1.layers.conv2d(net, filters=filters, kernel_size=self.kernel_size,
                                                      strides=self.pool_size, activation=None, use_bias=False,
-                                                     padding='same',  dilation_rate=self.dilation_rate,
+                                                     padding='same', dilation_rate=self.dilation_rate,
                                                      kernel_initializer=self.initializer,
                                                      kernel_regularizer=self.regularizer,
                                                      name="down_conv3_{}".format(depth + 1))
@@ -541,7 +538,7 @@ class PhasenetUNet:
                 net = PhasenetUtils.crop_and_concat(convs[depth], net)
 
                 net = tf.compat.v1.layers.conv2d(net, filters=filters, kernel_size=self.kernel_size, activation=None,
-                                                 use_bias=False, padding='same',  dilation_rate=self.dilation_rate,
+                                                 use_bias=False, padding='same', dilation_rate=self.dilation_rate,
                                                  kernel_initializer=self.initializer,
                                                  kernel_regularizer=self.regularizer,
                                                  name="up_conv1_{}".format(depth + 1))
@@ -574,149 +571,6 @@ class PhasenetUNet:
             tmp = tf.compat.v1.summary.histogram("preds", self.preds)
             self.summary_train.append(tmp)
 
-    def add_loss_op(self):
-        if self.loss_type == "cross_entropy":
-            with tf.compat.v1.variable_scope("cross_entropy"):
-                flat_logits = tf.reshape(self.logits, [-1, self.n_class], name="logits")
-                flat_labels = tf.reshape(self.Y, [-1, self.n_class], name="labels")
-
-                if (np.array(self.class_weights) != 1).any():
-                    class_weights = tf.constant(np.array(self.class_weights, dtype=np.float32), name="class_weights")
-                    weight_map = tf.multiply(flat_labels, class_weights)
-                    weight_map = tf.reduce_sum(input_tensor=weight_map, axis=1)
-                    loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits, labels=flat_labels)
-                    weighted_loss = tf.multiply(loss_map, weight_map)
-                    loss = tf.reduce_mean(input_tensor=weighted_loss)
-                else:
-                    loss = tf.reduce_mean(input_tensor=tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
-                                                                                               labels=flat_labels))
-
-        elif self.loss_type == "IOU":
-            with tf.compat.v1.variable_scope("IOU"):
-                eps = 1e-7
-                loss = 0
-
-                for i in range(1, self.n_class):
-                    intersection = eps + tf.reduce_sum(input_tensor=self.preds[:, :, :, i] * self.Y[:, :, :, i],
-                                                       axis=[1, 2])
-                    union = eps + tf.reduce_sum(input_tensor=self.preds[:, :, :, i], axis=[1, 2]) + \
-                        tf.reduce_sum(input_tensor=self.Y[:, :, :, i], axis=[1, 2])
-                    loss += 1 - tf.reduce_mean(input_tensor=intersection / union)
-
-        elif self.loss_type == "mean_squared":
-            with tf.compat.v1.variable_scope("mean_squared"):
-                flat_logits = tf.reshape(self.logits, [-1, self.n_class], name="logits")
-                flat_labels = tf.reshape(self.Y, [-1, self.n_class], name="labels")
-
-                with tf.compat.v1.variable_scope("mean_squared"):
-                    loss = tf.compat.v1.losses.mean_squared_error(labels=flat_labels, predictions=flat_logits)
-        else:
-            raise ValueError("Unknown loss function: " + self.loss_type)
-
-        tmp = tf.compat.v1.summary.scalar("train_loss", loss)
-        self.summary_train.append(tmp)
-        tmp = tf.compat.v1.summary.scalar("valid_loss", loss)
-        self.summary_valid.append(tmp)
-
-        if self.weight_decay > 0:
-            with tf.compat.v1.name_scope('weight_loss'):
-                tmp = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.REGULARIZATION_LOSSES)
-                weight_loss = tf.add_n(tmp, name="weight_loss")
-
-            self.loss = loss + weight_loss
-        else:
-            self.loss = loss
-
-    def add_training_op(self):
-        if self.optimizer == "momentum":
-            self.learning_rate_node = tf.compat.v1.train.exponential_decay(learning_rate=self.learning_rate,
-                                                                           global_step=self.global_step,
-                                                                           decay_steps=self.decay_step,
-                                                                           decay_rate=self.decay_rate, staircase=True)
-            optimizer = tf.compat.v1.train.MomentumOptimizer(learning_rate=self.learning_rate_node,
-                                                             momentum=self.momentum)
-
-        elif self.optimizer == "adam":
-            self.learning_rate_node = tf.compat.v1.train.exponential_decay(learning_rate=self.learning_rate,
-                                                                           global_step=self.global_step,
-                                                                           decay_steps=self.decay_step,
-                                                                           decay_rate=self.decay_rate, staircase=True)
-
-            optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=self.learning_rate_node)
-
-        update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
-
-        with tf.control_dependencies(update_ops):
-            self.train_op = optimizer.minimize(self.loss, global_step=self.global_step)
-
-        tmp = tf.compat.v1.summary.scalar("learning_rate", self.learning_rate_node)
-        self.summary_train.append(tmp)
-
-    def add_metrics_op(self):
-        with tf.compat.v1.variable_scope("metrics"):
-            y = tf.argmax(input=self.Y, axis=-1)
-            confusion_matrix = tf.cast(tf.math.confusion_matrix(labels=tf.reshape(y, [-1]),
-                                       predictions=tf.reshape(self.preds, [-1]),
-                                       num_classes=self.n_class, name='confusion_matrix'), dtype=tf.float32)
-
-            c = tf.constant(1e-7, dtype=tf.float32)
-            precision_p = (confusion_matrix[1, 1] + c) / (tf.reduce_sum(input_tensor=confusion_matrix[:, 1]) + c)
-            recall_p = (confusion_matrix[1, 1] + c) / (tf.reduce_sum(input_tensor=confusion_matrix[1, :]) + c)
-            f1_p = 2*precision_p*recall_p/(precision_p+recall_p)
-
-            tmp1 = tf.compat.v1.summary.scalar("train_precision_p", precision_p)
-            tmp2 = tf.compat.v1.summary.scalar("train_recall_p", recall_p)
-            tmp3 = tf.compat.v1.summary.scalar("train_f1_p", f1_p)
-            self.summary_train.extend([tmp1, tmp2, tmp3])
-
-            tmp1 = tf.compat.v1.summary.scalar("valid_precision_p", precision_p)
-            tmp2 = tf.compat.v1.summary.scalar("valid_recall_p", recall_p)
-            tmp3 = tf.compat.v1.summary.scalar("valid_f1_p", f1_p)
-            self.summary_valid.extend([tmp1, tmp2, tmp3])
-
-            precision_s = (confusion_matrix[2, 2] + c) / (tf.reduce_sum(input_tensor=confusion_matrix[:, 2]) + c)
-            recall_s = (confusion_matrix[2, 2] + c) / (tf.reduce_sum(input_tensor=confusion_matrix[2, :]) + c)
-            f1_s = 2 * precision_s * recall_s / (precision_s + recall_s)
-
-            tmp1 = tf.compat.v1.summary.scalar("train_precision_s", precision_s)
-            tmp2 = tf.compat.v1.summary.scalar("train_recall_s", recall_s)
-            tmp3 = tf.compat.v1.summary.scalar("train_f1_s", f1_s)
-            self.summary_train.extend([tmp1, tmp2, tmp3])
-
-            tmp1 = tf.compat.v1.summary.scalar("valid_precision_s", precision_s)
-            tmp2 = tf.compat.v1.summary.scalar("valid_recall_s", recall_s)
-            tmp3 = tf.compat.v1.summary.scalar("valid_f1_s", f1_s)
-            self.summary_valid.extend([tmp1, tmp2, tmp3])
-
-            self.precision = [precision_p, precision_s]
-            self.recall = [recall_p, recall_s]
-            self.f1 = [f1_p, f1_s]
-
-    def train_on_batch(self, sess, inputs_batch, labels_batch, summary_writer, drop_rate=0.0):
-        feed = {self.X: inputs_batch,
-                self.Y: labels_batch,
-                self.drop_rate: drop_rate,
-                self.is_training: True}
-
-        _, step_summary, step, loss = sess.run([self.train_op, self.summary_train, self.global_step, self.loss],
-                                               feed_dict=feed)
-
-        summary_writer.add_summary(step_summary, step)
-        return loss
-
-    def valid_on_batch(self, sess, inputs_batch, labels_batch, summary_writer):
-        feed = {self.X: inputs_batch,
-                self.Y: labels_batch,
-                self.drop_rate: 0,
-                self.is_training: False}
-
-        step_summary, step, loss, preds = sess.run([self.summary_valid, self.global_step, self.loss, self.preds],
-                                                   feed_dict=feed)
-
-        summary_writer.add_summary(step_summary, step)
-
-        return loss, preds
-
 
 class PhasenetUtils:
     @staticmethod
@@ -740,24 +594,10 @@ class PhasenetUtils:
         return out
 
     @staticmethod
-    def crop_only(net1, net2):
-        """
-        the size(net1) <= size(net2)
-        """
-        net1_shape = net1.get_shape().as_list()
-        net2_shape = net2.get_shape().as_list()
-
-        offsets = [0, (net2_shape[1] - net1_shape[1]) // 2, (net2_shape[2] - net1_shape[2]) // 2, 0]
-        size = [-1, net1_shape[1], net1_shape[2], -1]
-        net2_resize = tf.slice(net2, offsets, size)
-
-        return net2_resize
-
-    @staticmethod
     def extract_picks(preds, fnames=None, station_ids=None, t0=None, config=None):
         if preds.shape[-1] == 4:
             record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob", "ps_idx",
-                                "ps_prob"])
+                                          "ps_prob"])
         else:
             record = namedtuple("phase", ["fname", "station_id", "t0", "p_idx", "p_prob", "s_idx", "s_prob"])
 
@@ -797,20 +637,19 @@ class PhasenetUtils:
             p_idx, p_prob, s_idx, s_prob = [], [], [], []
 
             for j in range(pred.shape[1]):
-                p_idx_, p_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 1], mph=mph_p, mpd=mpd, show=False)
-                s_idx_, s_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 2], mph=mph_s, mpd=mpd, show=False)
+                p_idx_, p_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 1], mph=mph_p, mpd=mpd)
+                s_idx_, s_prob_ = PhasenetUtils.detect_peaks(pred[:, j, 2], mph=mph_s, mpd=mpd)
                 p_idx.append(p_idx_)
                 p_prob.append(p_prob_)
                 s_idx.append(s_idx_)
                 s_prob.append(s_prob_)
 
             if pred.shape[-1] == 4:
-                ps_idx, ps_prob = PhasenetUtils.detect_peaks(pred[:, 0, 3], mph=0.3, mpd=mpd, show=False)
-                picks.append(record(fname, station_id, start_time, p_idx, p_prob, s_idx, s_prob,
-                                    ps_idx, ps_prob))
+                ps_idx, ps_prob = PhasenetUtils.detect_peaks(pred[:, 0, 3], mph=0.3, mpd=mpd)
+                picks.append(record(fname, station_id, start_time, p_idx, p_prob, s_idx, s_prob, ps_idx, ps_prob))
             else:
-                picks.append(record(fname, station_id, start_time, list(p_idx), list(p_prob), list(s_idx),
-                                    list(s_prob)))
+                picks.append(
+                    record(fname, station_id, start_time, list(p_idx), list(p_prob), list(s_idx), list(s_prob)))
 
         return picks
 
@@ -851,12 +690,11 @@ class PhasenetUtils:
         return amps
 
     @staticmethod
-    def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising', kpsh=False, valley=False, show=False, ax=None,
-                     title=True):
+    def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising', kpsh=False, valley=False):
 
         x = np.atleast_1d(x).astype('float64')
         if x.size < 3:
-            return np.array([], dtype=int)
+            return np.array([], dtype=int), np.array([])
         if valley:
             x = -x
             if mph is not None:
@@ -920,57 +758,7 @@ class PhasenetUtils:
             # remove the small peaks and sort back the indices by their occurrence
             ind = np.sort(ind[~idel])
 
-        if show:
-            if indnan.size:
-                x[indnan] = np.nan
-            if valley:
-                x = -x
-
-                if mph is not None:
-                    mph = -mph
-
-            PhasenetUtils._plot(x, mph, mpd, threshold, edge, valley, ax, ind, title)
-
         return ind, x[ind]
-
-    @staticmethod
-    def _plot(x, mph, mpd, threshold, edge, valley, ax, ind, title):
-        """Plot results of the detect_peaks function, see its help."""
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            print('matplotlib is not available.')
-        else:
-            if ax is None:
-                _, ax = plt.subplots(1, 1, figsize=(8, 4))
-                no_ax = True
-            else:
-                no_ax = False
-
-            ax.plot(x, 'b', lw=1)
-
-            if ind.size:
-                label = 'valley' if valley else 'peak'
-                label = label + 's' if ind.size > 1 else label
-                ax.plot(ind, x[ind], '+', mfc=None, mec='r', mew=2, ms=8, label='%d %s' % (ind.size, label))
-                ax.legend(loc='best', framealpha=.5, numpoints=1)
-
-            ax.set_xlim(-.02 * x.size, x.size * 1.02 - 1)
-            ymin, ymax = x[np.isfinite(x)].min(), x[np.isfinite(x)].max()
-            yrange = ymax - ymin if ymax > ymin else 1
-            ax.set_ylim(ymin - 0.1 * yrange, ymax + 0.1 * yrange)
-            ax.set_xlabel('Data #', fontsize=14)
-            ax.set_ylabel('Amplitude', fontsize=14)
-
-            if title:
-                if not isinstance(title, str):
-                    mode = 'Valley detection' if valley else 'Peak detection'
-                    title = "%s (mph=%s, mpd=%d, threshold=%s, edge='%s')" % (mode, str(mph), mpd, str(threshold), edge)
-
-                ax.set_title(title)
-
-            if no_ax:
-                plt.show()
 
     @staticmethod
     def normalize_long(data, axis=(0,), window=3000):
@@ -1079,26 +867,21 @@ class PhasenetUtils:
 
                 if row['weight'] > 0.95:
                     weight = 2.00E-02
-                elif row['weight'] <= 0.95 and row['weight'] > 0.9:
+                elif 0.95 >= row['weight'] > 0.9:
                     weight = 4.00E-02
-                elif row['weight'] <= 0.9 and row['weight'] > 0.8:
+                elif 0.9 >= row['weight'] > 0.8:
                     weight = 7.00E-02
-                elif row['weight'] <= 0.8 and row['weight'] > 0.7:
-                    weight = 1.50E-01
-                elif row['weight'] <= 0.7 and row['weight'] > 0.6:
-                    weight = 1.00E-01
+                elif 0.8 >= row['weight'] > 0.7:
+                    weight = 1.00E-1
+                elif 0.7 >= row['weight'] > 0.6:
+                    weight = 1.50E-1
                 else:
-                    weight = 5.00E-01
+                    weight = 5.00E-1
 
                 err_mag = f"{weight:.2e}"  # Error magnitude in seconds
                 coda_duration = "-1.00e+00"  # Placeholder for Coda duration
                 amplitude = f"{row['amplitude']:.2e}"  # Amplitude
                 period = "-1.00e+00"  # Placeholder for Period
-
-                # err_mag = f"{row['weight']:.2E}"  # Error magnitude in seconds
-                # coda_duration = "-1.00E+00"  # Placeholder for Coda duration
-                # amplitude = f"{row['amplitude']:.2E}"  # Amplitude
-                # period = "-1.00E+00"  # Placeholder for Period
 
                 # Construct the line
                 line = (
@@ -1111,7 +894,7 @@ class PhasenetUtils:
             file.write("\n")
 
     @staticmethod
-    def convert2real(picks, pick_dir: str, clean_output_folder = False):
+    def convert2real(picks, pick_dir: str, clean_output_folder=False):
         """
         :param picks: picks is output from method split_picks in mseedutils
         :param pick_dir: directory outpur where phases are storaged
@@ -1133,31 +916,12 @@ class PhasenetUtils:
         for date in dates:
             pickpath = os.path.join(pick_dir, date)
 
-            try:
-                os.mkdir(pickpath)
-            except OSError as e:
-                print(e)
+            os.makedirs(pickpath, exist_ok=True)
 
-        start = _time.time()
-
-        for date in dates:
-            pickpath = os.path.join(pick_dir, date)
-
-            for fname in fnames:
-                fname_new = fname + '.txt'
-                pickfile = os.path.join(pickpath, fname_new)
-
-                savedata = picks[(picks['date'] == date) & (picks['fname'] == fname)]
-
-                savedata = savedata.sort_values('tt')
-
-                if len(savedata.index) > 0:
-                    with open(pickfile, 'w') as f:
-                        data_aux = savedata.to_string(header=False, index=False, columns=['tt', 'weight', 'amplitude'])
-                        f.write(data_aux)
-
-        print('TIME SAVING ALL FILES: ', _time.time() - start)
-
+        for (date, fname), savedata in picks.groupby(['date', 'fname'], sort=False):
+            savedata = savedata.sort_values('tt')
+            with open(os.path.join(pick_dir, date, fname + '.txt'), 'w') as f:
+                f.write(savedata.to_string(header=False, index=False, columns=['tt', 'weight', 'amplitude']))
 
     @staticmethod
     def save_original_picks(original_picks, original_p_dir):
@@ -1171,7 +935,6 @@ class PhasenetUtils:
         print('saving_picks_original_format')
         pick_path = os.path.join(original_p_dir, "original_picks.csv")
         original_picks.to_csv(pick_path, index=False)
-
 
     @staticmethod
     def split_picks(picks):
@@ -1204,8 +967,6 @@ class PhasenetUtils:
         else:
             s_amp = []
 
-        start = _time.time()
-
         for i in np.arange(0, len(ppick_tmp)):
             ppick = []
             spick = []
@@ -1226,9 +987,9 @@ class PhasenetUtils:
             network = stats[i].network
             channel = stats[i].channel
 
-            ss = t0[i].hour*3600 + t0[i].minute*60 + t0[i].second + t0[i].microsecond/1000000
+            ss = t0[i].hour * 3600 + t0[i].minute * 60 + t0[i].second + t0[i].microsecond / 1000000
 
-            samplingrate = 1/stats[i].sampling_rate
+            samplingrate = 1 / stats[i].sampling_rate
 
             if len(ppick_tmp[i][0]) > 0:
                 ppick_um = ppick_tmp[i][0][:]
@@ -1253,15 +1014,17 @@ class PhasenetUtils:
                 for j in np.arange(0, len(pprob)):
                     # ppick = pick samples from file waveform starttime
                     # t0 = datetime of the starttime
-                    if float(pprob[j]) >= prob_threshold and j <= len(ppick)-1:
+                    if float(pprob[j]) >= prob_threshold and j <= len(ppick) - 1:
                         fname = network + '.' + station + '.' + 'P'
-                        delta_time = int(ppick[j])*samplingrate
-                        tp = delta_time+ss
+                        delta_time = int(ppick[j]) * samplingrate
+                        tp = delta_time + ss
                         t_pick = date_start + timedelta(seconds=delta_time)
                         t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
-                        amp = float(pamp[j])*2080*25 if len(p_amp) > 0 else 0
-                        split_aux_p.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station,
-                                            1, tp, t_pick_string, pprob[j], amp, "P", channel])
+                        amp = float(pamp[j]) * 2080 * 25 if len(p_amp) > 0 else 0
+                        split_aux_p.append(
+                            [str(year) + "{:02d}".format(month) + "{:02d}".format(day), fname, year, month, day,
+                             network, station,
+                             1, tp, t_pick_string, pprob[j], amp, "P", channel])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_p, columns=columns)], ignore_index=True)
 
@@ -1286,20 +1049,21 @@ class PhasenetUtils:
                             samp.append(samp_um[j])
 
                 for j in np.arange(0, len(sprob)):
-                    if float(sprob[j]) >= prob_threshold and j <= len(spick)-1:
+                    if float(sprob[j]) >= prob_threshold and j <= len(spick) - 1:
                         fname = network + '.' + station + '.' + 'S'
                         delta_time = int(spick[j]) * samplingrate
-                        tp = delta_time+ss
+                        tp = delta_time + ss
                         amp = float(samp[j]) * 2080 * 25 if len(s_amp) > 0 else 0
                         t_pick = date_start + timedelta(seconds=delta_time)
                         t_pick_string = t_pick.strftime("%Y-%m-%dT%H:%M:%S.%f")
-                        split_aux_s.append([str(year)+"{:02d}".format(month)+"{:02d}".format(day), fname, year, month, day, network, station, 1,
-                                            tp, t_pick_string, sprob[j], amp, "S", channel])
+                        split_aux_s.append(
+                            [str(year) + "{:02d}".format(month) + "{:02d}".format(day), fname, year, month, day,
+                             network, station, 1,
+                             tp, t_pick_string, sprob[j], amp, "S", channel])
 
                 split_picks_ = pd.concat([split_picks_, pd.DataFrame(split_aux_s, columns=columns)], ignore_index=True)
 
-        print('LEN TOTAL: ', len(ppick_tmp))
-        print('START: ', _time.time()-start)
+        print('TOTAL Number of pICKS: ', len(ppick_tmp))
 
         return split_picks_
 
@@ -1317,63 +1081,3 @@ class PhasenetUtils:
                 })
 
         return pd.DataFrame.from_dict(project_converted)
-
-    def calc_timestamp(self, timestamp, sec):
-        timestamp = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f") + timedelta(seconds=sec)
-        return timestamp.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
-    def save_picks_json(self, picks, output_dir, dt=0.01, amps=None, fname=None):
-        if fname is None:
-            fname = "picks.json"
-
-        picks_ = []
-        if amps is None:
-            for pick in picks:
-                for idxs, probs in zip(pick.p_idx, pick.p_prob):
-                    for idx, prob in zip(idxs, probs):
-                        picks_.append(
-                            {
-                                "id": pick.station_id,
-                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
-                                "prob": prob.astype(float),
-                                "type": "p",
-                            }
-                        )
-                for idxs, probs in zip(pick.s_idx, pick.s_prob):
-                    for idx, prob in zip(idxs, probs):
-                        picks_.append(
-                            {
-                                "id": pick.station_id,
-                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
-                                "prob": prob.astype(float),
-                                "type": "s",
-                            }
-                        )
-        else:
-            for pick, amplitude in zip(picks, amps):
-                for idxs, probs, amps in zip(pick.p_idx, pick.p_prob, amplitude.p_amp):
-                    for idx, prob, amp in zip(idxs, probs, amps):
-                        picks_.append(
-                            {
-                                "id": pick.station_id,
-                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
-                                "prob": prob.astype(float),
-                                "amp": amp.astype(float),
-                                "type": "p",
-                            }
-                        )
-                for idxs, probs, amps in zip(pick.s_idx, pick.s_prob, amplitude.s_amp):
-                    for idx, prob, amp in zip(idxs, probs, amps):
-                        picks_.append(
-                            {
-                                "id": pick.station_id,
-                                "timestamp": self.calc_timestamp(pick.t0, float(idx) * dt),
-                                "prob": prob.astype(float),
-                                "amp": amp.astype(float),
-                                "type": "s",
-                            }
-                        )
-        with open(os.path.join(output_dir, fname), "w") as fp:
-            json.dump(picks_, fp)
-
-        return 0
-

@@ -16,9 +16,11 @@ import os
 from functools import partial
 from typing import Tuple, List, Union
 import re
-from obspy import read, UTCDateTime
+from obspy import UTCDateTime
 import copy
 import csv
+from surfquakecore.config.global_config import read_stream
+
 
 def _generate_subproject_for_time_window(args):
     (start, end), serialized_project, events, mode, overlap_threshold, margin = args
@@ -353,10 +355,8 @@ class SurfProject:
         check_filter_selection = True
 
         try:
-            if format == "NONE":
-                header = read(file, headeronly=True)
-            else:
-                header = read(file, headeronly=True, format=format)
+            header = read_stream(file, headeronly=True)
+
         except (TypeError, Exception) as e:
             print(f"Error occurred while parsing data file: {e}")
             return [None, None]
@@ -435,7 +435,6 @@ class SurfProject:
         filter_project_keys(station="ARNO|UCM|EMAL",channel="HH.")
         filter_project_keys(net="W*",station="AR*",channel="HH.")
         """
-
 
         # filter dict by python wilcards or glob expressions remind
 
@@ -817,7 +816,6 @@ class SurfProject:
         Returns:
             List[SurfProject]
         """
-
 
         def parse_event_file(path):
             events = []

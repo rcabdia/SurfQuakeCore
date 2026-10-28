@@ -23,6 +23,8 @@ from obspy.signal.rotate import rotate_ne_rt
 from obspy.geodetics.base import gps2dist_azimuth, kilometer2degrees
 # from obspy.signal.trigger import trigger_onset
 from obspy.taup import TauPyModel
+
+from surfquakecore.config.global_config import read_stream
 from surfquakecore.moment_tensor.structures import MomentTensorInversionConfig
 
 
@@ -282,7 +284,7 @@ class MTIManager:
         end = origin_time + dt_signal
         for file in files_path:
             try:
-                st = read(file)
+                st = read_stream(file)
                 tr = st[0]
                 tr.trim(starttime=start, endtime=end)
 

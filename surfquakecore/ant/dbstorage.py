@@ -15,7 +15,7 @@ Refactored from GUI-based noise_organize:
 import os
 import fnmatch
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from obspy import read
+from surfquakecore.config.global_config import read_stream
 
 # ---------------------------------------------------------------------------
 # Worker function (must be module-level for pickling with multiprocessing)
@@ -26,10 +26,9 @@ def _read_header(path: str) -> dict | None:
     Read the header of a single MiniSEED file.
     Returns a dict with the relevant fields, or None if not a valid MiniSEED.
     """
-    # if not _is_mseed(path):
-    #     return None
+
     try:
-        header = read(path, headonly=True)  # fixed typo: headlonly -> headonly
+        header = read_stream(path, headonly=True)
         stats = header[0].stats
         return {
             "path":      path,

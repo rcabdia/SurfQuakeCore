@@ -547,14 +547,15 @@ def _pick():
 
     Key Arguments:
         -f, --project_file        [REQUIRED]    Path to your seismic project file
-        -d, --output_dir          [REQUIRED]    Directory to save pick results
+        -o, --output_dir          [REQUIRED]    Directory to save pick results
         -pt, --p_thresh           [OPTIONAL]    Threshold for P-wave probability (0–1) (default: 0.3)
         -st, --s_thresh           [OPTIONAL]    Threshold for S-wave probability (0–1) (default: 0.3)
-        -n, --net                 [OPTIONAL]    Network code filter (default: *)
-        -s, --station             [OPTIONAL]    Station code filter (default: *, e.g. SFS|ARNO)
+        -n,  --net                [OPTIONAL]    Network code filter (default: *)
+        -s,  --station            [OPTIONAL]    Station code filter (default: *, e.g. SFS|ARNO)
         -ch, --channel            [OPTIONAL]    Channel filter (default: *, e.g. BH?)
-        --min_date                [OPTIONAL]    Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
-        --max_date                [OPTIONAL]    Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
+             --min_date           [OPTIONAL]    Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project
+             --max_date           [OPTIONAL]    Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project
+             --device            [OPTIONAL]    Choices [auto|cpu|gpu], (default auto)
         -v, --verbose             [OPTIONAL]    Enable detailed logging
 
     Reference:
@@ -568,10 +569,12 @@ def _pick():
 
     arg_parse.usage = ("Run picker: -f [path to your project file] "
                        "-d [path to your pick saving directory] "
-                       "-p [P-wave threshold] -s [S-wave threshold] --verbose")
+                       "-p [P-wave threshold] -s [S-wave threshold] --device auto --verbose")
 
-    arg_parse.add_argument("-f", help="Path to your project file", type=str, required=True)
-    arg_parse.add_argument("-d", help="Path to directory where picks will be saved", type=str, required=True)
+    arg_parse.add_argument("-f", "--project_file", help="Path to your project file",
+                           type=str, required=True)
+    arg_parse.add_argument("-o", "--output_dir",
+                           help="Path to directory where picks will be saved", type=str, required=True)
     arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
     arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
     arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
@@ -580,11 +583,12 @@ def _pick():
     arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
     arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
     arg_parse.add_argument("-v", "--verbose", help="Show detailed log output", action="store_true")
+    arg_parse.add_argument("--device", choices=["auto", "cpu", "gpu"], default="auto", help="Device for PhaseNet")
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
 
-    sp_loaded = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.f))
+    sp_loaded = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.project_file))
 
     # --- Apply key filters ---
     filters = {}
@@ -620,17 +624,17 @@ def _pick():
             amplitude=True,
             min_p_prob=parsed_args.p_thresh,
             min_s_prob=parsed_args.s_thresh,
-            output=make_abs(parsed_args.d)
-        )
+            output=make_abs(parsed_args.output_dir),
+            device=parsed_args.device)
 
         # Run PhaseNet picking
         picks = picker.phasenet()
 
         # Process and save results
         picks_results = PhasenetUtils.split_picks(picks)
-        PhasenetUtils.convert2real(picks_results, parsed_args.d)
-        PhasenetUtils.save_original_picks(picks_results, parsed_args.d)
-        PhasenetUtils.write_nlloc_format(picks_results, parsed_args.d)
+        PhasenetUtils.convert2real(picks_results, parsed_args.output_dir)
+        PhasenetUtils.save_original_picks(picks_results, parsed_args.output_dir)
+        PhasenetUtils.write_nlloc_format(picks_results, parsed_args.output_dir)
     else:
         print("Empty Project, Nothing to pick!")
 

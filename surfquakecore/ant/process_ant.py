@@ -1,15 +1,16 @@
 import gc
 import os
-from obspy import read, Trace, Stream, UTCDateTime
+from obspy import Trace, Stream, UTCDateTime
 import numpy as np
 import math
 from multiprocessing import Pool
-import obspy
 from surfquakecore.ant.signal_processing_tools import noise_processing, noise_processing_horizontals
 from surfquakecore.arrayanalysis.array_analysis import array
 from datetime import datetime
 from scipy.signal import hilbert
 import pickle
+from surfquakecore.config.global_config import read_stream
+
 
 class process_ant:
 
@@ -346,7 +347,7 @@ class process_ant:
 
         check_process = True
         res = []
-        tr_raw = obspy.read(self.list_item[1 + j])[0]
+        tr_raw = read_stream(self.list_item[1 + j])[0]
         # ensure the starttime and endtime and to have 24 h
         tr, list_day = self.ensure_24(tr_raw)
 
@@ -504,8 +505,8 @@ class process_ant:
         check_process = True
         res_N = []
         res_E = []
-        tr_N_raw = obspy.read(self.list_item_N[1 + j])[0]
-        tr_E_raw = obspy.read(self.list_item_E[1 + j])[0]
+        tr_N_raw = read_stream(self.list_item_N[1 + j])[0]
+        tr_E_raw = read_stream(self.list_item_E[1 + j])[0]
         tr_N, list_days_N = self.ensure_24(tr_N_raw)
         tr_E, list_days_E = self.ensure_24(tr_E_raw)
 
@@ -786,7 +787,7 @@ class process_ant:
         ends = []
 
         for path in channel_list:
-            header = read(path, headonly=True)
+            header = read_stream(path, headonly=True)
             starttime = header[0].stats.starttime
             endtime = header[0].stats.endtime
             starts.append(starttime)

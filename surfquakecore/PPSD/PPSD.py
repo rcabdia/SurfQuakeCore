@@ -11,9 +11,11 @@ import os
 import pickle
 from fnmatch import fnmatch
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
-from obspy import read, Inventory, read_inventory
+from obspy import Inventory, read_inventory
 from obspy.io.mseed.core import _is_mseed
 from obspy.signal import PPSD
+
+from surfquakecore.config.global_config import read_stream
 from surfquakecore.project.surf_project import SurfProject
 
 
@@ -165,7 +167,7 @@ class PPSDSurf:
                 continue
 
             try:
-                header = read(filepath, headonly=True)
+                header = read_stream(filepath, headonly=True)
             except Exception:
                 header = None
 
@@ -255,7 +257,7 @@ class PPSDSurf:
 
                     for path in file_list:
                         try:
-                            st = read(path)
+                            st = read_stream(path)
                             if len(st) > 0:
                                 files.append((st[0], path))
                         except Exception:
