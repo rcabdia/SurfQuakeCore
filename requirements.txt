@@ -18,3 +18,4 @@ future<=1.0.0
 PyQt5>=5.15.10,<=5.15.11
 setuptools<82
 json5<0.14.0
+numba==0.60.0

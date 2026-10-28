@@ -82,7 +82,7 @@ class CFKurtosis:
             filter_norm = CFKurtosis.rec_filter_norm(freqs, delta, CN_HP, CN_LP, npoles=4)
 
         if hos_sigma is None:
-            hos_sigma = -1.0
+            hos_sigma = 0.000001
 
         # ---- single component branch (preserved) ----
         YN1 = np.zeros((Nb, len(y)), float)

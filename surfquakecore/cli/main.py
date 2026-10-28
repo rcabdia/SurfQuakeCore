@@ -439,6 +439,7 @@ def _make_config():
         3. Configurations to be used with commands: associate, locate and mti.
         
         real_config      -> Template to associate picks
+        coin_config      -> Template for Coincidence Trigger
         nll_config       -> Template for locate events
         sspec_config     -> Template for source parameters estimation (SourceSpec: Mw, Ml, Q...)
         mti_config       -> Template for Moment Tensor Inversion
@@ -450,7 +451,7 @@ def _make_config():
         """
     )
     available_configs = ["typical_config", "config_all", "stream_config", "spectral_config", "events",
-                         "plotting_config", "script_template", "real_config", "nll_config", "mti_config", "rename",
+                         "plotting_config", "script_template", "coin_config", "real_config", "nll_config", "mti_config", "rename",
                          "algebra", "ch_functions", "script_air_1", "script_air_2", "script_air_3", "test_sign_config",
                          "sspec_config", "chop_dataset"]
 
