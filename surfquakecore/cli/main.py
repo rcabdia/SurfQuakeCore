@@ -530,6 +530,8 @@ def _pick():
     from surfquakecore.phasenet.phasenet_handler import PhasenetISP, PhasenetUtils
     from surfquakecore.project.surf_project import SurfProject
     from dateutil import parser
+    import time
+    
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} pick",
         description="Use PhaseNet deep learning model to pick P- and S-wave arrivals.",
@@ -619,22 +621,23 @@ def _pick():
             raise ve
 
     if len(sp_loaded.project) > 0 and isinstance(sp_loaded, SurfProject):
+        start = time.time()  # add "import time" at the top of main.py
+        output_dir = make_abs(parsed_args.output_dir)
         picker = PhasenetISP(
             sp_loaded.project,
             amplitude=True,
             min_p_prob=parsed_args.p_thresh,
             min_s_prob=parsed_args.s_thresh,
-            output=make_abs(parsed_args.output_dir),
-            device=parsed_args.device)
+            output=output_dir,
+            device=parsed_args.device,
+            verbose=parsed_args.verbose)
 
-        # Run PhaseNet picking
         picks = picker.phasenet()
-
-        # Process and save results
         picks_results = PhasenetUtils.split_picks(picks)
-        PhasenetUtils.convert2real(picks_results, parsed_args.output_dir)
-        PhasenetUtils.save_original_picks(picks_results, parsed_args.output_dir)
-        PhasenetUtils.write_nlloc_format(picks_results, parsed_args.output_dir)
+        PhasenetUtils.convert2real(picks_results, output_dir)
+        PhasenetUtils.save_original_picks(picks_results, output_dir)
+        PhasenetUtils.write_nlloc_format(picks_results, output_dir)
+        PhasenetUtils.print_summary(picks_results, len(picks), output_dir, time.time() - start)
     else:
         print("Empty Project, Nothing to pick!")
 
