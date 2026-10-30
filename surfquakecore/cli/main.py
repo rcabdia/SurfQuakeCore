@@ -531,7 +531,7 @@ def _pick():
     from surfquakecore.project.surf_project import SurfProject
     from dateutil import parser
     import time
-    
+
     arg_parse = ArgumentParser(
         prog=f"{__entry_point_name} pick",
         description="Use PhaseNet deep learning model to pick P- and S-wave arrivals.",
@@ -1041,19 +1041,28 @@ def _source():
         -i, --inventory_file     [REQUIRED] Path to station metadata (XML, RESP)
         -p, --project_file       [REQUIRED] Path to project file
         -c, --config_file        [REQUIRED] Configuration for SourceSpec
-        -l, --hypocenter_dir     [REQUIRED] Directory containing NonLinLoc *.hyp files
+        -l, --hypocenter_dir     [OPTIONAL] Directory containing NonLinLoc *.hyp files
+        -e, --events_file        [OPTIONAL] CSV/TXT with hipocenter information
         -o, --output_folder      [REQUIRED] Output folder for source parameter results
         -t, --large_scale        [OPTIONAL] Automatic long cut of teleseismic event waveforms
 
     Reference:
         Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave displacement spectra. 
         DOI: https://doi.org/10.5281/ZENODO.3688587
-
+    
+    Hypocenter file example:
+    
+        event_id,origin_time,lat,lon,depth
+        ev001,2022-02-01T02:03:01.250,36.52,-6.31,12.4
+        ev002,2022-02-01T14:40:10.000,36.80,-6.10,8.0
+        ....,....,....,....,....,....,....
+    
     Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/
         https://sourcespec.readthedocs.io/en/stable/index.html
-    """
-    )
+    """)
+
+    src = arg_parse.add_mutually_exclusive_group(required=True)
 
     arg_parse.add_argument("-i", "--inventory_file_path", help="Inventory file (i.e., *xml or dataless",
                            type=str, required=True)
@@ -1063,9 +1072,7 @@ def _source():
 
     arg_parse.add_argument("-c", "--config_file_path", help="Path to source_config_file", type=str,
                            required=True)
-
-    arg_parse.add_argument("-l", "--loc_files_path", help="Path to nll_hyp_files", type=str,
-                           required=True)
+    src.add_argument("-l", "--loc_files_path", type=str, help="Path to nll_hyp_files")
 
     arg_parse.add_argument("-o", "--output_dir_path", help="Path to output_directory ", type=str,
                            required=True)
@@ -1073,6 +1080,10 @@ def _source():
     arg_parse.add_argument("-t", "--large_scale",
                            help="If you want a long cut of signals for teleseism events (optional)",
                            action="store_true")
+
+
+    src.add_argument("-e", "--events_file", type=str,
+                     help="CSV/TXT with columns origin_time, lat, lon, depth(km) [, event_id]")
 
     parsed_args = arg_parse.parse_args()
     print(parsed_args)
@@ -1089,9 +1100,11 @@ def _source():
     else:
         scale = "regional"
 
-    mg = Automag(sp_loaded, make_abs(parsed_args.loc_files_path),
+    mg = Automag(sp_loaded,
+                 make_abs(parsed_args.loc_files_path) if parsed_args.loc_files_path else None,
                  parsed_args.inventory_file_path, parsed_args.config_file_path,
-                 make_abs(parsed_args.output_dir_path), scale=scale)
+                 make_abs(parsed_args.output_dir_path), scale=scale,
+                 events_file=make_abs(parsed_args.events_file) if parsed_args.events_file else None)
 
     mg.estimate_source_parameters()
 

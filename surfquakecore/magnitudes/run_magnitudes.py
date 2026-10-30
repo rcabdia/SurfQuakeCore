@@ -11,7 +11,6 @@
 import gc
 import os
 from obspy import read, read_events, UTCDateTime, Stream
-from surfquakecore.magnitudes.structures import SoursceSpecOptions
 from sourcespec.ssp_setup import configure
 from sourcespec.ssp_read_traces import read_traces
 from surfquakecore.magnitudes.ssp_process_traces_mod import process_traces
@@ -30,12 +29,14 @@ from sourcespec.ssp_plot_stations import plot_stations
 from sourcespec.ssp_html_report import html_report
 from surfquakecore.magnitudes.ssp_setup_mod import setup_logging
 from surfquakecore.project.surf_project import SurfProject
-
+import pandas as pd
+from obspy.core.event import Catalog, Event, Origin, ResourceIdentifier
+from surfquakecore.magnitudes.structures import SoursceSpecOptions, EventRecord
 
 class Automag:
 
     def __init__(self, project: SurfProject, locations_directory: str, inventory_path, source_config: str,
-                 output_directory: str, scale: str, gui_mod=None):
+             output_directory: str, scale: str, gui_mod=None, events_file: str = None):
 
         """
         Manage SourceSpec program to estimate source parameters.
@@ -53,9 +54,11 @@ class Automag:
         self.output_directory = output_directory
         self.scale = scale
         self.gui_mod = gui_mod
-        self.dates = None
         self.rename_list = []
         self._check_folders()
+        self.events_file = events_file
+        self.events = []
+        self.files_path = None
 
         if isinstance(source_config, str) and os.path.isfile(source_config):
             self.config_path = source_config
@@ -63,30 +66,33 @@ class Automag:
             raise ValueError(f"source_config {source_config} is not valid. It must be either a "
                              f" valid real_config.ini file or a SourceConfig instance.")
 
-    def _get_config(self, event, id_name):
-        id_list = id_name.split(".")
-        id = id_list[0]+"/"+id_list[1]+"_"+id_list[2]
+    # Old method
+    # def _get_config(self, event, id_name):
+    #     id_list = id_name.split(".")
+    #     id = id_list[0]+"/"+id_list[1]+"_"+id_list[2]
+    #
+    #     options = SoursceSpecOptions(config_file=self.config_path, evid=None, evname=id_name, hypo_file=None,
+    #         outdir=self.output_directory, pick_file=None, qml_file=event, run_id="", sampleconf=False, station=None,
+    #         station_metadata=self.inventory_path, trace_path=self.files_path, updateconf=None)
+    #
+    #     return options
 
-        options = SoursceSpecOptions(config_file=self.config_path, evid=None, evname=id_name, hypo_file=None,
-            outdir=self.output_directory, pick_file=None, qml_file=event, run_id="", sampleconf=False, station=None,
-            station_metadata=self.inventory_path, trace_path=self.files_path, updateconf=None)
+    # New method under review
+    def _get_config(self, ev: EventRecord):
 
-        return options
+        return SoursceSpecOptions(config_file=self.config_path, evid=None, evname=ev.evname, hypo_file=None,
+                                  outdir=self.output_directory, pick_file=None, qml_file=ev.qml_file, run_id="",
+                                  sampleconf=False, station=None, station_metadata=self.inventory_path,
+                                  trace_path=self.files_path, updateconf=None)
 
     def _check_folders(self):
 
-        if os.path.isdir(self.locations_directory):
-            pass
-        else:
+        if bool(self.locations_directory) == bool(self.events_file):
+            raise ValueError("Provide exactly one of locations_directory (NLLoc .hyp) or events_file")
+        if self.locations_directory and not os.path.isdir(self.locations_directory):
             raise Exception("Loc files directory does not exist")
-
-        if os.path.isdir(self.output_directory):
-            pass
-        else:
-            try:
-                os.makedirs(self.output_directory)
-            except Exception as error:
-                print("An exception occurred:", error)
+        if self.events_file and not os.path.isfile(self.events_file):
+            raise Exception("Events file does not exist")
 
 
     def get_now_files(self, date):
@@ -112,33 +118,83 @@ class Automag:
 
         return filtered_list
 
+    # def scan_folder(self):
+    #     obsfiles1 = []
+    #     dates = {}
+    #     for top_dir, _, files in os.walk(self.locations_directory):
+    #
+    #         for file in files:
+    #             try:
+    #                 file_hyp = os.path.join(top_dir, file)
+    #                 cat = read_events(file_hyp, format="NLLOC_HYP")
+    #                 ev = cat[0]
+    #                 date = ev.origins[0]["time"]
+    #                 date = str(date.julday) + "." + str(date.year)
+    #
+    #                 obsfiles1.append(file_hyp)
+    #                 if date not in dates:
+    #                     dates[date] = [file_hyp]
+    #                 else:
+    #                     dates[date].append(file_hyp)
+    #             except:
+    #                 pass
+    #
+    #     self.dates = dates
+    #
+    # def scan_from_origin(self, origin):
+    #
+    #     self.date = origin["time"]
+
     def scan_folder(self):
-        obsfiles1 = []
-        dates = {}
+        """NLLoc .hyp files -> list[EventRecord] (same naming as before)"""
+        events = []
         for top_dir, _, files in os.walk(self.locations_directory):
-
             for file in files:
+                file_hyp = os.path.join(top_dir, file)
                 try:
-                    file_hyp = os.path.join(top_dir, file)
-                    cat = read_events(file_hyp, format="NLLOC_HYP")
-                    ev = cat[0]
-                    date = ev.origins[0]["time"]
-                    date = str(date.julday) + "." + str(date.year)
+                    o = read_events(file_hyp, format="NLLOC_HYP")[0].origins[0]
+                except Exception:
+                    continue
+                parts = file.split(".")
+                event_id = parts[1] + "_" + parts[2] if len(parts) >= 3 else o.time.strftime("%Y%m%d_%H%M%S")
+                events.append(EventRecord(event_id=event_id, evname=file, origin_time=o.time,
+                                          latitude=o.latitude, longitude=o.longitude,
+                                          depth_km=o.depth * 1E-3, qml_file=file_hyp))
+        return events
 
-                    obsfiles1.append(file_hyp)
-                    if date not in dates:
-                        dates[date] = [file_hyp]
-                    else:
-                        dates[date].append(file_hyp)
-                except:
-                    pass
+    def scan_events_file(self):
+        """Simple csv/txt (origin_time, lat, lon, depth[km], optional event_id) -> list[EventRecord]"""
+        df = pd.read_csv(self.events_file, sep=None, engine="python", comment="#")
+        df.columns = [c.strip().lower() for c in df.columns]
+        df = df.rename(columns={"latitude": "lat", "longitude": "lon", "depth_km": "depth",
+                                "time": "origin_time", "origin": "origin_time"})
+        missing = {"origin_time", "lat", "lon", "depth"} - set(df.columns)
+        if missing:
+            raise ValueError(f"Events file lacks columns: {sorted(missing)}")
 
-        self.dates = dates
+        qml_dir = os.path.join(self.output_directory, "_events_qml")
+        os.makedirs(qml_dir, exist_ok=True)
 
-    def scan_from_origin(self, origin):
+        events, used_ids = [], set()
+        for _, row in df.iterrows():
+            t = UTCDateTime(str(row["origin_time"]).strip())
+            event_id = str(row["event_id"]).strip() if "event_id" in df.columns else t.strftime("%Y%m%d_%H%M%S")
+            base, k = event_id, 1
+            while event_id in used_ids:  # two events in the same second, etc.
+                event_id, k = f"{base}_{k}", k + 1
+            used_ids.add(event_id)
 
-        self.date = origin["time"]
+            origin = Origin(time=t, latitude=float(row["lat"]), longitude=float(row["lon"]),
+                            depth=float(row["depth"]) * 1000.0)  # QuakeML depth is in meters
+            ev = Event(origins=[origin], preferred_origin_id=origin.resource_id,
+                       resource_id=ResourceIdentifier(f"smi:local/{event_id}"))
+            qml_path = os.path.join(qml_dir, f"{event_id}.xml")
+            Catalog(events=[ev]).write(qml_path, format="QUAKEML")
 
+            events.append(EventRecord(event_id=event_id, evname=event_id, origin_time=t,
+                                      latitude=float(row["lat"]), longitude=float(row["lon"]),
+                                      depth_km=float(row["depth"]), qml_file=qml_path))
+        return events
     def _get_stations(self, arrivals):
         stations = []
         for pick in arrivals:
@@ -178,22 +234,33 @@ class Automag:
                     config[key] = self.gui_mod[key]
         return config
 
-
-    def __run_core_source(self, event, id_name, focal_parameters):
-        options = self._get_config(event, id_name)
-
-        # Setup stage
+    # def __run_core_source(self, event, id_name, focal_parameters):
+    def __run_core_source(self, ev: EventRecord):
+        options = self._get_config(ev)
         config = configure(options, progname='source_spec')
-
         if self.gui_mod:
             config = self.modify_config(config)
-
         setup_logging(config)
-        name_event = id_name.split(".")
-        name_event_id = name_event[1]+"_"+name_event[2]
-        self.rename_list.append([options.outdir, name_event_id])
+        self.rename_list.append([options.outdir, ev.event_id])
         st = read_traces(config)
-        st_trim = self.__cut_signal_wise(st, origin_time=focal_parameters[0])
+        st_trim = self.__cut_signal_wise(st, origin_time=ev.origin_time)
+
+        ######### Old way ###########
+        # options = self._get_config(event, id_name)
+        #
+        # # Setup stage
+        # config = configure(options, progname='source_spec')
+        #
+        # if self.gui_mod:
+        #     config = self.modify_config(config)
+        #
+        # setup_logging(config)
+        # name_event = id_name.split(".")
+        # name_event_id = name_event[1]+"_"+name_event[2]
+        # self.rename_list.append([options.outdir, name_event_id])
+        # st = read_traces(config)
+        # st_trim = self.__cut_signal_wise(st, origin_time=focal_parameters[0])
+        ######### Old way ###########
 
         # Deconvolve, filter, cut traces:
         proc_st = process_traces(config, st_trim)
@@ -243,36 +310,59 @@ class Automag:
         del st_trim
         gc.collect()
 
+    #### old method ###
+    # def estimate_source_parameters(self):
+    #     # Loop over loc folder files and run source parameters estimation
+    #     self.scan_folder()
+    #     events_names = []
+    #     for date in self.dates.keys():
+    #
+    #         events = self.dates[date]
+    #         self.get_now_files(date)
+    #
+    #         for event in events:
+    #
+    #             print(event)
+    #             cat = read_events(event)
+    #             focal_parameters = [cat[0].origins[0]["time"], cat[0].origins[0]["latitude"],
+    #                                 cat[0].origins[0]["longitude"],
+    #                                 cat[0].origins[0]["depth"] * 1E-3]
+    #             name_event = (str(cat[0].origins[0]["time"]))
+    #
+    #             events_names.append(name_event)
+    #
+    #             try:
+    #                 run_id_name = os.path.basename(event)
+    #                 self.__run_core_source(event, run_id_name, focal_parameters)
+    #             except:
+    #                 print(f"Error occurred trying to estimate source parameters at event, please review log file: "
+    #                       f"{run_id_name}")
+    #     try:
+    #         self.rename_folders()
+    #     except:
+    #         print("Coudn't rename folders")
+
+    #### new method ###
     def estimate_source_parameters(self):
-        # Loop over loc folder files and run source parameters estimation
-        self.scan_folder()
-        events_names = []
-        for date in self.dates.keys():
+        self.events = self.scan_folder() if self.locations_directory else self.scan_events_file()
 
-            events = self.dates[date]
+        by_date = {}
+        for ev in self.events:
+            key = f"{ev.origin_time.julday}.{ev.origin_time.year}"  # same "julday.year" key get_now_files expects
+            by_date.setdefault(key, []).append(ev)
+
+        for date, evs in by_date.items():
             self.get_now_files(date)
-
-            for event in events:
-
-                print(event)
-                cat = read_events(event)
-                focal_parameters = [cat[0].origins[0]["time"], cat[0].origins[0]["latitude"],
-                                    cat[0].origins[0]["longitude"],
-                                    cat[0].origins[0]["depth"] * 1E-3]
-                name_event = (str(cat[0].origins[0]["time"]))
-
-                events_names.append(name_event)
-
+            for ev in evs:
+                print(ev.event_id, ev.origin_time, ev.latitude, ev.longitude, ev.depth_km)
                 try:
-                    run_id_name = os.path.basename(event)
-                    self.__run_core_source(event, run_id_name, focal_parameters)
-                except:
-                    print(f"Error occurred trying to estimate source parameters at event, please review log file: "
-                          f"{run_id_name}")
+                    self.__run_core_source(ev)
+                except Exception as error:
+                    print(f"Error estimating source parameters for event {ev.event_id}: {error}")
         try:
             self.rename_folders()
-        except:
-            print("Coudn't rename folders")
+        except Exception:
+            print("Couldn't rename folders")
 
     def rename_folders(self):
         for item in self.rename_list:
