@@ -30,15 +30,18 @@ class SoursceSpecOptions:
     trace_path: list
     updateconf: str
 
+
 @dataclass
 class EventRecord:
-    event_id: str          # name of the output folder, e.g. 20220201_020301
-    evname: str            # name handed to SourceSpec (options.evname)
+    """One event to process, whatever the input was (NLLoc .hyp or events file)."""
+    event_id: str            # name of the output folder, e.g. 20220201_020301
+    evname: str              # name handed to SourceSpec (options.evname)
     origin_time: UTCDateTime
     latitude: float
     longitude: float
     depth_km: float
-    qml_file: str          # .hyp (NLLoc) or QuakeML generated from the events file
+    qml_file: str            # .hyp (NLLoc) or QuakeML generated from events file
+
 
 # Example usage:
 if __name__ == "__main__":

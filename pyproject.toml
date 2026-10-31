@@ -47,7 +47,7 @@ where = ["."]
 
 "surfquakecore.ant" = ["disp_curv_ref/*"]
 
-"surfquakecore.config_templates" = ["*.yaml", "*.csv", "*.ini"]
+"surfquakecore.config_templates" = ["*.yaml", "*.csv", "*.ini", "*.conf", "*.txt"]
 
 [project.scripts]
 surfquake = "surfquakecore.cli:main"

@@ -13,6 +13,37 @@ import os
 import pandas as pd
 import yaml
 
+def _dig(data, *path):
+    """data[path[0]][path[1]]... or None if any key is missing."""
+    for key in path:
+        if not isinstance(data, dict) or key not in data:
+            return None
+        data = data[key]
+    return data
+
+
+def _num(value):
+    """float(value) or None (strings such as 'NaN' or None give None)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if number != number else number
+
+
+def _fmt(value, spec=None):
+    """Number (optionally formatted with spec, e.g. '.2e') or the string 'NaN'."""
+    number = _num(value)
+    if number is None:
+        return "NaN"
+    return number if spec is None else format(number, spec)
+
+
+SUMMARY_COLUMNS = ['date_id', 'lats', 'longs', 'depths', 'Mw', 'Mw_error', 'ML', 'ML_error', 'Mo', 'Mo_std',
+                   'radius', 'radius_std', 'Er', 'Er_std', 'ssd', 'ssd_std', 'fc', 'fc_std', 't_star',
+                   't_star_std', 'Qo', 'Qo_std', 'sigma_a', 'sigma_a_std']
+
+
 class ReadSource:
     def __init__(self, root_path_to_output: str):
         """
@@ -30,11 +61,43 @@ class ReadSource:
         with open(file_path, 'r') as file:
             try:
                 yaml_data = yaml.safe_load(file)
+                self.__normalize_legacy_keys(yaml_data)
                 print(os.path.basename(file.name))
             except:
                 print("Conflictive file at ", os.path.basename(file.name))
                 yaml_data = None
         return yaml_data
+
+    @staticmethod
+    def __normalize_legacy_keys(yaml_data):
+        """SourceSpec <= 1.7 wrote 'bsd' (Brune stress drop); 1.8 writes 'ssd' (static stress drop)."""
+        try:
+            params = yaml_data['summary_spectral_parameters']
+            if 'bsd' in params and 'ssd' not in params:
+                params['ssd'] = params.pop('bsd')
+        except (KeyError, TypeError):
+            pass
+
+    @staticmethod
+    def __stat_value(item, param):
+        """Value of a summary parameter (mean, else weighted_mean) or "NaN"."""
+        for stat in ('mean', 'weighted_mean'):
+            try:
+                return item['summary_spectral_parameters'][param][stat]['value']
+            except (KeyError, TypeError):
+                continue
+        return "NaN"
+
+    @staticmethod
+    def __stat_spread(item, param):
+        """upper_uncertainty - lower_uncertainty of a summary parameter, or "NaN"."""
+        for stat in ('mean', 'weighted_mean'):
+            try:
+                s = item['summary_spectral_parameters'][param][stat]
+                return s['upper_uncertainty'] - s['lower_uncertainty']
+            except (KeyError, TypeError):
+                continue
+        return "NaN"
 
     def __key_exists(self, dictionary, key):
         if isinstance(dictionary, dict):
@@ -79,175 +142,78 @@ class ReadSource:
         df_magnitudes = pd.DataFrame.from_dict(magnitudes_dict)
         df_magnitudes.to_csv(output, sep=";", index=False)
 
+    @staticmethod
+    def _summary_row(item: dict) -> dict:
+        """
+        One event -> one row. Every missing value (e.g. no 'Ml' because compute_local_magnitude is
+        False, or no 'sigma_a' in a SourceSpec 1.7 file) becomes "NaN"; the row is always complete.
+        """
+        spp = item.get('summary_spectral_parameters') or {}
+        ev = item.get('event_info') or {}
+
+        def value(param, order, field='value'):
+            # first statistic of `order` that exists ('mean' / 'weighted_mean')
+            for stat in order:
+                v = _dig(spp, param, stat, field)
+                if v is not None:
+                    return v
+            return None
+
+        def spread(param, order):
+            # upper_uncertainty - lower_uncertainty
+            for stat in order:
+                up = _num(_dig(spp, param, stat, 'upper_uncertainty'))
+                lo = _num(_dig(spp, param, stat, 'lower_uncertainty'))
+                if up is not None and lo is not None:
+                    return up - lo
+            return None
+
+        wm, m = ('weighted_mean', 'mean'), ('mean', 'weighted_mean')
+
+        origin_time = ev.get('origin_time')
+        if hasattr(origin_time, 'strftime'):
+            date_id = origin_time.strftime("%m/%d/%Y, %H:%M:%S.%f")
+        else:
+            date_id = "NaN" if origin_time is None else str(origin_time)
+
+        return {
+            'date_id': date_id,
+            'lats': _fmt(ev.get('latitude')),
+            'longs': _fmt(ev.get('longitude')),
+            'depths': _fmt(ev.get('depth_in_km')),
+            'Mw': _fmt(value('Mw', wm)), 'Mw_error': _fmt(value('Mw', wm, 'uncertainty')),
+            'ML': _fmt(value('Ml', m)), 'ML_error': _fmt(value('Ml', m, 'uncertainty')),
+            'Mo': _fmt(value('Mo', wm), ".2e"), 'Mo_std': _fmt(spread('Mo', wm), ".2e"),
+            'radius': _fmt(value('radius', wm)), 'radius_std': _fmt(spread('radius', wm), ".2f"),
+            'Er': _fmt(value('Er', m), ".2e"), 'Er_std': _fmt(spread('Er', m), ".2e"),
+            'ssd': _fmt(value('ssd', wm), ".2f"), 'ssd_std': _fmt(spread('ssd', wm), ".2f"),
+            'fc': _fmt(value('fc', m)), 'fc_std': _fmt(spread('fc', m), ".2f"),
+            't_star': _fmt(value('t_star', wm)), 't_star_std': _fmt(value('t_star', wm, 'uncertainty')),
+            'Qo': _fmt(value('Qo', m)), 'Qo_std': _fmt(value('Qo', m, 'uncertainty')),
+            'sigma_a': _fmt(value('sigma_a', m)), 'sigma_a_std': _fmt(spread('sigma_a', m)),
+        }
+
     def write_summary(self, summary: list, summary_path: str):
         """
         Transform the summary into txt file using Pandas Dataframe
         :param summary: List of dictionaries containing source parameters
         :param summary_path: path to file output including the name of the file.
         """
-        dates = []
-        lats = []
-        longs = []
-        depths = []
-        Mw = []
-        Mw_std = []
-        ML = []
-        ML_std = []
-        Mo = []
-        Mo_std = []
-        radius = []
-        radius_std = []
-        Er = []
-        Er_std = []
-
-        fc = []
-        fc_std = []
-        t_star = []
-        t_star_std = []
-        bsd = []
-        bsd_std = []
-        Qo = []
-        Qo_std = []
-
-
+        rows = []
         for item in summary:
+            if item is None:  # yaml that could not be read
+                continue
+            try:
+                row = self._summary_row(item)
+            except Exception as error:
+                print("Could not summarize an event:", type(error).__name__, error)
+                continue
+            print(row['date_id'], row['lats'], row['longs'], row['Mw'], row['ML'])
+            rows.append(row)
 
-            # extract_info
-            # origin_time_object = datetime.strptime(origin_time, "%Y-%m-%dT%H:%M:%S.%fZ")
-            if item is not None:
-                try:
-                    accept = True
-                    if self.__key_exists(item['event_info'], 'latitude'):
-                        lats.append(item['event_info']['latitude'])
-                    else:
-                        lats.append("NaN")
-                    if self.__key_exists(item['event_info'], 'longitude'):
-                        longs.append(item['event_info']['longitude'])
-                    else:
-                        longs.append("NaN")
-                    if self.__key_exists(item['event_info'], 'depth_in_km'):
-                        depths.append(item['event_info']['depth_in_km'])
-                    else:
-                        depths.append("NaN")
-                    if self.__key_exists(item['event_info'], 'origin_time'):
-                        origin_time = item['event_info']['origin_time']
-                        origin_time_formatted_string = origin_time.strftime("%m/%d/%Y, %H:%M:%S.%f")
-                        dates.append(origin_time_formatted_string)
-                    else:
-                        dates.append("NaN")
+        df_magnitudes = pd.DataFrame(rows, columns=SUMMARY_COLUMNS)
+        df_magnitudes.to_csv(summary_path, sep=";", index=False)
 
-                    if 'value' in item['summary_spectral_parameters']['Mw']['weighted_mean']:
-                        Mw.append(item['summary_spectral_parameters']['Mw']['weighted_mean']['value'])
-                    else:
-                        Mw.append("NaN")
-
-                    if 'uncertainty' in item['summary_spectral_parameters']['Mw']['weighted_mean']:
-                        Mw_std.append(item['summary_spectral_parameters']['Mw']['weighted_mean']['uncertainty'])
-                    else:
-                        Mw_std.append("NaN")
-
-                    if 'value' in item['summary_spectral_parameters']['Ml']['mean']:
-                        ML.append(item['summary_spectral_parameters']['Ml']['mean']['value'])
-                    else:
-                        ML.append("NaN")
-
-                    if 'uncertainty' in item['summary_spectral_parameters']['Ml']['mean']:
-                        ML_std.append(item['summary_spectral_parameters']['Ml']['mean']['uncertainty'])
-                    else:
-                        ML_std.append("NaN")
-
-                    if 'value' in item['summary_spectral_parameters']['Mo']['weighted_mean']:
-                        Mo.append(item['summary_spectral_parameters']['Mo']['weighted_mean']['value'])
-                    else:
-                        Mo.append("NaN")
-
-                    try:
-                        print(origin_time_formatted_string, item['event_info']['latitude'], item['event_info']['longitude'],
-                              item['summary_spectral_parameters']['Mw']['weighted_mean']['value'],
-                              item['summary_spectral_parameters']['Ml']['mean']['value'])
-                    except:
-                        print("some fundamental values are not found")
-
-                    if (self.__key_exists(item['summary_spectral_parameters']['Mo']['weighted_mean'], 'upper_uncertainty')
-                            and self.__key_exists(item['summary_spectral_parameters']['Mo']['weighted_mean'], 'lower_uncertainty')):
-
-                        Mo_std.append(item['summary_spectral_parameters']['Mo']['weighted_mean']['upper_uncertainty'] -
-                                      item['summary_spectral_parameters']['Mo']['weighted_mean']['lower_uncertainty'])
-                    else:
-                        Mo_std.append("NaN")
-
-                    fc.append(item['summary_spectral_parameters']['fc']['mean']['value'])
-
-                    if (self.__key_exists(item['summary_spectral_parameters']['fc']['mean'], 'upper_uncertainty') and
-                            self.__key_exists(item['summary_spectral_parameters']['fc']['mean'], 'lower_uncertainty')):
-                        fc_std.append(item['summary_spectral_parameters']['fc']['mean']['upper_uncertainty'] -
-                                      item['summary_spectral_parameters']['fc']['mean']['lower_uncertainty'])
-                    else:
-                        fc_std.append("NaN")
-
-                    radius.append(item['summary_spectral_parameters']['radius']['weighted_mean']['value'])
-
-                    if (self.__key_exists(item['summary_spectral_parameters']['radius']['weighted_mean'], 'upper_uncertainty') and
-                            self.__key_exists(item['summary_spectral_parameters']['radius']['mean'], 'lower_uncertainty')):
-                        radius_std.append(item['summary_spectral_parameters']['radius']['weighted_mean']['upper_uncertainty'] -
-                                          item['summary_spectral_parameters']['radius']['mean']['lower_uncertainty'])
-                    else:
-                        radius_std.append("NaN")
-
-                    Er.append(item['summary_spectral_parameters']['Er']['mean']['value'])
-
-                    if (self.__key_exists(
-                            item['summary_spectral_parameters']['Er']['mean'],'upper_uncertainty') and
-                            self.__key_exists(item['summary_spectral_parameters']['Er']['mean'], 'lower_uncertainty')):
-                        if not isinstance(item['summary_spectral_parameters']['Er']['mean']['upper_uncertainty'], str):
-
-                            Er_std.append(item['summary_spectral_parameters']['Er']['mean']['upper_uncertainty'] -
-                                          item['summary_spectral_parameters']['Er']['mean']['lower_uncertainty'])
-                        else:
-                            Er_std.append("NaN")
-                    else:
-                        Er_std.append("NaN")
-
-                    t_star.append(item['summary_spectral_parameters']['t_star']['weighted_mean']['value'])
-                    t_star_std.append(item['summary_spectral_parameters']['t_star']['weighted_mean']['uncertainty'])
-                    bsd.append(item['summary_spectral_parameters']['bsd']['weighted_mean']['value'])
-
-                    if (self.__key_exists(item['summary_spectral_parameters']['bsd']['weighted_mean'], 'upper_uncertainty')
-                            and self.__key_exists(item['summary_spectral_parameters']['bsd']['weighted_mean'], 'lower_uncertainty')):
-
-                        bsd_std.append(item['summary_spectral_parameters']['bsd']['weighted_mean']['upper_uncertainty'] -
-                         item['summary_spectral_parameters']['bsd']['weighted_mean']['lower_uncertainty'])
-                    else:
-                        bsd_std.append("NaN")
-                    Qo.append(item['summary_spectral_parameters']['Qo']['mean']['value'])
-                    if self.__key_exists(item['summary_spectral_parameters']['Qo']['mean'], 'uncertainty'):
-                        Qo_std.append(item['summary_spectral_parameters']['Qo']['mean']['uncertainty'])
-                    else:
-                        Qo_std.append("NaN")
-                except:
-                    accept = False
-            else:
-                accept = False
-
-            if accept:
-                try:
-                    Mo = [format(value, ".2e") for value in Mo]
-                    Mo_std = [format(value, ".2e") for value in Mo_std]
-                    Er = [format(value, ".2e") for value in Er]
-                    Er_std = [format(value, ".2e") for value in Er_std]
-                    fc_std = [format(float(value), ".2f") for value in fc_std]
-                    radius_std = [format(float(value), ".2f") for value in radius_std]
-                    bsd = [format(float(value), ".2f") for value in bsd]
-                    bsd_std = [format(float(value), ".2f") for value in bsd_std]
-                except:
-                    pass
-
-        magnitudes_dict = {'date_id': dates, 'lats': lats, 'longs': longs, 'depths': depths,
-        'Mw': Mw, 'Mw_error': Mw_std, 'ML': ML, 'ML_error': ML_std, 'Mo':Mo, 'Mo_std': Mo_std, 'radius': radius,
-        'radius_std': radius_std, 'Er': Er, 'Er_std': Er_std, 'bsd': bsd, 'bsd_std': bsd_std, 'fc': fc, 'fc_std': fc_std,
-        't_star': t_star, 't_star_std': t_star_std, 'Qo': Qo, 'Qo_std': Qo_std}
-
-        self.__write_dict(magnitudes_dict, summary_path)
 
 if __name__ == '__main__':
     # Usage example
