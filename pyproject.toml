@@ -46,7 +46,7 @@ where = ["."]
 "surfquakecore.first_polarity" = ["focmec_bash/*"]
 
 "surfquakecore.ant" = ["disp_curv_ref/*"]
-
+"surfquakecore.magnitudes.config" = ["*.conf"]
 "surfquakecore.config_templates" = ["*.yaml", "*.csv", "*.ini", "*.conf", "*.txt"]
 
 [project.scripts]

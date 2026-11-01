@@ -121,7 +121,7 @@ def _parse_configspec():
     # configspec.conf lives next to this file (in sourcespec it is in
     # the "config_files" subfolder)
     configspec_file = os.path.join(
-        os.path.dirname(__file__), 'configspec.conf')
+        os.path.dirname(__file__), 'config', 'configspec.conf')
     return _read_config(configspec_file)
 
 
