@@ -225,16 +225,33 @@ class Automag:
                                       qml_file=qml_path, strike=strike, dip=dip, rake=rake))
         return events
 
-    def get_now_files(self, date):
+    # seconds of data required around the cut window when choosing the files to read
+    FILE_MARGIN = 30
 
-        start = date.split(".")
-        start = UTCDateTime(year=int(start[1]), julday=int(start[0]), hour=00, minute=00, second=00) + 1
-        end = start + (24 * 3600 - 2)
-        sp = self.project.copy()
-        sp.filter_project_keys()
-        self.files_path = sp.filter_time(starttime=start, endtime=end)
+    def _cut_window(self, origin_time):
+        """(start, end) of the data given to SourceSpec for one event. Single place where it is defined:
+        it is used both to choose the files and to cut the traces."""
+        dt_noise = 10
+        dt_signal = 10 * 60 if self.scale == "regional" else 2700
+        return origin_time - dt_noise, origin_time + dt_signal
 
-        print(self.files_path)
+    def get_event_files(self, ev: EventRecord):
+        """Project files whose time span overlaps the cut window of the event.
+
+        Unlike a calendar-day selection, an event close to midnight also gets the file of the
+        neighbouring day. Entries without path/stats (left by a filtered search_files) are ignored.
+        """
+        start, end = self._cut_window(ev.origin_time)
+        start, end = start - self.FILE_MARGIN, end + self.FILE_MARGIN
+        files = set()
+        for entries in self.project.project.values():
+            for path, stats in entries:
+                if path is None or stats is None:
+                    continue
+                if stats.starttime <= end and stats.endtime >= start:
+                    files.add(path)
+        self.files_path = sorted(files)
+        return self.files_path
 
     # ------------------------------------------------------------------
     # SourceSpec call chain
@@ -247,28 +264,46 @@ class Automag:
                                   updateconf=None)
 
     def __cut_signal_wise(self, st, origin_time):
+        """Trim every trace to the event window and drop the ones left empty.
 
-        all_traces = []
-        st.merge()
-
-        if self.scale == "regional":
-            dt_noise = 10
-            dt_signal = 10 * 60
-        else:
-            dt_noise = 10
-            dt_signal = 2700
-
-        start = origin_time - dt_noise
-        end = origin_time + dt_signal
-
-        for tr in st:
-
-            tr.trim(starttime=start, endtime=end)
-            all_traces.append(tr)
-            # TODO: It is not still checked the fill_gaps functionality
-            #tr = cls.fill_gaps(tr)
-        st = Stream(traces=all_traces)
+        The traces are deliberately NOT merged here. SourceSpec's process_traces receives the pieces
+        of each trace id (e.g. the two daily files around midnight), checks gaps and overlaps on them
+        (gap_max, overlap_max, "too many gaps in the signal window") and merges them filling gaps with
+        zeros. Merging beforehand produced masked arrays whenever there was a gap inside the window,
+        and those make SourceSpec's detrend raise NotImplementedError, which loses the whole event.
+        """
+        start, end = self._cut_window(origin_time)
+        st.trim(starttime=start, endtime=end)  # traces completely outside the window are removed
+        st = Stream([tr for tr in st if tr.stats.npts > 0])
+        self._report_coverage(st, start, end)
         return st
+
+    @staticmethod
+    def _report_coverage(st, start, end, min_fraction=0.95, max_lines=8):
+        """Print the traces whose data cover little of the window (e.g. neighbouring file not in the project)."""
+        window = end - start
+        covered = {}
+        for tr in st:
+            covered[tr.id] = covered.get(tr.id, 0.0) + tr.stats.npts / tr.stats.sampling_rate
+        short = sorted((min(c / window, 1.0), tid) for tid, c in covered.items() if c / window < min_fraction)
+        for fraction, tid in short[:max_lines]:
+            print(f"  warning: {tid}: data cover {100 * fraction:.0f}% of the event window "
+                  f"({start} - {end})")
+        if len(short) > max_lines:
+            print(f"  warning: ... and {len(short) - max_lines} more traces with incomplete data")
+
+    @staticmethod
+    def _merged_copy(st):
+        """Copy of the stream with one merged (gaps filled with zeros) trace per id."""
+        out = Stream()
+        for trace_id in sorted({tr.id for tr in st}):
+            sel = st.select(id=trace_id).copy()
+            try:
+                sel.merge(fill_value=0)
+            except Exception:  # e.g. different sampling rates: process_traces has already skipped it
+                continue
+            out += sel
+        return out
 
     def modify_config(self, config):
         for key in config:
@@ -311,7 +346,8 @@ class Automag:
 
         # Local magnitude
         if config.compute_local_magnitude:
-            local_magnitude(config, st, proc_st, sspec_output)
+            # local_magnitude takes the first trace of each id, so give it one merged trace per id
+            local_magnitude(config, self._merged_copy(st_trim), proc_st, sspec_output)
 
         # Compute summary statistics from station spectral parameters
         try:
@@ -347,33 +383,32 @@ class Automag:
         self.events = self.scan_folder() if self.locations_directory else self.scan_events_file()
         self._print_inputs_summary()
 
-        # group by day: same "julday.year" key that get_now_files expects
-        by_date = {}
         for ev in self.events:
-            key = f"{ev.origin_time.julday}.{ev.origin_time.year}"
-            by_date.setdefault(key, []).append(ev)
+            mech = (f" mechanism strike/dip/rake {ev.strike:.1f}/{ev.dip:.1f}/{ev.rake:.1f}"
+                    if ev.strike is not None else "")
+            print(ev.event_id, ev.origin_time, ev.latitude, ev.longitude, ev.depth_km, mech)
 
-        for date, evs in by_date.items():
-            self.get_now_files(date)
+            # Waveform files are chosen per event, from the event's own time window (not per calendar day)
+            files = self.get_event_files(ev)
+            if not files:
+                print("  no waveform file of the project covers this event: skipped")
+                continue
+            print(f"  {len(files)} waveform files overlap the event window")
 
-            for ev in evs:
-                mech = (f" mechanism strike/dip/rake {ev.strike:.1f}/{ev.dip:.1f}/{ev.rake:.1f}"
-                        if ev.strike is not None else "")
-                print(ev.event_id, ev.origin_time, ev.latitude, ev.longitude, ev.depth_km, mech)
-                if ev.strike is not None:
-                    source = (f"NonLinLoc hyp (RDip, {len(ev.takeoff_angles)} station/phase values)"
-                              if ev.takeoff_angles else "global model (iasp91 / vp_tt, vs_tt)")
-                    print(f"  takeoff angles for the radiation pattern: {source}")
-                # hyp takeoff angles are only valid for this event
-                set_hyp_takeoff_angles(ev.takeoff_angles)
-                try:
-                    self.__run_core_source(ev)
-                # SystemExit: sourcespec modules (unmodified) call ssp_exit() -> sys.exit()
-                except (Exception, SystemExit) as error:
-                    print(f"Error estimating source parameters for event {ev.event_id}: "
-                          f"{type(error).__name__}: {error}. Please review the log file.")
-                finally:
-                    clear_hyp_takeoff_angles()
+            if ev.strike is not None:
+                source = (f"NonLinLoc hyp (RDip, {len(ev.takeoff_angles)} station/phase values)"
+                          if ev.takeoff_angles else "global model (iasp91 / vp_tt, vs_tt)")
+                print(f"  takeoff angles for the radiation pattern: {source}")
+            # hyp takeoff angles are only valid for this event
+            set_hyp_takeoff_angles(ev.takeoff_angles)
+            try:
+                self.__run_core_source(ev)
+            # SystemExit: sourcespec modules (unmodified) call ssp_exit() -> sys.exit()
+            except (Exception, SystemExit) as error:
+                print(f"Error estimating source parameters for event {ev.event_id}: "
+                      f"{type(error).__name__}: {error}. Please review the log file.")
+            finally:
+                clear_hyp_takeoff_angles()
 
         self.rename_folders()
 
