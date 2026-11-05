@@ -1,0 +1,7 @@
+# Layered earth model. One row per layer; each layer applies from top_depth_km down to the next one.
+# top_depth_km: km (positive down) | vp, vs: km/s | rho: kg/m3
+top_depth_km;vp;vs;rho
+0.0;4.5;2.6;2400
+2.0;5.8;3.3;2650
+10.0;6.4;3.7;2800
+25.0;7.8;4.4;3200

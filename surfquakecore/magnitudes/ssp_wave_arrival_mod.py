@@ -14,6 +14,12 @@ Modified for SurfQuakeCore (Roberto Cabieces), derived from SourceSpec 1.8:
     - No arrival cache: upstream caches arrivals by "<trace id>_<phase>",
       so a second event recorded at the same station would silently reuse
       the arrival times of the first one.
+    - Takeoff angles: if the event comes from a NonLinLoc .hyp file, the
+      per-station takeoff angle (column RDip) can be given with
+      set_hyp_takeoff_angles(); it replaces the angle computed from iasp91
+      (or from vp_tt/vs_tt). Travel/arrival times are NOT affected: they
+      keep the original logic (picks validated against the theoretical time).
+      Without hyp angles (events file, station/phase missing) nothing changes.
 """
 import contextlib
 import logging
@@ -22,6 +28,21 @@ from math import asin, degrees
 from obspy.taup import TauPyModel
 model = TauPyModel(model='iasp91')
 logger = logging.getLogger(__name__.rsplit('.', maxsplit=1)[-1])
+
+# Takeoff angles of the event being processed, from the NonLinLoc .hyp:
+#   {(station_code, 'P' or 'S'): takeoff angle in degrees (0 down, 180 up)}
+# Set by Automag before each event and cleared afterwards.
+_HYP_TAKEOFF = {}
+
+
+def set_hyp_takeoff_angles(angles):
+    """Takeoff angles (NonLinLoc RDip) for the event about to be processed."""
+    _HYP_TAKEOFF.clear()
+    _HYP_TAKEOFF.update(angles or {})
+
+
+def clear_hyp_takeoff_angles():
+    _HYP_TAKEOFF.clear()
 
 
 def _wave_arrival_vel(trace, vel):
@@ -138,6 +159,12 @@ def add_arrival_to_trace(trace, phase, config):
     trst = trace.stats
     # Always compute travel_time and takeoff_angle (no cache, see header)
     travel_time, takeoff_angle, method = _wave_arrival(trace, phase, config)
+    hyp_angle = _HYP_TAKEOFF.get((trace.stats.station, phase))
+    if hyp_angle is not None:
+        takeoff_angle = float(hyp_angle)
+        takeoff_method = 'NonLinLoc hyp (RDip)'
+    else:
+        takeoff_method = method
     theo_pick_time = _get_theo_pick_time(trace, travel_time)
     pick_time = _find_picks(trace, phase, theo_pick_time, tolerance)
     if pick_time is not None:
@@ -157,7 +184,7 @@ def add_arrival_to_trace(trace, phase, config):
     if config.rp_from_focal_mechanism:
         logger.info(
             f'{trace.id}: {phase} takeoff angle: {takeoff_angle:.1f} '
-            f'computed from {method}')
+            f'computed from {takeoff_method}')
     trst.arrivals[phase] = (pick_phase, pick_time)
     trst.travel_times[phase] = travel_time
     trst.takeoff_angles[phase] = takeoff_angle

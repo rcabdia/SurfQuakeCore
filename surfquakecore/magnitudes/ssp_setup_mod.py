@@ -31,7 +31,8 @@ Modifications for SurfQuakeCore (Roberto Cabieces):
       different events are not mixed.
     - The state that unmodified sourcespec modules read from
       ``sourcespec.ssp_setup`` (instrument codes, TRACEID_MAP, the
-      "exit already called" flag) is pushed there by ``_sync_upstream_state``.
+      "exit already called" flag) is pushed there by ``_sync_upstream_state``,
+      which also empties the radiation pattern cache of sourcespec.
 """
 import contextlib
 import importlib
@@ -354,8 +355,20 @@ def _sync_upstream_state():
       later ssp_exit() would silently return and the code would go on
       with an unusable state. We reset the flag for every event.
 
+    * RP_CACHE / RP_MSG_CACHE (sourcespec.ssp_radiation_pattern): the radiation
+      pattern is cached per "<station>_<wave type>" with no reference to the
+      event. In a batch, the second event would silently reuse the radiation
+      pattern of the first one (a different focal mechanism or takeoff angle
+      is ignored). We empty them for every event.
+
     Remove this function once those modules are vendored and import from here.
     """
+    try:
+        rp_module = importlib.import_module('sourcespec.ssp_radiation_pattern')
+        rp_module.RP_CACHE.clear()
+        rp_module.RP_MSG_CACHE.clear()
+    except (ImportError, AttributeError):
+        pass
     try:
         upstream = importlib.import_module('sourcespec.ssp_setup')
     except ImportError:

@@ -1037,6 +1037,8 @@ def _source():
     Usage Examples:
         > surfquake source -i inventory.xml -p my_project.pkl -c source_config.csv -l ./nlloc_outputs -o ./source_results
         > surfquake source -i inventory.xml -p my_project.pkl -c source_config.csv -e ./events.csv -o ./source_results
+        > surfquake source -i inventory.xml -p my_project.pkl -c source_config.csv -l ./nlloc_outputs -o ./source_results \\
+                           -m earth_model.csv -f focal_mechanisms.csv
 
     Key Arguments:
         -i, --inventory_file     [REQUIRED] Path to station metadata (XML, RESP)
@@ -1047,16 +1049,39 @@ def _source():
                                  and optionally event_id. Example:
                                      event_id,origin_time,lat,lon,depth
                                      ev001,2022-02-01T02:03:01.250,36.52,-6.31,12.4
+        -m, --earth_model        [OPTIONAL] Layered earth model (csv/txt). Columns: top_depth_km;vp;vs;rho
+                                 (km/s, km/s, kg/m3). SourceSpec uses the layer at the depth of each
+                                 hypocenter for Vp, Vs and density at the source. It replaces vp_source,
+                                 vs_source, rho_source and layer_top_depths of the SourceSpec config file.
+        -f, --focal_mechanisms   [OPTIONAL] Focal mechanisms (csv/txt). Columns: date_id;plane_1_strike;
+                                 plane_1_dip;plane_1_slip_rake (other columns are ignored, e.g. the output
+                                 of the moment tensor inversion). Each hypocenter takes the mechanism whose
+                                 date_id is the closest to its origin time (see --mech_tolerance) and then
+                                 the radiation pattern comes from the mechanism instead of rpp/rps.
+        --mech_tolerance         [OPTIONAL] Maximum difference in seconds between the origin time of the
+                                 hypocenter and date_id (default: 2.0)
         -o, --output_folder      [REQUIRED] Output folder for source parameter results
         -t, --large_scale        [OPTIONAL] Automatic long cut of teleseismic event waveforms
+
     
     Hypocenter file example:
     
-        event_id,origin_time,lat,lon,depth
-        ev001,2022-02-01T02:03:01.250,36.52,-6.31,12.4
-        ev002,2022-02-01T14:40:10.000,36.80,-6.10,8.0
+        date_id;lat;lon;depth;event_id
+        2022-02-01 02:03:00.276594;42.500311;1.461898;5.297852;20220201_020301
         ....,....,....,....,....,....,....
     
+    Earth model file example:
+    
+        top_depth_km;vp;vs;rho
+        0.0;4.5;2.6;2400
+        2.0;5.8;3.3;2650
+        10.0;6.4;3.7;2800
+        25.0;7.8;4.4;3200
+    
+    Focal Mechanism file example:
+    
+        date_id;plane_1_strike;plane_1_dip;plane_1_slip_rake
+        2022-02-01 02:03:00.276594;0.70322843602916;29.29677156397083;22.420139345268485
     
     Reference:
         Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave displacement spectra. 
@@ -1081,6 +1106,16 @@ def _source():
     src.add_argument("-l", "--loc_files_path", help="Path to nll_hyp_files", type=str)
     src.add_argument("-e", "--events_file", type=str,
                      help="csv/txt with columns origin_time, lat, lon, depth(km) [, event_id]")
+
+    arg_parse.add_argument("-m", "--earth_model_file", type=str, default=None,
+                           help="Layered earth model: columns top_depth_km;vp;vs;rho (optional)")
+
+    arg_parse.add_argument("-f", "--focal_mechanisms_file", type=str, default=None,
+                           help="Focal mechanisms: columns date_id;plane_1_strike;plane_1_dip;plane_1_slip_rake "
+                                "(optional)")
+
+    arg_parse.add_argument("--mech_tolerance", type=float, default=2.0,
+                           help="Maximum seconds between hypocenter origin time and date_id (default 2.0)")
 
     arg_parse.add_argument("-o", "--output_dir_path", help="Path to output_directory ", type=str,
                            required=True)
@@ -1108,14 +1143,19 @@ def _source():
                  make_abs(parsed_args.loc_files_path) if parsed_args.loc_files_path else None,
                  parsed_args.inventory_file_path, parsed_args.config_file_path,
                  make_abs(parsed_args.output_dir_path), scale=scale,
-                 events_file=make_abs(parsed_args.events_file) if parsed_args.events_file else None)
+                 events_file=make_abs(parsed_args.events_file) if parsed_args.events_file else None,
+                 earth_model_file=(make_abs(parsed_args.earth_model_file)
+                                   if parsed_args.earth_model_file else None),
+                 mechanisms_file=(make_abs(parsed_args.focal_mechanisms_file)
+                                  if parsed_args.focal_mechanisms_file else None),
+                 mechanism_tolerance=parsed_args.mech_tolerance)
 
     mg.estimate_source_parameters()
 
     rs = ReadSource(make_abs(parsed_args.output_dir_path))
     summary = rs.generate_source_summary()
     rs.write_summary(summary, summary_path_file)
-    
+
 
 def _mti():
     from surfquakecore.project.surf_project import SurfProject
