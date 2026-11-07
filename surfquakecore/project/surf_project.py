@@ -915,6 +915,45 @@ class SurfProject:
 
         return final_subprojects
 
+    def get_files_in_window(self, starttime, endtime, margin: float = 0.0,
+                            net: str = "*", station: str = "*", channel: str = "*") -> list:
+
+        """
+        Paths of the project files whose time span overlaps [starttime, endtime].
+
+        The selection depends only on the window (not on calendar days), so a window crossing
+        midnight returns the files of both days. Entries without path or stats (left by a
+        filtered search_files) are ignored. The project itself is not modified.
+
+        Args:
+        - starttime, endtime (UTCDateTime or str): window limits.
+        - margin (float): seconds added at both ends of the window (default 0).
+        - net, station, channel (str): optional selectors with the same syntax as
+          filter_project_keys (glob or regular expression). Default: all.
+
+        Returns:
+        - list: sorted file paths, without duplicates.
+        """
+
+        start = UTCDateTime(starttime) - margin
+        end = UTCDateTime(endtime) + margin
+        net_re = self._compile_selector(net)
+        sta_re = self._compile_selector(station)
+        cha_re = self._compile_selector(channel)
+
+        files = set()
+        for key, entries in self.project.items():
+            parts = key.split(".")
+            if len(parts) < 3:
+                continue
+            if not (net_re.search(parts[0]) and sta_re.search(parts[1]) and cha_re.search(parts[2])):
+                continue
+            for path, stats in entries:
+                if path is None or stats is None:
+                    continue
+                if stats.starttime <= end and stats.endtime >= start:
+                    files.add(path)
+        return sorted(files)
 
 class ProjectSaveFailed(Exception):
     def __init__(self, message="Error saving project"):
