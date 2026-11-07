@@ -3,6 +3,16 @@ import pandas as pd
 from obspy import UTCDateTime, read_inventory
 from obspy.core.inventory import Inventory, Network, Station, Channel, Site, ClockDrift
 
+EMPTY_CODE_TOKEN = "--"
+CODE_COLUMNS = ("net", "station", "location_code", "channel")
+
+# Broad default epoch used when the table has no (or blank) start/end fields
+DEFAULT_TIME_FIELDS = {
+    "start_date": "1970-01-01",
+    "starttime": "00:00:00",
+    "end_date": "2100-12-31",
+    "endtime": "23:59:59",
+}
 
 class Convert:
     def __init__(self, file_path, sep=None, resp_files=None):
@@ -16,6 +26,43 @@ class Convert:
 
         if resp_files:
             self.check_resps()
+
+    @staticmethod
+    def _clean_code(value):
+        """
+        Normalize a SEED code field.
+          "--"            -> ""    (explicitly empty in StationXML)
+          NaN / "" / None -> None  (not provided)
+          other           -> stripped string
+        """
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):
+                return None
+        except (TypeError, ValueError):
+            pass
+        s = str(value).strip()
+        if s == "" or s.lower() == "nan":
+            return None
+        if s == EMPTY_CODE_TOKEN:
+            return ""
+        return s
+
+    @staticmethod
+    def _get_code(item, col):
+        """Read an already-cleaned code from a row; None if absent/NaN."""
+        if col not in item.index:
+            return None
+        v = item[col]
+        if v is None:
+            return None
+        try:
+            if pd.isna(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return str(v)
 
     def _detect_sep(self) -> str:
         """
@@ -43,6 +90,7 @@ class Convert:
             index_col=False,
             skiprows=0,
             engine="python",
+            dtype=str,          # keep "00", "10", "--" exactly as written
         )
         return df
 
@@ -96,7 +144,7 @@ class Convert:
         - Validates datetime fields (start/end)
         Returns a cleaned dataframe with added parsed datetime columns.
         """
-        required = ["net", "station", "lat", "lon", "elevation", "start_date", "starttime", "end_date", "endtime"]
+        required = ["net", "station", "lat", "lon", "elevation"]
         missing = [c for c in required if c not in df.columns]
         if missing:
             raise ValueError(
@@ -104,7 +152,17 @@ class Convert:
                 + ", ".join(missing)
                 + ".\nExpected columns include: "
                 + ", ".join(required)
+                + " (optional: " + ", ".join(DEFAULT_TIME_FIELDS) + ")"
             )
+
+        # Time fields are optional: add missing columns and fill blank cells
+        # with a very broad epoch (see DEFAULT_TIME_FIELDS).
+        for col, default in DEFAULT_TIME_FIELDS.items():
+            if col not in df.columns:
+                df[col] = default
+            else:
+                df[col] = df[col].astype(object).where(df[col].notna(), default)
+                df[col] = df[col].map(lambda v, d=default: d if str(v).strip() == "" else v)
 
         # Coerce numeric fields
         for col in ["lat", "lon", "elevation"]:
@@ -162,14 +220,19 @@ class Convert:
                 "Please correct start/end."
             )
 
-        # Optional: strip net/station codes
-        df["net"] = df["net"].astype(str).str.strip()
-        df["station"] = df["station"].astype(str).str.strip()
+        # Clean SEED code columns: "--" -> "", missing -> None
+        for col in CODE_COLUMNS:
+            if col in df.columns:
+                df[col] = df[col].map(self._clean_code).astype(object)
 
-        bad_codes = df[(df["net"] == "") | (df["station"] == "")]
+        # net/station must be present ("--" allowed -> empty code)
+        bad_codes = df[df["net"].isna() | df["station"].isna()]
         if not bad_codes.empty:
             examples = bad_codes.head(5).index.tolist()
-            raise ValueError(f"Empty net/station code at row index(es): {examples}.")
+            raise ValueError(
+                f"Missing net/station code at row index(es): {examples}. "
+                f"Use '{EMPTY_CODE_TOKEN}' if you want an empty code."
+            )
 
         optional_numeric = ["azimuth", "sample_rate", "dip", "depth", "clock_drift"]
         for col in optional_numeric:
@@ -405,8 +468,8 @@ class Convert:
         has_depth = "depth" in df.columns
 
         for _, item in df.iterrows():
-            net = str(item["net"]).strip()
-            sta = str(item["station"]).strip()
+            net = self._get_code(item, "net")  # may be "" if "--"
+            sta = self._get_code(item, "station")  # may be "" if "--"
 
             lat = float(item["lat"])
             lon = float(item["lon"])
@@ -463,19 +526,13 @@ class Convert:
                     s["clock_drift"] = station_clock_drift
 
             # Build channel spec only if a channel column exists AND is non-empty
-            chan_code = None
-            if has_channel:
-                raw = item["channel"]
-                if pd.notna(raw) and str(raw).strip():
-                    chan_code = str(raw).strip()
+            chan_code = self._get_code(item, "channel") if has_channel else None
 
-            if chan_code:
+            if chan_code is not None:          # "" (from "--") counts as provided
                 data_map["nets"][net]["stations"][sta]["channels_provided"] = True
                 loc = ""
                 if has_loc:
-                    raw_loc = item["location_code"]
-                    if pd.notna(raw_loc) and str(raw_loc).strip():
-                        loc = str(raw_loc).strip()
+                    loc = self._get_code(item, "location_code") or ""
 
                 sr = 100.0
                 if has_sr and pd.notna(item["sample_rate"]):
@@ -560,6 +617,8 @@ class Convert:
                     latitude=float(s["lat"]),
                     longitude=float(s["lon"]),
                     elevation=float(s["elevation"]),
+                    start_date=starttime,
+                    end_date=endtime,
                     creation_date=starttime,
                     termination_date=endtime,
                     site=Site(name=s.get("site_name") or station_code),
@@ -634,14 +693,3 @@ class Convert:
         xml_filename = f"{xml_filename}_station.xml"
         inventory.write(xml_filename, format="stationxml")
         print(f"StationXML file '{xml_filename}' created successfully.")
-
-
-if __name__ == "__main__":
-    stations_file = "/Users/roberto/Documents/python_notes/my_utils/test_data/coords.txt"
-    path_dest = "/Users/roberto/Documents/python_notes/my_utils/test_data"
-    resp_files = "/Users/roberto/Documents/python_notes/my_utils/resp_files"
-    name = "test"
-    sc = Convert(stations_file, resp_files=resp_files)
-    data_map = sc.create_stations_xml()
-    inventory = sc.get_data_inventory(data_map)
-    sc.write_xml(path_dest, name, inventory)
