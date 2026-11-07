@@ -282,12 +282,26 @@ class MTIManager:
 
         start = origin_time - dt_noise
         end = origin_time + dt_signal
+        pieces = Stream()
         for file in files_path:
             try:
                 st = read_stream(file)
                 tr = st[0]
                 tr.trim(starttime=start, endtime=end)
+                if tr.stats.npts > 0:
+                    pieces.append(tr)
+            except:
+                print("It cannot be read file ", file)
 
+        # Join the pieces of each channel (e.g. the files of two days when the window crosses midnight)
+        # BEFORE processing, so that detrend, taper and response removal act on the continuous trace
+        try:
+            pieces.merge()
+        except Exception as error:
+            print("Files cannot be merged, they are processed separately: ", error)
+
+        for tr in pieces:
+            try:
                 # TODO: It is not TOTALLY still checked the fill_gaps functionality
                 tr = cls.fill_gaps(tr)
                 if tr is not None:
@@ -306,9 +320,8 @@ class MTIManager:
                         tr.taper(max_percentage=0.05)
                     all_traces.append(tr)
             except:
-                print("It cannot be processed file ", file)
+                print("It cannot be processed trace ", tr.id if tr is not None else "")
         st = Stream(traces=all_traces)
-        st.merge()
         try:
             st = cls.rotate_to_ne(st, inventory)
         except Exception as error:
@@ -632,7 +645,7 @@ class MTIManager:
     def fill_gaps(cls, tr, tol=5):
 
         tol_seconds_percentage = int((tol / 100) * len(tr.data)) * tr.stats.delta
-        st = Stream(traces=tr)
+        st = Stream(traces=tr).split()  # a merged trace with gaps is a masked array: split it in its pieces
         gaps = st.get_gaps()
 
         if len(gaps) > 0 and cls._check_gaps(gaps, tol_seconds_percentage):
