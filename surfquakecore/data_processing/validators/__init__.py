@@ -5,6 +5,7 @@ from .cross_spectrum import validate_cross_spectrum
 from .cut import validate_cut
 from .cut_stream import validate_cut_stream
 from .cwt import validate_cwt
+from .cwt_cf import validate_cwt_cf
 from .deconv import validate_deconv
 from .entropy import validate_entropy
 from .flip import validate_flip
@@ -85,7 +86,8 @@ CHECK_DISPATCH = {
     'convolve': validate_convolve,
     'wiener': validate_wiener,
     'deconv': validate_deconv,
-    'cross_spectrum': validate_cross_spectrum}
+    'cross_spectrum': validate_cross_spectrum,
+    'cwt_cf': validate_cwt_cf}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

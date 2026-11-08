@@ -1,9 +1,17 @@
 Analysis:
   process_1:
-    name: 'kurtosis'
-    CF_decay_win: 4.0
+    name: 'cwt_cf'
+    cycles: 6
     fmin: 0.5
     fmax: 8.5
+    nf: 80
+    wavelet_type: 'cm'
+
+#  process_1:
+#    name: 'kurtosis'
+#    CF_decay_win: 4.0
+#    fmin: 0.5
+#    fmax: 8.5
 
 #  process_1:
 #    name: 'envelope'

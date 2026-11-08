@@ -6,6 +6,7 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
     add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
     rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing, deconvolve
+from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
 
 try:
     from surfquakecore.cython_module.hampel import hampel
@@ -293,7 +294,7 @@ class StreamProcessing:
     """
 
     STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum"}
+                      "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum", "cwt_cf"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -340,6 +341,8 @@ class StreamProcessing:
                     self.apply_pm(step)
                 elif method_name == "kurtosis":
                     self.apply_kurtosis(step)
+                elif method_name == "cwt_cf":
+                    self.apply_cwt_cf(step)
                 elif method_name == "cut_stream":
                     self.apply_cut(step)
                 elif method_name == "algebra":
@@ -393,6 +396,7 @@ class StreamProcessing:
                               "transfer_amplitude", "transfer_phase"}
 
     def apply_cross_spectrum(self, step_config):
+
         """
         Cross-spectral analysis of every trace of the stream with respect to a reference trace.
         Same logic as apply_cross_correlation / apply_deconv: n traces in -> n traces out
@@ -426,6 +430,7 @@ class StreamProcessing:
         Returns:
             Stream: new stream with one cross-spectrum trace per input trace.
         """
+
         reference_idx = step_config.get("reference", step_config.get("reference_idx", 0))
         output = step_config.get("output", "amplitude")
         trim = step_config.get("trim", True)
@@ -457,52 +462,6 @@ class StreamProcessing:
                                                        nw=kwargs["nw"],
                                                        linf=kwargs["linf"],
                                                        lsup=kwargs["lsup"])
-
-        # cs_stream = Stream()
-        # for res in results:
-        #     freq = np.asarray(res.freq, dtype=float)
-        #     if len(freq) < 2:
-        #         print(f"[WARNING] Cross-spectrum of {res.trace.id} has fewer than 2 frequency samples, skipped")
-        #         continue
-        #
-        #     if output == "amplitude":
-        #         data = np.abs(res.gxy)
-        #     elif output == "phase":
-        #         data = np.degrees(np.angle(res.gxy))
-        #     elif output == "real":
-        #         data = np.real(res.gxy)
-        #     elif output == "imag":
-        #         data = np.imag(res.gxy)
-        #     elif output == "coherence":
-        #         data = res.coherence
-        #     elif output == "transfer_amplitude":
-        #         data = res.amplitude
-        #     else:  # transfer_phase
-        #         data = res.phase_deg
-        #
-        #     df = float(freq[1] - freq[0])
-        #     ref, tr = res.ref_trace, res.trace
-        #
-        #     cs_tr = Trace(data=np.nan_to_num(np.asarray(data, dtype=np.float64)))
-        #     cs_tr.stats.starttime = tr.stats.starttime
-        #     cs_tr.stats.delta = df  # sampling in frequency (Hz), not in time
-        #     cs_tr.stats.network = tr.stats.network
-        #     cs_tr.stats.station = ref.stats.station + "_" + tr.stats.station
-        #     cs_tr.stats.channel = tr.stats.channel[0:1] + "S" + tr.stats.channel[-1]
-        #     cs_tr.stats.spectral_domain = True
-        #     cs_tr.stats.freq_min = float(freq[0])
-        #     cs_tr.stats.cross_spectrum_with = ref.id
-        #     cs_tr.stats.original_trace = tr.id
-        #     cs_tr.stats.is_autospectrum = res.trace is res.ref_trace
-        #     cs_tr.stats.cross_spectrum_output = output
-        #     cs_tr.stats.cross_spectrum_method = res.method
-        #     cs_tr.stats.n_avg = res.n_avg
-        #     cs_tr.stats.csd = np.asarray(res.gxy)
-        #     cs_tr.stats.coherence = np.asarray(res.coherence)
-        #     cs_stream.append(cs_tr)
-        #
-        # if len(cs_stream) != len(self.stream):
-        #     print(f"[WARNING] cross_spectrum: {len(self.stream)} traces in, {len(cs_stream)} traces out")
 
         output_dir = step_config.get("output_path")
         if output_dir:
@@ -886,6 +845,38 @@ class StreamProcessing:
         cf_kurt = CFKurtosis(self.stream, step_config["CF_decay_win"], 4,  step_config["fmin"], step_config["fmax"])
         self.stream = cf_kurt.run_kurtosis()
 
+    def apply_cwt_cf(self, step_config):
+        cfs = []
+        cycles = step_config["cycles"]
+        fmin = step_config["fmin"]
+        fmax = step_config["fmax"]
+        nf = step_config["nf"]
+        wavelet_type = step_config["wavelet_type"]
+
+        if wavelet_type == "cm":
+            wavelet_type = "Complex Morlet"
+        elif wavelet_type == "mh":
+            wavelet_type = "Mexican Hat"
+        elif wavelet_type == "pa":
+            wavelet_type = "Paul"
+
+        # -------------------------------------
+
+        for tr in self.stream:
+            cw = ConvolveWaveletScipy(tr)
+            tt = int(tr.stats.sampling_rate / fmin)
+            cw.setup_wavelet(wmin=cycles, wmax=cycles, tt=tt, fmin=fmin, fmax=fmax, nf=nf,
+                             use_rfft=False, decimate=False, use_wavelet=wavelet_type)
+
+            cf = cw.cf_lowpass()
+            delay = cw.get_time_delay()
+            start = tr.stats.starttime + delay
+            tr.stats.starttime = start
+            tr_cf = tr.copy()
+            tr_cf.data = cf
+            cfs.append(tr_cf)
+
+        self.stream = Stream(traces=cfs)
 
     def apply_pm(self, step_config):
 
