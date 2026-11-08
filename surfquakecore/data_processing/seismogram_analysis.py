@@ -846,38 +846,13 @@ class StreamProcessing:
         self.stream = cf_kurt.run_kurtosis()
 
     def apply_cwt_cf(self, step_config):
-        cfs = []
-        cycles = step_config["cycles"]
-        fmin = step_config["fmin"]
-        fmax = step_config["fmax"]
-        nf = step_config["nf"]
-        wavelet_type = step_config["wavelet_type"]
-
-        if wavelet_type == "cm":
-            wavelet_type = "Complex Morlet"
-        elif wavelet_type == "mh":
-            wavelet_type = "Mexican Hat"
-        elif wavelet_type == "pa":
-            wavelet_type = "Paul"
-
-        # -------------------------------------
-
-        for tr in self.stream:
-            cw = ConvolveWaveletScipy(tr)
-            tt = int(tr.stats.sampling_rate / fmin)
-            cw.setup_wavelet(wmin=cycles, wmax=cycles, tt=tt, fmin=fmin, fmax=fmax, nf=nf,
-                             use_rfft=False, decimate=False, use_wavelet=wavelet_type)
-
-            cf = cw.cf_lowpass()
-            delay = cw.get_time_delay()
-            start = tr.stats.starttime + delay
-            tr.stats.starttime = start
-            tr_cf = tr.copy()
-            tr_cf.data = cf
-            cfs.append(tr_cf)
-
-        self.stream = Stream(traces=cfs)
-
+        from surfquakecore.data_processing.wavelet import cwt_cf_stream
+        self.stream = cwt_cf_stream(self.stream,
+                                    fmin=step_config["fmin"],
+                                    fmax=step_config["fmax"],
+                                    cycles=step_config["cycles"],
+                                    voices_per_octave=step_config["voices_per_octave"],
+                                    wavelet=step_config["wavelet_type"])
     def apply_pm(self, step_config):
 
         """

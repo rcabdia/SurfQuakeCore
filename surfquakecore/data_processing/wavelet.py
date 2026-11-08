@@ -862,6 +862,90 @@ class ConvolveWaveletScipy(ConvolveWaveletBase):
             self._tf = self._convolve_atoms(parallel)
 
 
+
+def cwt_cf_stream( st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
+                  voices_per_octave: Optional[int] = 16, nf: Optional[int] = None,
+                  wavelet: str = "Complex Morlet", tt: Optional[float] = None,
+                  lowpass_freq: float = 0.15) -> Stream:
+
+    _WAVELET_ALIASES = {"cm": "Complex Morlet", "mh": "Mexican Hat", "pa": "Paul"}
+
+    """
+    Wavelet characteristic function for every trace of a Stream.
+
+    The bank of atoms (and its FFT) is computed once per sampling rate /
+    FFT length and reused for all traces. Each trace is convolved with the
+    whole bank in a single FFT product (equivalent to oaconvolve mode='same').
+
+    Parameters
+    ----------
+    st                : input Stream (not modified)
+    fmin, fmax        : frequency band [Hz]
+    cycles            : number of cycles of the atoms (wmin = wmax = cycles)
+    voices_per_octave : frequency resolution; if None, `nf` is used
+    nf                : number of atoms (only if voices_per_octave is None)
+    wavelet           : 'Complex Morlet' | 'Mexican Hat' | 'Paul' | 'cm' | 'mh' | 'pa'
+    tt                : half-length of the atoms [s]; None keeps the legacy
+                        value int(fs / fmin)
+    lowpass_freq      : lowpass corner applied to the CF [Hz]
+
+    Returns
+    -------
+    Stream of characteristic functions, start time shifted by the wavelet delay.
+    """
+    wavelet = _WAVELET_ALIASES.get(wavelet, wavelet)
+
+    banks = {}  # fs -> (atoms, delay)
+    banks_fft = {}  # (fs, nfft) -> FFT of atoms
+    cfs = []
+
+    for tr in st:
+        fs = tr.stats.sampling_rate
+
+        # 1. Bank of atoms, once per sampling rate (reuses filter_win)
+        if fs not in banks:
+            kw = dict(wmin=cycles, wmax=cycles, fmin=fmin, fmax=fmax,
+                      tt=tt if tt is not None else int(fs / fmin),
+                      use_wavelet=wavelet, use_rfft=False, decimate=False)
+            if voices_per_octave is not None:
+                kw["voices_per_octave"] = voices_per_octave
+            else:
+                kw["nf"] = nf if nf is not None else 20
+            cw = ConvolveWaveletScipy(tr, **kw)
+            cw.setup_wavelet()
+            atoms = np.array([cw.filter_win(f, i) for i, f in enumerate(cw.frequencies)])
+            banks[fs] = (atoms, cw.get_time_delay())
+        atoms, delay = banks[fs]
+
+        # 2. Same preprocessing as ConvolveWaveletBase
+        tr_cf = tr.copy()
+        tr_cf.detrend(type="demean")
+        tr_cf.taper(max_percentage=0.05)
+        data = tr_cf.data
+        n, m = len(data), atoms.shape[1]
+
+        # 3. FFT of the bank, once per (fs, nfft)
+        nfft = scipy.fft.next_fast_len(n + m - 1)
+        key = (fs, nfft)
+        if key not in banks_fft:
+            banks_fft[key] = scipy.fft.fft(atoms, n=nfft, axis=1)
+
+        # 4. Convolve the trace with all atoms at once
+        tf = scipy.fft.ifft(banks_fft[key] * scipy.fft.fft(data, n=nfft), axis=1)
+        start = (m - 1) // 2
+        tf = tf[:, start:start + n]
+
+        # 5. Characteristic function (same as cf_lowpass)
+        cf = np.mean(np.diff(np.log10(np.abs(tf) ** 2 + 1e-30), axis=1), axis=0)
+        cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
+        cf = lowpass(cf, lowpass_freq, df=fs, corners=3, zerophase=True)
+
+        tr_cf.data = cf
+        tr_cf.stats.starttime += delay
+        cfs.append(tr_cf)
+
+    return Stream(traces=cfs)
+
 # ===========================================================================
 # AFTANWavelet — faithful reimplementation of the original FORTRAN AFTAN
 # ===========================================================================
