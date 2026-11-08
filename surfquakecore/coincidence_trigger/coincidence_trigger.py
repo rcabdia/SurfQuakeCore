@@ -21,6 +21,8 @@ from obspy import Stream, UTCDateTime
 import matplotlib.dates as mdt
 import matplotlib.pyplot as plt
 import re
+from surfquakecore.data_processing.wavelet import cwt_cf_stream
+import numpy as np
 
 class CoincidenceTrigger:
     def __init__(self, projects: list, coincidence_config: Union[str, CoincidenceConfig], picking_file=None,
@@ -50,8 +52,18 @@ class CoincidenceTrigger:
 
             self.CF_decay_win = self.coincidence_config.kurtosis_configuration.CF_decay_win
             self.hos_order = 4 #kurtosis
+
+        elif self.method_preferred == "CWT":
+
+            cwt_config = self.coincidence_config.cwt_configuration
+            if cwt_config is None:
+                raise ValueError("method_preferred = CWT needs a [CWT] section in the config file")
+            self.cycles = cwt_config.cycles
+            self.voices_per_octave = cwt_config.voices_per_octave
+            self.wavelet_type = cwt_config.wavelet_type
         else:
-            print("Available preferred methods are: SNR or Kurtosis")
+            print("Available preferred methods are: SNR, Kurtosis or CWT")
+
 
     def __get_coincidence_config(self, coincidence_config):
         if isinstance(coincidence_config, str) and os.path.isfile(coincidence_config):
@@ -183,6 +195,43 @@ class CoincidenceTrigger:
 
         return events, events_times_cluster
 
+    def thresholding_cwt_cf(self, files_list):
+
+        traces = []
+
+        for file in files_list:
+            try:
+                tr = read(file)[0]
+                tr = self.fill_gaps(tr)
+                if tr is not None:
+                    traces.append(tr)
+            except:
+                print("File not included: ", file)
+
+        st = Stream(traces)
+        st.merge(method=1, fill_value='interpolate', interpolation_samples=-1)
+
+        print("Ready to run coincidence Trigger at: ")
+        print(st.__str__(extended=True))
+
+        print("Computing CWT characteristic function")
+        st_cf = cwt_cf_stream(st, fmin=self.fmin, fmax=self.fmax, cycles=self.cycles,
+                              voices_per_octave=self.voices_per_octave,
+                              wavelet=self.wavelet_type)
+        for tr in st_cf:
+            med = np.median(tr.data)
+            mad = 1.4826 * np.median(np.abs(tr.data - med))  # robust estimate of σ
+            tr.data = (tr.data - med) / mad if mad > 0 else np.zeros_like(tr.data)
+
+        events, events_times_cluster = self.run_coincidence(st_cf)
+
+        if self.plot and self.output_folder:
+            print("Plotting CFs")
+            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, type="CWT", events=events_times_cluster,
+                                                      savepath=self.output_folder, show=False)
+
+        return events, events_times_cluster
+
     def thresholding_cwt_kurt(self, files_list):
 
         traces = []
@@ -242,8 +291,10 @@ class CoincidenceTrigger:
             return self.thresholding_sta_lta(filtered_files)
         elif self.method_preferred == "Kurtosis":
             return self.thresholding_cwt_kurt(filtered_files)
+        elif self.method_preferred == "CWT":
+            return self.thresholding_cwt_cf(filtered_files)
         else:
-            print("Method preferred available are: Kurtosis or SNR, please select one of this")
+            print("Method preferred available are: Kurtosis, SNR or CWT, please select one of this")
 
     def optimized_project_processing(self):
 

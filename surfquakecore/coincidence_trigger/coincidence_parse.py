@@ -15,7 +15,7 @@ coincidence_parse
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
 
-from surfquakecore.coincidence_trigger.structures import CoincidenceConfig, Kurtosis, STA_LTA, Cluster
+from surfquakecore.coincidence_trigger.structures import CoincidenceConfig, Kurtosis, STA_LTA, Cluster, CWT
 from surfquakecore.utils import Cast
 from surfquakecore.utils.configuration_utils import parse_configuration_file
 
@@ -44,6 +44,13 @@ def load_concidence_configuration(config_file: str) -> CoincidenceConfig:
 
     coincidence_config_ini = parse_configuration_file(config_file)
 
+    cwt_configuration = None
+    if 'CWT' in coincidence_config_ini:
+        cwt_configuration = CWT(
+            cycles=Cast(coincidence_config_ini['CWT']['cycles'], float),
+            voices_per_octave=Cast(coincidence_config_ini['CWT']['voices_per_octave'], int),
+            wavelet_type=Cast(coincidence_config_ini['CWT']['wavelet_type'], str))
+
     return CoincidenceConfig(
             kurtosis_configuration=Kurtosis(
                     CF_decay_win=Cast(coincidence_config_ini['Kurtosis']['CF_decay_win'], float)),
@@ -58,9 +65,5 @@ def load_concidence_configuration(config_file: str) -> CoincidenceConfig:
                 threshold_off=Cast(coincidence_config_ini['Cluster']['threshold_off'], float),
                 threshold_on=Cast(coincidence_config_ini['Cluster']['threshold_on'], float),
                 fmin=Cast(coincidence_config_ini['Cluster']['fmin'], float),
-                fmax=Cast(coincidence_config_ini['Cluster']['fmax'], float)))
-
-if __name__ == '__main__':
-    config_file = "/Users/robertocabiecesdiaz/Desktop/surf_test/coincidence.ini"
-    CoincidenceConfig = load_concidence_configuration(config_file)
-    print(CoincidenceConfig)
+                fmax=Cast(coincidence_config_ini['Cluster']['fmax'], float)),
+            cwt_configuration=cwt_configuration)

@@ -15,6 +15,8 @@ structures
 # --------------------------------------------------------------------
 
 from dataclasses import dataclass
+from typing import Optional
+
 from surfquakecore.utils import BaseDataClass
 
 @dataclass
@@ -42,3 +44,17 @@ class CoincidenceConfig(BaseDataClass):
     kurtosis_configuration: Kurtosis
     sta_lta_configuration: STA_LTA
     cluster_configuration: Cluster
+
+@dataclass
+class CWT(BaseDataClass):
+    cycles: float
+    voices_per_octave: int
+    wavelet_type: str          # cm | mh | pa
+
+@dataclass
+class CoincidenceConfig(BaseDataClass):
+
+    kurtosis_configuration: Kurtosis
+    sta_lta_configuration: STA_LTA
+    cluster_configuration: Cluster
+    cwt_configuration: Optional[CWT] = None
