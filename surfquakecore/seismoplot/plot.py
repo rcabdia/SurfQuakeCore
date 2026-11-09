@@ -112,6 +112,30 @@ class PlotProj:
 
         self.trace_list = list(stream)
 
+        # Keys that must not be changed from the plot config
+        self._RC_BLACKLIST = {"backend", "interactive"}
+        self._rc = {}
+
+    def _get_rcparams(self) -> dict:
+        """Validated Matplotlib rcParams taken from plot_config['rcparams']."""
+        raw = self.plot_config.get("rcparams") or {}
+        if not isinstance(raw, dict):
+            print("[WARNING] 'rcparams' must be a dictionary, ignored")
+            return {}
+
+        valid = {}
+        for key, value in raw.items():
+            if key in self._RC_BLACKLIST:
+                print(f"[WARNING] rcParam '{key}' cannot be set from the plot config, ignored")
+                continue
+            try:
+                valid[key] = mplt.rcParams.validate[key](value)
+            except KeyError:
+                print(f"[WARNING] Unknown Matplotlib rcParam '{key}', ignored")
+            except (ValueError, TypeError) as e:
+                print(f"[WARNING] Invalid value for rcParam '{key}': {value!r} ({e}), ignored")
+        return valid
+
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(os.path.expanduser(path)) if path else None
 
@@ -186,26 +210,28 @@ class PlotProj:
         backend = "Agg" if not self.plot_config.get("show_plot", True) else self.plot_config["backend"]
         mplt.use(backend)
 
+        self._rc = self._get_rcparams()
         plot_type = self.plot_config.get("plot_type", "standard")
 
-        if plot_type == "standard" and not self.plot_config.get("show_plot", True):
-            # Batch mode: save every page automatically, no interaction needed
-            traces_per_fig = self.plot_config["traces_per_fig"]
-            n_pages = -(-len(self.trace_list) // traces_per_fig)  # ceil division
-            for p in range(n_pages):
-                self.current_page = p
-                self._plot_standard_traces(page=p)
-            return self.trace_list
+        with mplt.rc_context(self._rc):
+            if plot_type == "standard" and not self.plot_config.get("show_plot", True):
+                # Batch mode: save every page automatically, no interaction needed
+                traces_per_fig = self.plot_config["traces_per_fig"]
+                n_pages = -(-len(self.trace_list) // traces_per_fig)  # ceil division
+                for p in range(n_pages):
+                    self.current_page = p
+                    self._plot_standard_traces(page=p)
+                return self.trace_list
 
-        self.current_page = page
-        if plot_type == "record":
-            self._plot_record_section()
-        elif plot_type == "overlay":
-            self._plot_overlay_traces()
-        elif plot_type == "standard":
-            self._plot_standard_traces(page=page)
+            self.current_page = page
+            if plot_type == "record":
+                self._plot_record_section()
+            elif plot_type == "overlay":
+                self._plot_overlay_traces()
+            elif plot_type == "standard":
+                self._plot_standard_traces(page=page)
 
-        return self.trace_list  # Return modified trace list
+        return self.trace_list
 
     def _plot_standard_traces(self, page):
         plt.close(self.fig)
@@ -283,11 +309,12 @@ class PlotProj:
                 label = tr.id
 
             # One single plotting call per trace
+            lw = self._rc.get("lines.linewidth", 0.75)
             if use_fast:
-                FastLine(ax, tr, n_points=fast_points, linewidth=0.75, label=label)
+                FastLine(ax, tr, n_points=fast_points, linewidth=lw, label=label)
             else:
                 t = tr.times("matplotlib")
-                ax.plot(t, tr.data, linewidth=0.75, label=label)
+                ax.plot(t, tr.data, linewidth=lw, label=label)
 
             # --- Plot theoretical arrivals and origin time if present ---
             arrivals = tr.stats.get("geodetic", {}).get("arrivals", [])
@@ -370,7 +397,7 @@ class PlotProj:
                 out_file = os.path.join(out_dir, f"{base_name}_{counter}.{format_save}")
                 counter += 1
             try:
-                self.fig.savefig(out_file, dpi=150)
+                self.fig.savefig(out_file, dpi=self._rc.get("savefig.dpi", 150))
                 print(f"[INFO] Figure saved to {out_file}")
             except Exception as e:
                 print(f"[ERROR] Failed to save figure: {e}")
@@ -465,10 +492,11 @@ class PlotProj:
                 half = (npts // 2) * dt  # segundos desde inicio hasta la muestra central
                 t = tr.times() - half  # desplaza para que el centro sea 0
 
+            lw = self._rc.get("lines.linewidth", 0.6)
             if N_traces >= 12:
-                ax.plot(t, norm_data * scale + dist, color="black", alpha=0.75, linewidth=0.6)
+                ax.plot(t, norm_data * scale + dist, color="black", alpha=0.75, linewidth=lw)
             else:
-                ax.plot(t, norm_data * scale + dist, alpha=0.75, linewidth=0.6, label=tr.id)
+                ax.plot(t, norm_data * scale + dist, alpha=0.75, linewidth=lw, label=tr.id)
 
         # Fases teóricas — solo en modo "dates"
         if record_option == "dates":
@@ -506,7 +534,7 @@ class PlotProj:
         ax.set_title("Record Section")
 
         if cfg["show_legend"]:
-            ax.legend(fontsize=6)
+            ax.legend(fontsize=self._rc.get("legend.fontsize", 6))
 
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
@@ -518,7 +546,7 @@ class PlotProj:
             filename = f"sqProject_record_page{self.current_page:03d}_{timestamp}.{format_save}"
             out_file = os.path.join(out_dir, filename)
             try:
-                self.fig.savefig(out_file, dpi=150)
+                self.fig.savefig(out_file, dpi=self._rc.get("savefig.dpi", 150))
                 print(f"[INFO] Figure saved to {out_file}")
             except Exception as e:
                 print(f"[ERROR] Failed to save figure: {e}")
@@ -552,13 +580,13 @@ class PlotProj:
 
         fig, ax = plt.subplots(figsize=(12, 8))
         n = len(traces)
+        lw = self._rc.get("lines.linewidth", 0.8)
         for tr in traces:
             t = tr.times("matplotlib")
-
             if n > 12:
-                ax.plot(t, tr.data, color="black", linewidth=0.8, alpha=0.7)
+                ax.plot(t, tr.data, color="black", linewidth=lw, alpha=0.7)
             else:
-                ax.plot(t, tr.data, linewidth=0.8, alpha=0.7, label=tr.id)
+                ax.plot(t, tr.data, linewidth=lw, alpha=0.7, label=tr.id)
 
         # X axis from the earliest start to the latest end of all traces
         x_min = min(tr.stats.starttime.matplotlib_date for tr in traces)
@@ -572,7 +600,7 @@ class PlotProj:
         ax.set_title("Overlay of All Traces")
 
         if self.plot_config["show_legend"] or n <= 12:
-            ax.legend(fontsize=6)
+            ax.legend(fontsize=self._rc.get("legend.fontsize", 6))
 
         plt.tight_layout()
 

@@ -38,11 +38,6 @@ plotting:
   # default: false
   sort_by: distance
 
-  # Vertical space between subplots (fraction of the subplot height).
-  # Use 0 for stacked traces touching each other.
-  # default: 0.05
-  vspace: 0.05
-
   # Share the Y axis between all the subplots of a figure.
   #   true  : same amplitude scale, lets you compare amplitudes between traces
   #   false : each trace is auto-scaled independently
@@ -52,10 +47,6 @@ plotting:
   # Show the legend (trace id) in every subplot.
   # default: true
   show_legend: true
-
-  # Font size of the subplot titles.
-  # default: 9
-  title_fontsize: 9
 
   # ---------------------------------------------------------------------------
   #  RECORD SECTION  (only used when plot_type: record)
@@ -147,8 +138,8 @@ plotting:
   # default: false
   fast: false
 
-  # Number of points used by the fast mode. In the current version the code
-  # uses a fixed value of 1000, so changing this key has no effect yet.
+  # Number of points (min/max pairs) drawn per trace in fast mode.
+  # Higher = more detail, slower. Only used when fast: true.
   # default: 1000
   fast_points: 1000
 
@@ -171,6 +162,30 @@ plotting:
   # used automatically, so this key is ignored.
   # default: TkAgg
   backend: TkAgg
+
+  # ---------------------------------------------------------------------------
+  #  MATPLOTLIB STYLE (rcParams)
+  # ---------------------------------------------------------------------------
+  # Any Matplotlib rcParam can be set here and is applied to the standard,
+  # overlay and record plots. Unknown keys or invalid values are ignored with
+  # a warning. "backend" and "interactive" cannot be set here (use the
+  # "backend" key below).
+  # Not affected by rcParams: the time-axis format, the scientific notation of
+  # the Y axis and the figure size, which are fixed by the plotting code.
+  # default: {} (Matplotlib defaults + SurfQuakeCore styling)
+  # full information https://matplotlib.org/stable/users/explain/customizing.html#customizing-with-style-sheets
+  rcparams:
+    xtick.labelsize: 7
+    ytick.labelsize: 7
+    xtick.direction: in
+    xtick.minor.visible: true
+    axes.grid: true
+    grid.alpha: 0.3
+    lines.linewidth: 0.5
+    legend.fontsize: 8
+    font.family: serif
+    font.weight: bold
+
 
 # Option -a,show_plot,plot_output_path,Plot created,Shown on screen,Figures saved,Processed data to -o
 # yes	true	null	no	no	no	no	no	yes

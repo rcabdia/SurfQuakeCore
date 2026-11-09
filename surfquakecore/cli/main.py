@@ -2058,11 +2058,15 @@ def _trigg():
         Seismological Society of America, 72(6B), S225-S242.
 
         Poiata, N., C. Satriano, J.-P. Vilotte, P. Bernard, and K. Obara (2016). Multi-band array detection and 
-        location of seismic sources recorded by dense seismic networks, Geophys. J. Int.,
+        location of seismic sources recorded by dense seismic networks,  Geophysical Journal International.,
         205(3), 1548-1573, doi:10.1093/gji/ggw071.
+        
+        Cabieces, R., Krüger, F., Garcia-Yeguas, et al., (2020). 
+        Slowness vector estimation over large-aperture sparse arrays with the Continuous Wavelet Transform (CWT):
+        application to Ocean Bottom Seismometers. Geophysical Journal International, 223(3), 1919-1934.
 
         Usage Example:
-            surfquake trigg -c config.yaml -o ./output_folder -ch "HHZ" --min_date "2024-01-01 00:00:00" \\
+            surfquake trigg -c config.ini -o ./output_folder -ch "HHZ" --min_date "2024-01-01 00:00:00" \\
             --max_date "2024-01-04 00:00:00" --span_seconds  86400 --picking_file ./pick.txt --plot
 
         Key Arguments:
