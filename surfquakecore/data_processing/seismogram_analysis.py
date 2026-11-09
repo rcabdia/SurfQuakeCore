@@ -187,12 +187,6 @@ class SeismogramData:
                 if _config['name'] == 'smoothing':
                     tr = smoothing(tr, type=_config['method'], k=_config['time_window'], fwhm=_config['FWHM'])
 
-                if _config['name'] == 'envelope':
-                    if _config['method'] == "SMOOTH" and "corner_freq" in _config.keys():
-                        tr = trace_envelope(tr, method=_config['method'], corner_freq=_config['corner_freq'])
-                    else:
-                        tr = trace_envelope(tr, method=_config['method'])
-
                 if _config['name'] == 'cut':
                     if 'pad' in _config.keys():
                         pass
@@ -279,8 +273,10 @@ class StreamProcessing:
     Class for applying stream-wide processing steps (e.g., stack, cross-correlation, rotate, shift).
     """
 
-    STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum", "cwt_cf", "snr", "entropy"}
+    STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam",
+                      "particle_motion",
+                      "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum", "cwt_cf", "snr",
+                      "entropy", "envelope"}
 
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
@@ -342,6 +338,8 @@ class StreamProcessing:
                     self.apply_snr(step)
                 elif method_name == "entropy":
                     self.apply_entropy(step)
+                elif method_name == "envelope":
+                    self.apply_envelope(step)
 
             return self.stream
 
@@ -873,6 +871,22 @@ class StreamProcessing:
 
         self.stream = Stream(entropy_list)
 
+
+    def apply_envelope(self, step_config):
+
+        envelope_list = []
+        env_tr = None
+
+        for tr in self.stream:
+            if step_config['name'] == 'envelope':
+                if step_config['method'] == "SMOOTH" and "corner_freq" in step_config.keys():
+                    env_tr = trace_envelope(tr, method=step_config['method'], corner_freq=step_config['corner_freq'])
+                else:
+                    env_tr = trace_envelope(tr, method=step_config['method'])
+
+            envelope_list.append(env_tr)
+
+        self.stream = Stream(envelope_list)
 
     def apply_pm(self, step_config):
 

@@ -618,7 +618,8 @@ def __hampel_aux(input_series, window_size, size, n_sigmas):
 
     return new_series
 
-def trace_envelope(tr, method = "FULL", **kwargs):
+
+def trace_envelope(tr, method="FULL", **kwargs):
     corner_freq = kwargs.pop("corner_freq", 0.15)
     N = len(tr.data)
     D = 2 ** math.ceil(math.log2(N))
@@ -636,6 +637,7 @@ def trace_envelope(tr, method = "FULL", **kwargs):
         tr.filter(type='lowpass',freq=corner_freq, corners=3, zerophase=True)
 
     return tr
+
 
 def normalize(tr, clip_factor=6, clip_weight=10, norm_win=10, norm_method="1bit"):
     if norm_method == 'clipping':

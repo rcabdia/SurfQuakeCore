@@ -1,11 +1,30 @@
 Analysis:
   process_1:
-    name: 'cwt_cf'
-    cycles: 6
+    name: 'concat'
+  process_2:
+    name: 'rmean'
+    method: 'linear'
+  process_3:
+    name: 'taper'
+    method: 'cosine'
+    max_percentage: 0.05
+  process_4:
+    name: 'filter'
+    type: 'bandpass'
     fmin: 0.5
-    fmax: 8.5
-    voices_per_octave: 32
-    wavelet_type: 'cm'
+    fmax: 8.0
+    corners: 4
+    zerophase: True
+
+###### Select on of the available Characteristic functions #######
+
+#  process_1:
+#    name: 'cwt_cf'
+#    cycles: 6
+#    fmin: 0.5
+#    fmax: 8.5
+#    voices_per_octave: 32
+#    wavelet_type: 'cm'
 
 #  process_1:
 #    name: 'kurtosis'
