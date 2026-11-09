@@ -4,7 +4,7 @@ Analysis:
     cycles: 6
     fmin: 0.5
     fmax: 8.5
-    nf: 80
+    voices_per_octave: 32
     wavelet_type: 'cm'
 
 #  process_1:
@@ -12,11 +12,6 @@ Analysis:
 #    CF_decay_win: 4.0
 #    fmin: 0.5
 #    fmax: 8.5
-
-#  process_1:
-#    name: 'envelope'
-#    method: 'SMOOTH'
-#    corner_freq: 0.15
 
 #  process_1:
 #    name: 'envelope'

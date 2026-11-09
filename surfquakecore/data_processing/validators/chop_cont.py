@@ -13,12 +13,15 @@ def validate_chop_cont(config):
     # DEFAULT max_interpolation_gap = 2, THIS IS DONE INTERNALLY, OPTIONAL parameter
     """
 
-    require_keys(config, ['chunk_length', 'min_length', 'output_dir'])
+    require_keys(config, ['chunk_length', 'min_length', 'overlap', 'output_dir'])
 
     require_type(config, 'chunk_length', (float, int))
     require_type(config, 'min_length', (float, int))
+    require_type(config, 'overlap', (float, int))
+
     if "max_interpolation_gap" in config:
         require_type(config, 'max_interpolation_gap', (float, int))
     require_type(config, 'output_dir', str)
+
 
     return True

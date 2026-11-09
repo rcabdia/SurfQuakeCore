@@ -43,6 +43,7 @@ class PlotCommandPrompt:
             "back2future": self._cmd_back2future,
             "taper": self._cmd_taper,
             "remove_spikes": self._cmd_remove_spikes,
+            "wiener": self._cmd_wiener,
             "spectrogram": self._cmd_spectrogram,
             "spec": self._cmd_spectrogram,
             "spectrum": self._cmd_spectrum,
@@ -328,6 +329,116 @@ class PlotCommandPrompt:
 
         print(f"[INFO] remove_spikes (window={window} s, sigma={sigma}): "
               f"{n_spikes} spike(s) removed in {n_traces} traces.")
+
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
+    def _cmd_wiener(self, args):
+        """
+        SAC-style adaptive Wiener (prediction-error) filter.
+        The design window is the time window selected in the plot (utc_start / utc_end),
+        or --start / --end. The filter is applied to the whole trace.
+
+        Usage:
+            wiener [--ncoeff <n>] [--mu off|on|<v>] [--epsilon off|on|<e>]
+                   [--update sac|lms] [--start <time> --end <time>]
+        Example:
+            >> wiener --ncoeff 30
+        """
+        import warnings
+        from obspy import UTCDateTime
+        from surfquakecore.data_processing.processing_methods import wiener
+
+        params = {"ncoeff": 30, "mu": "off", "epsilon": "off", "update": "sac"}
+        t_start = getattr(self.plot_proj, "utc_start", None)
+        t_end = getattr(self.plot_proj, "utc_end", None)
+
+        def _mode_or_float(text):
+            return text.lower() if text.lower() in ("off", "on") else float(text)
+
+        tokens = list(args[1:])
+        i = 0
+        opt = None
+        try:
+            while i < len(tokens):
+                opt = tokens[i]
+                if opt in ("--start", "--end"):
+                    value = tokens[i + 1]
+                    i += 2
+                    # allow the "date time" form split by the prompt into two tokens
+                    if (i < len(tokens) and not tokens[i].startswith("--")
+                            and ":" in tokens[i] and "T" not in value and ":" not in value):
+                        value = f"{value}T{tokens[i]}"
+                        i += 1
+                    if opt == "--start":
+                        t_start = UTCDateTime(value.strip('"\''))
+                    else:
+                        t_end = UTCDateTime(value.strip('"\''))
+                    continue
+                value = tokens[i + 1]
+                i += 2
+                if opt == "--ncoeff":
+                    params["ncoeff"] = int(value)
+                elif opt == "--mu":
+                    params["mu"] = _mode_or_float(value)
+                elif opt == "--epsilon":
+                    params["epsilon"] = _mode_or_float(value)
+                elif opt == "--update":
+                    params["update"] = value.lower()
+                else:
+                    print(f"[ERROR] Unknown option: {opt}. Type 'help wiener'.")
+                    return
+        except IndexError:
+            print(f"[ERROR] Missing value for {opt}.")
+            return
+        except ValueError as e:
+            print(f"[ERROR] Invalid value for {opt}: {e}")
+            return
+
+        if params["update"] not in ("sac", "lms"):
+            print("[ERROR] --update must be sac or lms.")
+            return
+        if not 2 <= params["ncoeff"] <= 100:
+            print("[ERROR] --ncoeff must be between 2 and 100.")
+            return
+
+        if t_start is None or t_end is None:
+            print("[ERROR] The design window is not set. Select it in the plot (right-click drag, "
+                  "or keys 'u' = start and 'i' = end), or use --start/--end.")
+            return
+        if t_end <= t_start:
+            print(f"[ERROR] Design window end ({t_end}) must be after start ({t_start}).")
+            return
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to process.")
+            return
+
+        print(f"[INFO] Wiener filter, design window {t_start} -> {t_end}, "
+              f"ncoeff={params['ncoeff']}, mu={params['mu']}, epsilon={params['epsilon']}, "
+              f"update={params['update']}")
+
+        done = 0
+        for tr in traces:
+            try:
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    wiener(tr, window=(t_start, t_end), inplace=True, **params)
+                for w in caught:
+                    print(f"[WARN] {tr.id}: {w.message}")
+                # keep the trace header clean (it may be written later to HDF5)
+                info = tr.stats.pop("wiener", {})
+                print(f"[INFO] {tr.id}: epsilon={info.get('epsilon')}, "
+                      f"stable={info.get('stable')}, mu={info.get('mu', 0.0):.3g}")
+                done += 1
+            except Exception as e:
+                print(f"[ERROR] Wiener filter failed for {tr.id}: {e} (trace left unchanged)")
+
+        print(f"[INFO] Wiener filter applied to {done}/{len(traces)} traces.")
+        if done == 0:
+            return
 
         self.plot_proj.clear_plot()
         self.prompt_active = False
@@ -2470,6 +2581,7 @@ class PlotCommandPrompt:
                 ("taper", "Apply taper window on traces"),
                 ("flip", "Flip the polarity of a seismic trace"),
                 ("remove_spikes", "Remove spikes with the Hampel filter (median/MAD)"),
+                ("wiener", "Prediction-error (Wiener) filter designed on the selected window"),
                 ("reverse", "Reverse the data points of seismic traces"),
                 ("filter", "Apply signal filtering"),
                 ("cut", "Trim traces using picks or UTC times"),
@@ -2970,6 +3082,36 @@ class PlotCommandPrompt:
         Example:
             >> coh --ref 0 --kind both --win 20
         """,
+            "wiener": """
+                wiener [--ncoeff <n>] [--mu off|on|<v>] [--epsilon off|on|<e>]
+                       [--update sac|lms] [--start <time> --end <time>]
+                    Adaptive Wiener (prediction-error) filter. The filter is designed
+                    (Yule-Walker / Levinson) on the design window and applied to the whole trace,
+                    which is replaced by the prediction residual (whitened data). Use it as a
+                    pre whitener or as a detection preprocessor for transient signals.
+
+                    Design window: the time window selected in the plot (right-click drag, or
+                    keys 'u' = start and 'i' = end). It must contain noise only, i.e. not the
+                    signal you want to enhance. It can be overridden with --start/--end
+                    (ISO format, e.g. 2024-05-01T12:00:00).
+
+                    Parameters:
+                        --ncoeff   Filter length including the leading 1; prediction order is
+                                   ncoeff-1 (default: 30, maximum 100)
+                        --mu       Adaptation step: off = fixed filter, on = 1.95/sum|rho|,
+                                   or a number (default: off)
+                        --epsilon  Ridge (white-noise) correction relative to rho(0):
+                                   off = try 0, 1e-5 ... 1e-2 until stable, on = 0,
+                                   or a number (default: off)
+                        --update   Adaptive update when mu != 0: sac = as coded in SAC
+                                   (default), lms = textbook LMS driven by the error
+
+                    Examples:
+                        >> wiener
+                        >> wiener --ncoeff 40
+                        >> wiener --ncoeff 30 --mu 1e-9 --update lms
+                        >> wiener --start 2024-05-01T12:00:00 --end 2024-05-01T12:05:00
+        """
         }
 
         # Check if specific command is requested

@@ -6,7 +6,6 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
     add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
     rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing, deconvolve
-from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
 
 try:
     from surfquakecore.cython_module.hampel import hampel
@@ -249,19 +248,6 @@ class SeismogramData:
                     cwt.compute_cwt(wavelet_type=_config['wavelet'], param=_config["param"], fmin=fmin, fmax=fmax, nf=80)
                     cwt.to_pickle(folder_path=_config['output_path'])
 
-                if _config['name'] == 'entropy':
-
-                    if "overlap" in _config.keys():
-                        overlap = _config['overlap'] * 1E-2
-                    else:
-                        overlap = 0.5
-
-                    tr = compute_entropy_trace(tr, win=_config['win'], overlap=overlap)
-
-                if _config['name'] == 'snr':
-                    tr = compute_snr(tr, method=_config['method'], sign_win=_config['sign_win'],
-                                     noise_win=_config['noise_win'])
-
                 if _config['name'] == 'raw':
                     tr = downsample_trace(tr, factor=_config['factor'], to_int=_config['integers'], scale_target=1000)
 
@@ -294,7 +280,8 @@ class StreamProcessing:
     """
 
     STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam", "particle_motion",
-                      "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum", "cwt_cf"}
+                      "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum", "cwt_cf", "snr", "entropy"}
+
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -351,6 +338,10 @@ class StreamProcessing:
                     self.apply_chop(step)
                 elif method_name == "deconv":
                     self.apply_deconv(step)
+                elif method_name == "snr":
+                    self.apply_snr(step)
+                elif method_name == "entropy":
+                    self.apply_entropy(step)
 
             return self.stream
 
@@ -479,7 +470,8 @@ class StreamProcessing:
 
         max_interpolation_gap = step_config.pop('max_interpolation_gap', 2)
         run_chop_data(self.stream, chunk_length=step_config["chunk_length"], min_length=step_config["min_length"],
-                      max_interpolation_gap=max_interpolation_gap, output_dir=step_config["output_dir"])
+                      max_interpolation_gap=max_interpolation_gap, output_dir=step_config["output_dir"],
+                      overlap = step_config["overlap"])
 
     def apply_algebra(self, step_config):
         """
@@ -853,6 +845,35 @@ class StreamProcessing:
                                     cycles=step_config["cycles"],
                                     voices_per_octave=step_config["voices_per_octave"],
                                     wavelet=step_config["wavelet_type"])
+
+    def apply_snr(self, step_config):
+
+        snr_list = []
+
+        for tr in self.stream:
+            snr = compute_snr(tr, method=step_config['method'], sign_win=step_config['sign_win'],
+                             noise_win=step_config['noise_win'])
+            snr_list.append(snr)
+
+        self.stream = Stream(snr_list)
+
+
+    def apply_entropy(self, step_config):
+
+        if "overlap" in step_config.keys():
+            overlap = step_config['overlap'] * 1E-2
+        else:
+            overlap = 0.5
+
+        entropy_list = []
+
+        for tr in self.stream:
+            entropy_tr = compute_entropy_trace(tr, win=step_config['win'], overlap=overlap)
+            entropy_list.append(entropy_tr)
+
+        self.stream = Stream(entropy_list)
+
+
     def apply_pm(self, step_config):
 
         """
