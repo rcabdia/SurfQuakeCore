@@ -1,19 +1,113 @@
+# =============================================================================
+# SurfQuake - spectral analysis configuration
+#
+# How to use this file
+#   - Everything below "Analysis:" describes ONE analysis, called process_1.
+#   - Exactly one example is active (uncommented). To use another one,
+#     comment the active block and uncomment the block you want.
+#   - Keep the indentation: 2 spaces before "process_1:", 4 before its keys.
+#   - output_path : folder where the results are written (created if missing).
+#
+# Output files (Python objects, reload them later or plot with "surfquake specplot")
+#   spectrum      -> <trace_id>.D.<year>.<julday>.sp
+#   spectrogram   -> <trace_id>.D.<year>.<julday>.spec
+#   cwt           -> <trace_id>.D.<year>.<julday>.cwt
+#   cross_spectrum-> <ref_id>__<trace_id>.D.<year>.<julday>.coh
+#   cepstrum      -> <trace_id>.D.<year>.<julday>.cep
+#   cepstrogram   -> <trace_id>.D.<year>.<julday>.ceps
+# =============================================================================
+
 Analysis:
-  # fft Spectrum
+
+  # ---------------------------------------------------------------------------
+  # SPECTROGRAM - how the spectrum changes with time (sliding windows)
+  #
+  #   win     : window length in seconds. Longer -> finer frequency resolution
+  #             (about 1/win Hz) but coarser time resolution.
+  #   overlap : overlap between consecutive windows, in percent (0-99).
+  #   method  : 'fft'        -> fast, 5% cosine taper per window
+  #             'multitaper' -> smoother, less noisy estimate (slower)
+  # ---------------------------------------------------------------------------
   process_1:
-      name: 'spectrogram'
-      win: 3
-      overlap: 50
-      method: 'fft'
-      output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
-  
-# Multitaper Spectrum
-# process_1:
+    name: 'spectrogram'
+    win: 3
+    overlap: 50
+    method: 'fft'
+    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
+
+
+# =============================================================================
+# SPECTRUM - amplitude spectrum of the whole trace
+#
+#   method : estimator used
+#
+#   Fourier methods (amplitude in the units of the trace)
+#     'fft'         fast, 5% cosine taper; also stores the phase
+#     'multitaper'  several tapers averaged: smoother, less noisy
+#
+#   Parametric methods (need the optional package:  pip install spectrum)
+#   They fit a model to the samples and draw the spectrum from the model.
+#   The data are NOT tapered or zero-padded.
+#
+#     method     what it gives                                  extra keys
+#     --------   --------------------------------------------   -----------
+#     burg       AR model, smooth spectrum (recommended)         order
+#     yule       AR model, smoothest / lowest resolution         order
+#     covar      AR model, covariance method                     order
+#     modcovar   AR model, forward-backward covariance           order
+#     minvar     minimum variance (Capon)                        order
+#     music      pseudo-spectrum, only for detecting lines       order, nsig
+#     ev         pseudo-spectrum, only for detecting lines       order, nsig
+#
+#   order : model order (default 20). Each spectral peak needs about 2 poles,
+#           and the poles are spread from 0 Hz to Nyquist. To study low
+#           frequencies (e.g. the microseism), decimate the traces first
+#           rather than raising the order a lot. Capped at 1/3 of the samples.
+#   nsig  : music / ev only, REQUIRED. 2 per pure tone you expect in the data
+#           (1 tone -> 2, 3 tones -> 6). Must be smaller than order.
+#           music / ev amplitudes have no physical units: compare where the
+#           peaks are, not how high they are.
+# =============================================================================
+
+# FFT spectrum (default)
+#  process_1:
+#    name: 'spectrum'
+#    method: 'fft'
+#    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
+
+# Multitaper spectrum
+#  process_1:
 #    name: 'spectrum'
 #    method: 'multitaper'
 #    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
 
-# Continuous Wavelet Transform
+# Burg AR spectrum: smooth spectral shape (noise, resonances)
+#  process_1:
+#    name: 'spectrum'
+#    method: 'burg'
+#    order: 20
+#    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
+
+# MUSIC pseudo-spectrum: frequency of 2 tones (e.g. ship machinery lines)
+#  process_1:
+#    name: 'spectrum'
+#    method: 'music'
+#    order: 30
+#    nsig: 4
+#    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
+
+
+# =============================================================================
+# CONTINUOUS WAVELET TRANSFORM (scalogram) - time-frequency map with a
+# resolution that adapts to frequency (sharp in time at high frequencies,
+# sharp in frequency at low frequencies)
+#
+#   wavelet : 'cm' complex Morlet (recommended), 'mh' Mexican hat, 'pa' Paul
+#   param   : main wavelet parameter. 6.0 with 'cm' aligns scales with
+#             Fourier frequencies.
+#   fmin, fmax : frequency band analysed (Hz). fmax must be below Nyquist.
+# =============================================================================
+
 #  process_1:
 #    name: 'cwt'
 #    wavelet: 'cm'
@@ -22,7 +116,22 @@ Analysis:
 #    fmax: 8.0
 #    output_path: "/Users/admin/Desktop/surf_test/cut/spec"
 
-# Cross Spectrum --> Coherence & Transfer Function
+
+# =============================================================================
+# CROSS SPECTRUM - coherence and transfer function of every trace with
+# respect to a reference trace (e.g. how a sensor responds to another one)
+#
+#   reference_idx   : position of the reference trace in the input (0 = first)
+#   method          : 'welch'      -> average of overlapping windows
+#                     'multitaper' -> average over tapers of the whole record
+#   win             : window length in seconds (welch only). More windows ->
+#                     more reliable coherence, but coarser frequency resolution.
+#   overlap_percent : overlap between windows, in percent (welch only)
+#   nw              : time-bandwidth product (multitaper only), typically 2-4
+#
+#   Coherence goes from 0 (unrelated) to 1 (perfectly linearly related).
+# =============================================================================
+
 #  process_1:
 #    name: 'cross_spectrum'
 #    reference_idx: 0
@@ -30,10 +139,26 @@ Analysis:
 #    win: 20.0
 #    overlap_percent: 75.0
 #    nw: 4.0
-#    output_path: /surf_test/mti/spec_out
+#    output_path: "/surf_test/mti/spec_out"
 
-# Cepstrograms & Cepstrum
 
+# =============================================================================
+# CEPSTRUM and CEPSTROGRAM - find repetitions in the signal (echoes, pulse
+# trains, harmonic sounds such as ship propellers). A pattern that repeats
+# every T seconds gives a peak at "quefrency" T (seconds).
+#
+#   kind : 'real'  -> keeps the sign; good for harmonic combs
+#          'power' -> always positive; use it for echoes / multipath, where
+#                     the reflection can make the peak negative in 'real'
+#   (cepstrum only) 'complex' is also available
+#
+# Cepstrogram only (sliding windows, like the spectrogram):
+#   win             : window length in seconds. Must hold several repetitions:
+#                     the longest repetition period detectable is about win.
+#   overlap_percent : overlap between windows, in percent
+# =============================================================================
+
+# Cepstrogram: track a repetition period over time (e.g. a passing ship)
 #  process_1:
 #    name: 'cepstrogram'
 #    kind: 'real'
@@ -41,6 +166,7 @@ Analysis:
 #    overlap_percent: 75.0
 #    output_path: '/Users/roberto/Desktop/ships_tracking/test/output'
 
+# Cepstrum of the whole trace
 #  process_1:
 #    name: 'cepstrum'
 #    kind: 'real'
