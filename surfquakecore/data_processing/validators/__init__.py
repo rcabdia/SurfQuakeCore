@@ -1,4 +1,6 @@
 from .beam import validate_beam
+from .cepstrogram import validate_cepstrogram
+from .ceptrum import validate_cepstrum
 from .concat import validate_concat
 from .convolve import validate_convolve
 from .cross_spectrum import validate_cross_spectrum
@@ -87,7 +89,9 @@ CHECK_DISPATCH = {
     'wiener': validate_wiener,
     'deconv': validate_deconv,
     'cross_spectrum': validate_cross_spectrum,
-    'cwt_cf': validate_cwt_cf}
+    'cwt_cf': validate_cwt_cf,
+    'cepstrogram': validate_cepstrogram,
+    'cepstrum': validate_cepstrum}
 
 def validate_step(step_type, config):
     if step_type not in CHECK_DISPATCH:

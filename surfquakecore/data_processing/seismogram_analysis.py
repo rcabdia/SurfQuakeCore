@@ -6,6 +6,7 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
     add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
     rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing, deconvolve
+from surfquakecore.spectral.ceprun import TraceCepstrogramResult, TraceCepstrumResult
 
 try:
     from surfquakecore.cython_module.hampel import hampel
@@ -241,6 +242,48 @@ class SeismogramData:
 
                     cwt.compute_cwt(wavelet_type=_config['wavelet'], param=_config["param"], fmin=fmin, fmax=fmax, nf=80)
                     cwt.to_pickle(folder_path=_config['output_path'])
+
+                if _config['name'] == 'cepstrogram':
+
+                    if "overlap" in _config.keys():
+                        overlap = _config["overlap"]
+                    else:
+                        overlap = 50
+
+                    if "kind" in _config.keys():
+                        kind = _config["kind"]
+                    else:
+                        kind = "real"
+
+                    if "qmin" in _config.keys():
+                        qmin = _config["qmin"]
+                    else:
+                        qmin = 0
+
+                    if "qmax" in _config.keys():
+                        qmax = _config["qmax"]
+                    else:
+                        qmax = None
+
+                    spec = TraceCepstrogramResult(tr)
+
+                    spec.compute_cepstrogram(win=_config["win"], overlap_percent=overlap, kind=kind,
+                                             qmin=qmin, qmax=qmax)
+
+                    spec.to_pickle(folder_path=_config['output_path'])
+
+                if _config['name'] == 'cepstrum':
+
+                    if "kind" in _config.keys():
+                        kind = _config["kind"]
+                    else:
+                        kind = "real"
+
+                    spec = TraceCepstrumResult(tr)
+
+                    spec.compute_cepstrum(kind=kind)
+
+                    spec.to_pickle(folder_path=_config['output_path'])
 
                 if _config['name'] == 'raw':
                     tr = downsample_trace(tr, factor=_config['factor'], to_int=_config['integers'], scale_target=1000)
