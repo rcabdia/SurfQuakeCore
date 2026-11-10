@@ -30,3 +30,17 @@ Analysis:
 #    overlap_percent: 75.0
 #    nw: 4.0
 #    output_path: /surf_test/mti/spec_out
+
+# Cepstrograms & Cepstrum
+
+#  process_1:
+#    name: 'cepstrogram'
+#    kind: 'real'
+#    win: 20
+#    overlap_percent: 75.0
+#    output_path: '/Users/roberto/Desktop/ships_tracking/test/output'
+
+#  process_1:
+#    name: 'cepstrum'
+#    kind: 'real'
+#    output_path: '/Users/roberto/Desktop/ships_tracking/test/output'
