@@ -2193,10 +2193,10 @@ def _specplot():
                 surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0 --split
         
             Plot a saved cepstrogram (repetition periods between 0.05 and 2 s):
-+                surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.ceps --qmin 0.05 --qmax 2 --track
+                surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.ceps --qmin 0.05 --qmax 2 --track
             
             Save plot to a file:
-                surfquake specplot --f "./spectral/WM.OBS01..SHZ.D.2015.260.cwt" -d --split 
+                surfquake specplot -f "./spectral/WM.OBS01..SHZ.D.2015.260.cwt" -d --split 
                 --smooth --save_path "./spectral/" --cmap "gnuplot2"
         
         """

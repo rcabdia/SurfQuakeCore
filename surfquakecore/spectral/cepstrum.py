@@ -50,7 +50,7 @@ def _select_window(trace, window):
 
 
 def cepstrum(trace, kind="real", window=None, taper=0.1, detrend=True,
-             nfft=None, water_level=1e-10):
+             nfft=None, water_level=1e-6):
     """
     Cepstrum of an ObsPy Trace.
 

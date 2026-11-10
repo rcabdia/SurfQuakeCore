@@ -116,7 +116,7 @@ class TraceCepstrumResult:
 
     # ------------------------------------------------------------------ compute
     def compute_cepstrum(self, kind="real", window=None, taper=0.1, detrend=True,
-                         nfft=None, water_level=1e-10):
+                         nfft=None, water_level=1e-6):
         """Arguments as cepstrum.cepstrum()."""
         self.result = cepstrum(self.trace, kind=kind, window=window, taper=taper, detrend=detrend,
                                nfft=nfft, water_level=water_level)
@@ -238,7 +238,7 @@ class TraceCepstrogramResult:
 
     # ------------------------------------------------------------------ compute
     def compute_cepstrogram(self, win=5.0, overlap_percent=50.0, kind="real", taper=0.1, nfft=None,
-                            water_level=1e-10, qmin=0.0, qmax=None):
+                            water_level=1e-6, qmin=0.0, qmax=None):
         """
         win   : window length in SECONDS (as compute_spectrogram).
         qmax  : default = win (longest resolvable repetition period).

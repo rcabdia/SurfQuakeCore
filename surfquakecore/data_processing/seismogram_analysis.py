@@ -512,7 +512,7 @@ class StreamProcessing:
         max_interpolation_gap = step_config.pop('max_interpolation_gap', 2)
         run_chop_data(self.stream, chunk_length=step_config["chunk_length"], min_length=step_config["min_length"],
                       max_interpolation_gap=max_interpolation_gap, output_dir=step_config["output_dir"],
-                      overlap = step_config["overlap"])
+                      overlap=step_config["overlap"])
 
     def apply_algebra(self, step_config):
         """
