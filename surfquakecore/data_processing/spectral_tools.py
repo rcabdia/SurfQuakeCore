@@ -13,7 +13,7 @@ from scipy.signal import welch, csd
 class SpectrumTool:
 
     @staticmethod
-    def compute_spectrum(data, delta, mode="fft"):
+    def compute_spectrum(data, delta, mode="fft", save_phase=False):
         """
         Return the amplitude spectrum using multitaper and compare with FFT.
 
@@ -21,13 +21,17 @@ class SpectrumTool:
         - data: array-like, time-domain signal
         - delta: float, sample spacing (1 / sampling rate)
         - sta: unused (can be removed or kept for future use)
+        - save_phase: bool, if True also return the phase (only with mode='fft')
 
         Returns:
-        - amplitude: amplitude spectrum from multitaper method (same units as input)
-        - freq: frequencies corresponding to the spectrum
-        - fft_vals: amplitude spectrum from FFT (same units as input)
+        - amplitude: one-sided amplitude spectrum (same units as input)
+        - freq: frequencies (Hz) corresponding to the spectrum
+        - phase: phase in radians (only if save_phase=True)
         """
         # PSD (amplitude²/Hz)	Amplitude (unit)	amplitude = sqrt(psd * df)
+
+        if save_phase and mode == "multitaper":
+            raise ValueError("save_phase is only available with mode='fft'")
 
         # Remove mean
         data = data - np.mean(data)
@@ -76,10 +80,14 @@ class SpectrumTool:
             data_tapered = data * taper
 
             # FFT using zero-padding to nfft
-            fft_vals = np.fft.rfft(data_tapered, n=nfft)
+            fft_vals = np.fft.rfft(data_tapered, n=nfft) #Standard
+
+            # Phase (radians), referenced to the first sample of data
+            phase = np.angle(fft_vals)
 
             # One-sided amplitude spectrum
-            amplitude = (2.0 / N) * np.abs(fft_vals)
+            amplitude = (2.0 / N) * np.abs(fft_vals) # STANDARD METHOD
+            # amplitude = 2.0 / np.sum(taper) # SHOULD BE MORE ACCURATE
 
             # DC must not be doubled
             amplitude[0] /= 2.0
@@ -89,6 +97,9 @@ class SpectrumTool:
                 amplitude[-1] /= 2.0
 
             freq = np.fft.rfftfreq(nfft, d=delta)
+
+        if save_phase:
+            return amplitude, freq, phase
 
         return amplitude, freq
 

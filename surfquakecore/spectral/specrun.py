@@ -23,10 +23,15 @@ class TraceSpectrumResult:
         self.stats = trace.stats
         self.spectrum = spectrum  # tuple: (freqs, amplitudes)
 
-    def compute_spectrum(self, method="multitaper"):
+    def compute_spectrum(self, method="fft"):
 
-        self.spectrum, self.freq = SpectrumTool.compute_spectrum(self.trace.data, self.trace.stats.delta,
-                                                                 mode=method)
+        if method == "multitaper":
+            self.spectrum, self.freq = SpectrumTool.compute_spectrum(self.trace.data, self.trace.stats.delta,
+                                                                     mode=method)
+        else:
+            self.spectrum, self.freq, self.phase = SpectrumTool.compute_spectrum(self.trace.data,
+                                                                                 self.trace.stats.delta,
+                                                                     mode=method)
         self.method = method
 
     def plot_spectrum(self, axis_type="loglog", save_path: str = None, type_spec: str = "sp", extension: str = "png"):
