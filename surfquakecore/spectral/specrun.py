@@ -140,10 +140,17 @@ class TraceSpectrogramResult:
             lsup = int(self.trace.stats.sampling_rate // 2)
 
         step_percentage = (100 - overlap_percent) * 1E-2
-        self.spectrogram, self.num_steps, self.time, self.freq = \
-            SpectrumTool.compute_spectrogram(self.trace.data, round(win * self.trace.stats.sampling_rate),
+
+        if method == "multitaper":
+            self.spectrogram, self.num_steps, self.time, self.freq = \
+                SpectrumTool.compute_spectrogram(self.trace.data, round(win * self.trace.stats.sampling_rate),
+                                                 self.trace.stats.delta, linf, lsup, step_percentage,
+                                                 method, nw)
+        elif method == "fft":
+            self.spectrogram, self.num_steps, self.time, self.freq, self.phase = (
+                SpectrumTool.compute_spectrogram(self.trace.data, round(win * self.trace.stats.sampling_rate),
                                              self.trace.stats.delta, linf, lsup, step_percentage,
-                                             method, nw)
+                                             method, nw, save_phase=True))
 
     def plot_spectrogram(self, save_path: str = None, clip: float = None, plot_date: bool = False, split=None,
             vmax_db: float = None, cmap: str = "rainbow",

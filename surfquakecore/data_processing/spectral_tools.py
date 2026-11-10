@@ -93,7 +93,8 @@ class SpectrumTool:
         return amplitude, freq
 
     @staticmethod
-    def compute_spectrogram(data, win, dt, linf, lsup, step_percentage=0.5, method="multitaper", nw=None):
+    def compute_spectrogram(data, win, dt, linf, lsup, step_percentage=0.5, method="fft",
+                            nw=None, save_phase=False):
         """
         Compute spectrogram using either multitaper or simple rFFT.
 
@@ -113,6 +114,9 @@ class SpectrumTool:
             'multitaper' (using nitime) or 'fft' (simple FFT-based PSD).
         nw: time-bandwidth, when set to None it will be optimized (recommended: nw < 4.0)
 
+        save_phase : bool, optional
+            If True, also return the phase of each FFT window (only with method='fft').
+
         Returns
         -------
         spectrum : 2D array (freq x time)
@@ -121,7 +125,12 @@ class SpectrumTool:
             Time vector (center of each window).
         f : 1D array
             Frequency vector (Hz) within [linf, lsup].
+        Phase : 2D array (freq x time), only if save_phase=True
+            Phase in radians, referenced to the first sample of each window.
         """
+
+        if save_phase and method.lower() != "fft":
+            raise ValueError("save_phase is only available with method='fft'")
 
         data = np.asarray(data)
         # win -- samples
@@ -148,6 +157,10 @@ class SpectrumTool:
         num_steps = len(starts) # Total number of steps
 
         S = np.zeros((nfft // 2 + 1, num_steps)) # Adjust output size for reduced steps
+
+        P = None
+        if save_phase:
+            P = np.zeros_like(S)
 
         # Precompute sampling frequency
         fs = 1.0 / dt  # Sampling frequency
@@ -203,12 +216,16 @@ class SpectrumTool:
                 data1 = data1 * taper
                 # Conventional rFFT-based PSD, Zero-padding happens HERE
                 spec = np.fft.rfft(data1, n=nfft)
+                phase = np.angle(spec)
                 spec = (np.abs(spec) ** 2) / (fs * win)
 
             else:
                 raise ValueError("method must be 'multitaper' or 'fft'")
 
             S[:, idx] = spec
+
+            if save_phase:
+                P[:, idx] = phase
 
         # Frequency axis from nfft (for both methods)
         freq = np.fft.rfftfreq(nfft, d=dt)
@@ -217,6 +234,9 @@ class SpectrumTool:
         # chop for the desire frequencies
         f = freq[freq_mask]
         spectrum = S[freq_mask, :]
+
+        if save_phase:
+            Phase = P[freq_mask, :]
 
         # Time axis: keep your original style for now
         #t = np.linspace(0, len(data) * dt, spectrum.shape[1])
@@ -230,6 +250,9 @@ class SpectrumTool:
 
         # we prefer starts at beginning
         #t = starts * dt
+
+        if save_phase:
+            return spectrum, num_steps, t, f, Phase
 
         return spectrum, num_steps, t, f
 
