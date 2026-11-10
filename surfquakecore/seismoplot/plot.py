@@ -34,7 +34,7 @@ from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
 from matplotlib.backend_bases import MouseButton
-
+PSEUDO_MODES = ("music", "ev")
 # Choose the best backend before importing pyplot,
 # more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
@@ -1213,23 +1213,12 @@ class PlotProj:
             tr.trim(starttime=self.utc_start, endtime=self.utc_end)
         return tr
 
-    def _plot_single_spectrum(self, idx, axis_type, mode="fft"):
+    def _plot_single_spectrum(self, idx, axis_type, mode="fft", order=20, nsig=None):
 
         self._exit = False
         trace = self._window_copy(self.displayed_traces[idx])
-        spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta, mode=mode)
-
-        try:
-            stime = self.utc_start
-        except:
-            stime = trace.stats.starttime
-
-        try:
-            etime = self.utc_end
-        except:
-            etime = trace.stats.endtime
-
-        trace.trim(starttime=stime, endtime=etime)
+        spectrum, freqs = SpectrumTool.compute_spectrum(trace.data, trace.stats.delta, mode=mode,
+                                                        order=order, nsig=nsig)
 
         fig, ax = plt.subplots()
 
@@ -1243,19 +1232,18 @@ class PlotProj:
             ax.plot(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
 
         if axis_type != "linlin":
-            ax.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
+            ax.set_ylim(spectrum[1:].min() / 10.0, spectrum[1:].max() * 100.0)
 
         ax.set_xlim(freqs[1], freqs[-1])
 
         ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Amplitude")
-        ax.set_title(f"Spectrum for {trace.id}")
+        ax.set_ylabel("Pseudo-spectrum (arbitrary units)" if mode in PSEUDO_MODES else "Amplitude")
+        ax.set_title(f"Spectrum for {trace.id}  [{self._spectrum_label(mode, order, nsig)}]")
         ax.legend()
         plt.grid(True, which="both", ls="-", color='grey', alpha=0.4)
         plt.tight_layout()
         cid = fig.canvas.mpl_connect("key_press_event", self._on_key_press)
-        # Poll until the figure is closed
-        # NO polling loop at all - just show and return immediately
+
         def on_close(event):
             pass  # nothing needed, just let it close
 
@@ -1263,36 +1251,60 @@ class PlotProj:
         fig.canvas.mpl_disconnect(cid)
         plt.show(block=False)  # non-blocking, return immediately to run()
 
-    def _plot_all_spectra(self, axis_type, mode="fft"):
+    def _plot_all_spectra(self, axis_type, mode="fft", order=20, nsig=None):
 
         self._exit = False
         self.fig_spec, self.ax_spec = plt.subplots()
 
         traces = [self._window_copy(tr) for tr in self.displayed_traces]
 
+        ymin, ymax = np.inf, -np.inf
         for trace in traces:
-            spectrum, freqs = SpectrumTool.compute_spectrum(trace, trace.stats.delta, mode=mode)
+            try:
+                spectrum, freqs = SpectrumTool.compute_spectrum(trace.data, trace.stats.delta, mode=mode,
+                                                                order=order, nsig=nsig)
+            except Exception as e:
+                print(f"[WARN] {trace.id}: spectrum failed ({e}), skipped.")
+                continue
+
             if axis_type == "loglog":
-                self.ax_spec.loglog(freqs, spectrum, label=trace.id, linewidth=0.75)
+                self.ax_spec.loglog(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
             elif axis_type == "xlog":
-                self.ax_spec.semilogx(freqs, spectrum, label=trace.id, linewidth=0.75)
+                self.ax_spec.semilogx(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
             elif axis_type == "ylog":
-                self.ax_spec.semilogy(freqs, spectrum, label=trace.id, linewidth=0.75)
-            if axis_type != "linlin":
-                self.ax_spec.set_ylim(spectrum.min() / 10.0, spectrum.max() * 100.0)
+                self.ax_spec.semilogy(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
+            elif axis_type == "linlin":
+                self.ax_spec.plot(freqs[1:], spectrum[1:], label=trace.id, linewidth=0.75)
+
+            ymin = min(ymin, spectrum[1:].min())
+            ymax = max(ymax, spectrum[1:].max())
+
+        if axis_type != "linlin" and np.isfinite(ymin) and ymin > 0:
+            self.ax_spec.set_ylim(ymin / 10.0, ymax * 100.0)
 
         self.ax_spec.set_xlabel("Frequency (Hz)")
-        self.ax_spec.set_ylabel("Amplitude")
+        self.ax_spec.set_ylabel("Pseudo-spectrum (arbitrary units)" if mode in PSEUDO_MODES else "Amplitude")
+        self.ax_spec.set_title(f"Spectra [{self._spectrum_label(mode, order, nsig)}]")
         self.ax_spec.legend(fontsize=6)
         plt.grid(True, which="both", ls="-", color='grey')
         plt.tight_layout()
         cid = self.fig_spec.canvas.mpl_connect("key_press_event", self._on_key_press)
+
         def on_close(event):
             pass  # nothing needed, just let it close
 
         self.fig_spec.canvas.mpl_connect("close_event", on_close)
         self.fig_spec.canvas.mpl_disconnect(cid)
         plt.show(block=False)  # non-blocking, return immediately to run()
+
+    @staticmethod
+    def _spectrum_label(mode, order, nsig):
+        """Text for the title: method plus the parameters that apply to it."""
+        if mode in PSEUDO_MODES:
+            return f"{mode}, order {order}, nsig {nsig}"
+        if mode in ("burg", "yule", "covar", "modcovar", "minvar"):
+            return f"{mode}, order {order}"
+        return mode
 
     def _plot_spectrogram(self, idx, win_sec=5.0, overlap_percent=50.0, clip=None,
                           method="multitaper", nw=None, dates=False):

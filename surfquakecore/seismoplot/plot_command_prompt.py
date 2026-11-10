@@ -11,6 +11,11 @@ import atexit
 from typing import Optional
 from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers
 
+# Spectral estimators accepted by 'spectrum' and 'save_tf spectrum'
+SPECTRUM_MODES = ("fft", "multitaper", "burg", "yule", "covar", "modcovar", "minvar", "music", "ev")
+PARAMETRIC_MODES = ("burg", "yule", "covar", "modcovar", "minvar", "music", "ev")
+PSEUDO_MODES = ("music", "ev")  # need --nsig, pseudo-spectrum (no physical units)
+
 
 class PlotCommandPrompt:
     def __init__(self, plot_proj):
@@ -68,7 +73,7 @@ class PlotCommandPrompt:
             "load_picks": self._cmd_load_picks,
             "shift": self._cmd_shift,
             "write": self._cmd_write,
-            "save_tf":self._cmd_save_tf,
+            "save_tf": self._cmd_save_tf,
             "info": self.plot_command_prompt,
             "runpy": self._cmd_post_script,
             "help": self._cmd_help,
@@ -1290,42 +1295,92 @@ class PlotCommandPrompt:
         except (ValueError, IndexError):
             print("Error: index, win_sec, overlap%, clip, nw, k must be numeric where applicable.")
 
+    @staticmethod
+    def _check_spectrum_params(mode, order, nsig):
+        """Validate order / nsig for a spectrum mode. Returns an error message or None."""
+        if mode not in SPECTRUM_MODES:
+            return f"Invalid mode '{mode}'. Use: {', '.join(SPECTRUM_MODES)}"
+        if mode in PARAMETRIC_MODES and order < 1:
+            return "--order must be >= 1"
+        if mode in PSEUDO_MODES:
+            if nsig is None:
+                return (f"--mode {mode} needs --nsig: 2 per real sinusoid you expect "
+                        f"(e.g. --nsig 2 for one tone)")
+            if not 0 < nsig < order:
+                return f"--nsig must be > 0 and smaller than --order ({order})"
+        return None
+
     def _cmd_spectrum(self, args):
         """
         Plot amplitude spectrum.
 
         Usage:
-            spectrum <index>|all [axis_type] [--mode fft|multitaper]
+            spectrum <index>|all [axis_type] [--mode <mode>] [--order <n>] [--nsig <n>]
+
+        Modes:
+            fft (default), multitaper
+            burg, yule, covar, modcovar, minvar   parametric, use --order (default 20)
+            music, ev                              pseudo-spectra, need --nsig (2 per sinusoid) and --order
+
         Examples:
             spectrum 0
             spectrum all loglog --mode multitaper
+            spectrum 0 --mode burg --order 30
+            spectrum 0 --mode music --order 20 --nsig 4
         """
-        usage = "Usage: spectrum <index>|all [axis_type] [--mode fft|multitaper]"
+        usage = ("Usage: spectrum <index>|all [axis_type] [--mode fft|multitaper|burg|yule|covar|modcovar|"
+                 "minvar|music|ev] [--order <n>] [--nsig <n>]")
 
-        # --- extract --mode (accepts "--mode x" and "--mode=x") ---
-        mode = "fft"
+        mode, order, nsig = "fft", 20, None
+        order_given = nsig_given = False
         rest = []
         i = 0
-        while i < len(args):
-            a = args[i]
-            if a == "--mode":
-                if i + 1 >= len(args):
-                    print(f"[ERROR] --mode needs a value. {usage}")
+        opt = None
+        try:
+            while i < len(args):
+                a = args[i]
+                # accept both "--opt value" and "--opt=value"
+                if a.startswith("--") and "=" in a:
+                    opt, value = a.split("=", 1)
+                    i += 1
+                elif a in ("--mode", "--order", "--nsig"):
+                    opt = a
+                    if i + 1 >= len(args):
+                        print(f"[ERROR] {opt} needs a value. {usage}")
+                        return
+                    value = args[i + 1]
+                    i += 2
+                elif a.startswith("--"):
+                    print(f"[ERROR] Unknown option '{a}'. {usage}")
                     return
-                mode = args[i + 1].lower()
-                i += 2
-                continue
-            if a.startswith("--mode="):
-                mode = a.split("=", 1)[1].lower()
-                i += 1
-                continue
-            rest.append(a)
-            i += 1
+                else:
+                    rest.append(a)
+                    i += 1
+                    continue
+
+                if opt == "--mode":
+                    mode = value.lower()
+                elif opt == "--order":
+                    order, order_given = int(value), True
+                elif opt == "--nsig":
+                    nsig, nsig_given = int(value), True
+                else:
+                    print(f"[ERROR] Unknown option '{opt}'. {usage}")
+                    return
+        except ValueError:
+            print(f"[ERROR] {opt} must be an integer.")
+            return
         args = rest
 
-        if mode not in ("fft", "multitaper"):
-            print(f"[ERROR] Invalid mode '{mode}'. Use fft or multitaper.")
+        error = self._check_spectrum_params(mode, order, nsig)
+        if error:
+            print(f"[ERROR] {error}")
             return
+
+        if mode not in PARAMETRIC_MODES and (order_given or nsig_given):
+            print(f"[WARN] --order/--nsig are ignored with --mode {mode}.")
+        elif mode not in PSEUDO_MODES and nsig_given:
+            print(f"[WARN] --nsig is only used by music and ev, ignored with --mode {mode}.")
 
         if len(args) < 2 or len(args) > 3:
             print(usage)
@@ -1335,13 +1390,19 @@ class PlotCommandPrompt:
         axis_type = args[2] if len(args) == 3 else "loglog"
 
         if axis_type not in ("loglog", "xlog", "ylog", "linlin"):
-            print("[ERROR] axis_type must be loglog, xlog or ylog.")
+            print("[ERROR] axis_type must be loglog, xlog, ylog or linlin.")
             return
 
+        kw = {"axis_type": axis_type, "mode": mode}
+        if mode in PARAMETRIC_MODES:
+            kw["order"] = order
+        if mode in PSEUDO_MODES:
+            kw["nsig"] = nsig
+
         if target == "all":
-            self.plot_proj._plot_all_spectra(axis_type=axis_type, mode=mode)
+            self.plot_proj._plot_all_spectra(**kw)
         elif target.isdigit():
-            self.plot_proj._plot_single_spectrum(int(target), axis_type=axis_type, mode=mode)
+            self.plot_proj._plot_single_spectrum(int(target), **kw)
         else:
             print("[ERROR] Invalid spectrum command")
 
@@ -2192,7 +2253,6 @@ class PlotCommandPrompt:
         except Exception as e:
             print(f"[ERROR] Deconvolution failed: {e}")
 
-
     def _apply_algebra(self, args):
         """
         Apply algebraic expression to the stream traces
@@ -2250,8 +2310,8 @@ class PlotCommandPrompt:
         value = value.lower()
         if value == "welch":
             value = "fft"
-        if value not in ("fft", "multitaper"):
-            raise ValueError("use fft (welch) or multitaper")
+        if value not in SPECTRUM_MODES:
+            raise ValueError(f"use one of: {', '.join(SPECTRUM_MODES)} (welch = fft)")
         return value
 
     @staticmethod
@@ -2293,7 +2353,7 @@ class PlotCommandPrompt:
         }
 
         usage = ("Usage: save_tf <spectrum|spectrogram|cwt|coh> <index>|all --folder_path <folder> "
-                 "[--mode fft|multitaper] [--ref <index|trace_id>] [--no_compress]")
+                 "[--mode <mode>] [--order <n>] [--nsig <n>] [--ref <index|trace_id>] [--no_compress]")
 
         if len(args) < 3:
             print(usage)
@@ -2310,6 +2370,17 @@ class PlotCommandPrompt:
         if not opts["folder_path"]:
             print(f"[ERROR] --folder_path must be specified. {usage}")
             return
+
+        is_spectrum = saver == self._save_spectrum
+        if not is_spectrum and opts["mode"] in PARAMETRIC_MODES:
+            print(f"[ERROR] --mode {opts['mode']} is only available for 'spectrum' "
+                  f"(spectrogram/coh: fft or multitaper).")
+            return
+        if is_spectrum:
+            error = self._check_spectrum_params(opts["mode"], opts["order"], opts["nsig"])
+            if error:
+                print(f"[ERROR] {error}")
+                return
 
         # Which traces
         displayed = getattr(self.plot_proj, "displayed_traces", None)
@@ -2350,6 +2421,7 @@ class PlotCommandPrompt:
                 "win": 5.0, "overlap": 50.0, "nw": None,  # spectrogram / coh
                 "wavelet": "cm", "param": 6.0, "fmin": None, "fmax": None,  # cwt / coh
                 "ref": "0", "trim": True,  # coh
+                "order": 20, "nsig": None,  # parametric spectrum
                 "given": set()}  # options typed by the user
 
         # option -> (key in opts, converter)
@@ -2366,6 +2438,8 @@ class PlotCommandPrompt:
             "--fmax": ("fmax", float),
             "--ref": ("ref", str),
             "--trim": ("trim", self._as_bool),
+            "--order": ("order", int),
+            "--nsig": ("nsig", int),
         }
 
         it = iter(tokens)
@@ -2410,7 +2484,7 @@ class PlotCommandPrompt:
                     print(f"[WARN] {trace.id}: empty or too short window, skipped.")
                     continue
                 result = TraceSpectrumResult(tr)
-                result.compute_spectrum(method=opts["mode"])
+                result.compute_spectrum(method=opts["mode"], order=opts["order"], nsig=opts["nsig"])
                 result.to_pickle(opts["folder_path"], compress=opts["compress"])
                 saved += 1
             except Exception as e:
@@ -2675,7 +2749,8 @@ class PlotCommandPrompt:
             save <product> <index>|all --folder_path <folder> [--mode fft|multitaper] [--no_compress]
 
         Products and options:
-            spectrum (sp)       --mode fft|multitaper (fft)
+            spectrum (sp)       --mode fft|multitaper|burg|yule|covar|modcovar|minvar|music|ev (fft)
+                                --order <n> (20, parametric modes)  --nsig <n> (music/ev, required)
             spectrogram (spec)  --win <sec> (5.0)  --overlap <%> (50)  --method fft|multitaper (fft)  --nw <NW>
             cwt                 --wavelet cm|mh|pa (cm)  --param <p> (6)  --fmin <Hz> (0.5)  --fmax <Hz> (Nyquist)
             coh (tf)            --ref <index|trace_id> (0)  --method welch|multitaper (welch)  --win <sec> (N/8 samples)
@@ -2685,6 +2760,7 @@ class PlotCommandPrompt:
 
         Examples:
             >> save_tf spectrum 0 --folder_path output/spectra
+            >> save_tf sp 0 --folder_path ./spectra --mode music --order 20 --nsig 4
             >> save_tf spec all --folder_path ./spectra --win 10 --overlap 75 --method multitaper
             >> save_tf cwt 0 --folder_path ./spectra --wavelet cm --param 6 --fmin 1 --fmax 20
             >> save_tf coh all --ref 0 --folder_path ./coh --win 20
@@ -2692,7 +2768,7 @@ class PlotCommandPrompt:
             "back2future": """
         Restore the traces to their original state (as loaded), undoing all
         processing applied in this session (filter, rmean, taper, cut, rotate...).
-        
+
             Example:
                 >> filter bandpass 0.1 1.0
                 >> back2future
@@ -2701,7 +2777,7 @@ class PlotCommandPrompt:
             "algebra": """
             Apply algebraic expression to the displayed stream traces (tr1, tr2...trN)
             algebra --expression <python_math_expression>
-            
+
             Arithmetic	+, -, *, /, %	tr1 + tr2 * 2
             Power	**	tr1 ** 2
             Floor Division	//	tr1 // 2
@@ -2724,7 +2800,7 @@ class PlotCommandPrompt:
             imag(x)	Imaginary component
             pi	π
             e	Euler's number
-            
+
             Examples:
             - Single group
                 algebra --expression tr1 + tr2
@@ -2807,11 +2883,11 @@ class PlotCommandPrompt:
     """,
 
             "beam": """
-            
+
             Run FK beamforming method in sliding windows on current traces.
-            
+
             beam [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--win <s>] [--overlap <ratio>]
-                
+
                     Options:
                     --fmin      : Min frequency (Hz)
                     --fmax      : Max frequency (Hz)
@@ -2819,14 +2895,14 @@ class PlotCommandPrompt:
                     --grid      : Slowness grid spacing
                     --win       : Window length in seconds
                     --overlap   : Overlap ratio [0-1]
-                    
+
                 Later, you can point with the mouse over the plot higher power hills and do:
-                
+
                 press "1" and then "e" for FK slowness map
                 press "2" and then "e"  for FK slowness map
                 press "3" and then "e" for MTP.COHERENCE slowness map
                 press "4" and then "e" for MUSIC slowness map
-                
+
                 Example:
                     >> beam --fmin 1.0 --fmax 3.0 --grid 0.025 --win 3 --overlap 0.05
             """,
@@ -2920,23 +2996,23 @@ class PlotCommandPrompt:
         """,
 
             "smap": """
-            
+
             Run slowness map using the FK (or other) beamforming method on all traces.
             smap [--fmin <Hz>] [--fmax <Hz>] [--smax <s/km>] [--grid <step>] [--method FK]
-                
+
                 Options:
-                
+
                     --method    : Beamforming type ('FK', 'MTP.COHERENCE', 'CAPON' or 'MUSIC), DEFAULT FK
                     --fmin      : Min frequency (Hz)
                     --fmax      : Max frequency (Hz)
                     --smax      : Max slowness (s/km)
                     --grid      : Slowness grid spacing
                     --nsignals  : number of expected signals arriving in the time window (at the same time). For MUSIC algorythm
-                
+
                 Example:
                     >> smap --method CAPON --fmin 1.0 --fmax 3.0 --grid 0.01
                     >> smap --method MUSIC --fmin 1.0 --fmax 3.0 --grid 0.01  --nsignals 1
-        
+
         """,
             "stack": """
             Stack traces using ObsPy's Stream.stack(). 'mean' (linear) by default.
@@ -2949,7 +3025,7 @@ class PlotCommandPrompt:
         """,
 
             "runpy": """
-        
+
         runpy <path_to_script.py>
             Run an external Python script against the traces currently
             loaded in the tool.
@@ -2987,7 +3063,7 @@ class PlotCommandPrompt:
         """,
 
             "rotate": """
-        
+
         Rotate traces to a specific angle or to the Gear Arc Circle (GAC)
         Usage:
             rotate NE->RT                        # uses back_azimuth from trace header (geodetic), to rotate to the GAC
@@ -3001,23 +3077,31 @@ class PlotCommandPrompt:
             >> rotate NE->RT 45.0
             >> rotate ->LQT 45.0 10.0
             >> rotate ->ZNE
-        
-        
+
+
         """,
             "spectrum": """
-       spectrum <index>|all [axis_type] [--mode fft|multitaper]
+       spectrum <index>|all [axis_type] [--mode] [--order] [--nsig]
             Plot the amplitude spectrum of one trace or of all displayed traces.
 
             Parameters:
                 index      : Index of the trace in the current plot, or 'all'
-                axis_type  : loglog (default), xlog or ylog
-                --mode     : Spectral estimator, fft (default) or multitaper
+                axis_type  : loglog (default), xlog, ylog or linlin
+                --mode     : Spectral estimator: fft (default), multitaper,
+                             burg, yule, covar, modcovar, minvar (parametric, AR model),
+                             music, ev (pseudo-spectra, no physical units)
+                --order    : Model order for the parametric modes (default 20).
+                             Each spectral peak needs ~2 poles; decimate the trace
+                             to study low frequencies instead of raising the order a lot.
+                --nsig     : music / ev only (required): signal-subspace dimension,
+                             2 per real sinusoid you expect. Must be < --order.
 
             Examples:
                 >> spectrum 0
                 >> spectrum all loglog --mode multitaper
-                >> sp 2 xlog --mode fft
-        
+                >> sp 2 xlog --mode burg --order 30
+                >> sp 0 --mode music --order 20 --nsig 4
+
         """,
             "deconv": """
                     deconv [--ref <index|trace_id>] [--water <c>] [--gauss <a>] [--tshift <sec>]
@@ -3041,7 +3125,7 @@ class PlotCommandPrompt:
                             >> deconv
                             >> deconv --ref 0 --water 0.01 --gauss 2.5 --tshift 0
                             >> deconv --ref ES.ELOB..HHZ --water 0.01 --gauss 2.5 --tshift 10
-                           
+
          """,
             "remove_spikes": """
                     remove_spikes [--window <sec>] [--sigma <float>]
@@ -3059,26 +3143,26 @@ class PlotCommandPrompt:
                     """,
 
             "write": """
-            
+
             write displayed traces to folder in format HDF5, preserving the traces header (picks, refrences, geodetic info ..)
-            
+
             Usage:
                     write --folder_path <path> [--all]
             """,
 
             "coh": """
         Coherence / transfer function of the displayed traces with respect to a reference trace.
-            
+
         Usage:
-            
+
             coh [--ref <index|trace_id>] [--kind both|transfer|coherence] [--axis loglog|xlog|linlin]
                 [--method welch|multitaper] [--win <sec>] [--overlap <pct>] [--nw <n>]
                 [--fmin <Hz>] [--fmax <Hz>] [--alpha <a>] [--trim True|False]
-                
-                
+
+
         - Use 'coh' or 'tf' — both work the same.
         - To save the results use: save_tf coh
-        
+
         Example:
             >> coh --ref 0 --kind both --win 20
         """,
@@ -3134,7 +3218,6 @@ class PlotCommandPrompt:
 
         # General summary
         self._print_general_help()
-
 
 if __name__ == "__main__":
     import multiprocessing as mp

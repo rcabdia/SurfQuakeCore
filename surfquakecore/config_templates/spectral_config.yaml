@@ -1,9 +1,10 @@
 Analysis:
+  # fft Spectrum
   process_1:
       name: 'spectrogram'
       win: 3
       overlap: 50
-      method: 'multitaper'
+      method: 'fft'
       output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
   
 # Multitaper Spectrum

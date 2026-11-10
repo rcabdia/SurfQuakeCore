@@ -23,15 +23,32 @@ class TraceSpectrumResult:
         self.stats = trace.stats
         self.spectrum = spectrum  # tuple: (freqs, amplitudes)
 
-    def compute_spectrum(self, method="fft"):
+    PARAMETRIC = ("burg", "yule", "covar", "modcovar", "minvar", "music", "ev")
+    PSEUDO = ("music", "ev")  # pseudo-spectra: no physical amplitude
 
-        if method == "multitaper":
-            self.spectrum, self.freq = SpectrumTool.compute_spectrum(self.trace.data, self.trace.stats.delta,
-                                                                     mode=method)
+    def compute_spectrum(self, method="fft", order=20, nsig=None):
+        method = method.lower()
+        data, delta = self.trace.data, self.trace.stats.delta
+
+        if method in self.PSEUDO and nsig is None:
+            raise ValueError(f"method '{method}' needs nsig: 2 per real sinusoid you expect "
+                             f"(e.g. nsig=2 for one tone)")
+
+        if method == "fft":
+            self.spectrum, self.freq, self.phase = SpectrumTool.compute_spectrum(data, delta, mode=method,
+                                                                                 save_phase=True)
+        elif method == "multitaper":
+            self.spectrum, self.freq = SpectrumTool.compute_spectrum(data, delta, mode=method)
+            self.phase = None
+        elif method in self.PARAMETRIC:
+            self.spectrum, self.freq = SpectrumTool.compute_spectrum(data, delta, mode=method,
+                                                                     order=order, nsig=nsig)
+            self.phase = None
+            self.order = order
+            self.nsig = nsig if method in self.PSEUDO else None
         else:
-            self.spectrum, self.freq, self.phase = SpectrumTool.compute_spectrum(self.trace.data,
-                                                                                 self.trace.stats.delta,
-                                                                     mode=method)
+            raise ValueError(f"Unknown spectrum method '{method}'")
+
         self.method = method
 
     def plot_spectrum(self, axis_type="loglog", save_path: str = None, type_spec: str = "sp", extension: str = "png"):

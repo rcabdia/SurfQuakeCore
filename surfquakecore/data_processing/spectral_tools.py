@@ -6,14 +6,13 @@ spectral_tools
 
 import math
 import numpy as np
-import nitime.algorithms as tsa  # awesome !!!
+import nitime.algorithms as tsa
 from scipy.signal import welch, csd
-# from spectrum import pmtm # might be for the future
 
 class SpectrumTool:
 
     @staticmethod
-    def compute_spectrum(data, delta, mode="fft", save_phase=False):
+    def compute_spectrum(data, delta, mode="fft", save_phase=False, order=20, nsig=None):
         """
         Return the amplitude spectrum using multitaper and compare with FFT.
 
@@ -22,6 +21,10 @@ class SpectrumTool:
         - delta: float, sample spacing (1 / sampling rate)
         - sta: unused (can be removed or kept for future use)
         - save_phase: bool, if True also return the phase (only with mode='fft')
+        - order: model order for the parametric modes (burg, yule, covar, modcovar,
+                 minvar, music, ev). Ignored by 'fft' and 'multitaper'.
+        - nsig: signal-subspace dimension, required by 'music' and 'ev'
+                (2 per real sinusoid). Ignored by the other modes.
 
         Returns:
         - amplitude: one-sided amplitude spectrum (same units as input)
@@ -30,7 +33,7 @@ class SpectrumTool:
         """
         # PSD (amplitude²/Hz)	Amplitude (unit)	amplitude = sqrt(psd * df)
 
-        if save_phase and mode == "multitaper":
+        if save_phase and mode != "fft":
             raise ValueError("save_phase is only available with mode='fft'")
 
         # Remove mean
@@ -49,6 +52,12 @@ class SpectrumTool:
 
             # Convert PSD to amplitude spectrum
             amplitude = np.sqrt(psd * df)
+
+        elif mode in ("burg", "yule", "covar", "modcovar", "minvar", "music", "ev"):
+            psd, freq, _ = SpectrumTool.compute_spectrum_parametric(data, delta, method=mode,
+                                                                    order=order, nsig=nsig)
+            df = freq[1] - freq[0]
+            return np.sqrt(psd * df), freq
 
         else:
             # Compute FFT amplitude spectrum for comparison
@@ -102,6 +111,142 @@ class SpectrumTool:
             return amplitude, freq, phase
 
         return amplitude, freq
+
+    @staticmethod
+    def compute_spectrum_parametric(data, delta, method="burg", order=20, criteria="AKICc",
+                                    nsig=None, nfft=None, detrend=True):
+        """
+        Parametric / subspace PSD estimate via the optional 'spectrum' package
+        (https://github.com/cokelaer/spectrum).
+
+        Unlike the FFT, these methods fit a model to the samples, so the data
+        are NOT tapered and NOT zero-padded. `nfft` only sets how many points
+        the model PSD is evaluated at (smoothness of the curve), not resolution.
+
+        Parameters
+        ----------
+        data : 1D array
+            Time series.
+        delta : float
+            Sampling interval (s).
+        method : str
+            AR (all-pole) models, PSD in physical units (amplitude**2 / Hz):
+                'burg'     : Burg (recommended default, stable on short windows)
+                'yule'     : Yule-Walker (smoothest, lowest resolution)
+                'covar'    : covariance method
+                'modcovar' : modified covariance (forward-backward)
+            Other estimators:
+                'minvar'   : minimum variance (Capon)
+                'music'    : MUSIC pseudo-spectrum (line detection, NO physical units)
+                'ev'       : eigenvector pseudo-spectrum (NO physical units)
+        order : int or None
+            Model order (AR order or subspace dimension). Default 20.
+            Rule of thumb: each spectral peak needs ~2 poles, and the poles are
+            spread over 0..Nyquist, so for low-frequency features decimate the
+            trace first instead of raising the order a lot.
+            None -> automatic selection with `criteria` (only for method='burg').
+            Always capped at N // 3.
+        criteria : str
+            Order-selection criterion when order=None:
+            'AIC', 'AICc', 'KIC', 'AKICc', 'FPE', 'MDL', 'CAT'.
+        nsig : int or None
+            'music' / 'ev' only: dimension of the signal subspace
+            (2 per real sinusoid). Required for those methods.
+        nfft : int or None
+            Number of points used to evaluate the PSD.
+            Default: next power of two >= len(data), with a minimum of 1024.
+        detrend : bool
+            Remove a linear trend (otherwise the mean only). A trend would
+            otherwise absorb poles at very low frequency.
+
+        Returns
+        -------
+        psd : 1D array
+            One-sided PSD (amplitude**2 / Hz). For 'music'/'ev' a pseudo-spectrum.
+        freq : 1D array
+            Frequencies (Hz), 0..Nyquist.
+        order : int
+            Model order actually used (after automatic selection / capping).
+        """
+        try:
+            import spectrum as sp
+        except ImportError:
+            raise ImportError("Parametric spectra need the optional package 'spectrum': "
+                              "pip install spectrum")
+
+        method = method.lower()
+        ar_methods = {"burg": sp.pburg, "yule": sp.pyule, "covar": sp.pcovar,
+                      "modcovar": sp.pmodcovar, "minvar": sp.pminvar}
+        subspace_methods = {"music": sp.pmusic, "ev": sp.pev}
+
+        if method not in ar_methods and method not in subspace_methods:
+            raise ValueError(f"Unknown parametric method '{method}'. Use one of: "
+                             f"{', '.join(list(ar_methods) + list(subspace_methods))}")
+
+        # --------------------------------------------------------------
+        # Prepare data: mean / linear trend removed, NO taper, NO padding
+        # --------------------------------------------------------------
+        x = np.asarray(data, dtype=np.float64)
+        n = x.size
+        if n < 8:
+            raise ValueError("Too few samples for a parametric spectrum.")
+        if not np.all(np.isfinite(x)):
+            raise ValueError("Data contain NaN or inf values.")
+
+        if detrend:
+            t = np.arange(n)
+            x = x - np.polyval(np.polyfit(t, x, 1), t)
+        else:
+            x = x - x.mean()
+
+        if not np.any(x):
+            raise ValueError("Signal is identically zero.")
+
+        fs = 1.0 / delta
+        if nfft is None:
+            nfft = max(1024, 2 ** math.ceil(math.log2(n)))
+        nfft = int(nfft)
+
+        # --------------------------------------------------------------
+        # Model order
+        # --------------------------------------------------------------
+        max_order = max(2, n // 3)
+
+        if order is None:
+            if method != "burg":
+                raise ValueError("order=None (automatic selection) is only supported with "
+                                 "method='burg'")
+            ar, _, _ = sp.arburg(x, min(max_order, 200), criteria=criteria)
+            order = len(ar)
+
+        order = int(order)
+        if order < 1:
+            raise ValueError("order must be >= 1")
+        if order > max_order:
+            print(f"[WARNING] order {order} too large for {n} samples, using {max_order}")
+            order = max_order
+
+        # --------------------------------------------------------------
+        # Estimate
+        # --------------------------------------------------------------
+        if method in ar_methods:
+            est = ar_methods[method](x, order, NFFT=nfft, sampling=fs)
+        else:
+            if nsig is None:
+                raise ValueError(f"method '{method}' needs nsig (2 per real sinusoid)")
+            nsig = int(nsig)
+            if not 0 < nsig < order:
+                raise ValueError("nsig must be > 0 and smaller than order")
+            est = subspace_methods[method](x, IP=order, NSIG=nsig, NFFT=nfft, sampling=fs)
+
+        est()                          # runs the estimator
+        psd = np.asarray(est.psd, dtype=np.float64)
+
+        # 'spectrum' returns the one-sided PSD for real data (nfft//2 + 1 points)
+        freq = np.linspace(0.0, fs / 2.0, psd.size)
+
+        return psd, freq, order
+
 
     @staticmethod
     def compute_spectrogram(data, win, dt, linf, lsup, step_percentage=0.5, method="fft",
