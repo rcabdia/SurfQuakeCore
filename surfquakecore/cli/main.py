@@ -2159,10 +2159,11 @@ def _trigg():
 def _specplot():
     from surfquakecore.spectral.specrun import TraceSpectrumResult, TraceSpectrogramResult
     from surfquakecore.spectral.cwtrun import TraceCWTResult
+    from surfquakecore.spectral.ceprun import TraceCepstrumResult, TraceCepstrogramResult
 
     parser = ArgumentParser(
         prog="surfquake specplot",
-        description="Plot serialized spectral analysis (spectrum, spectrogram or cwt)",
+        description="Plot serialized spectral analysis (spectrum, spectrogram, cwt, cepstrum or cepstrogram)",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
         
@@ -2170,7 +2171,7 @@ def _specplot():
         Plot spectrograms from saved binary files after processing waveforms
         
         Key Arguments:
-            -f, --file         [REQUIRED] Path to waveform files (.sp, .spec or .cwt)
+            -f, --file         [REQUIRED] Path to the saved file (.sp, .spec, .cwt, .coh, .cep or .ceps)
             -d, --dates        [OPTIONAL] if plot dates at x-axis, otherwise in seconds
             -s, --smooth       [OPTIONAL] if smooth the Time-Frequency plane (Slower way but more pretty)
             -c, --clip         [OPTIONAL] Clipping level in dB for plotting the time-Frequency plane (default -120 dB)
@@ -2179,6 +2180,9 @@ def _specplot():
                 --split        [OPTIONAL] if split the plot into low/high frequency panels
                 --cmap         [OPTIONAL] Matplotlib colormap (Default: rainbow).     
                 --save_path    [OPTIONAL] Output folder path to automatically save the figure
+                --qmin         [OPTIONAL] Cepstrum/cepstrogram: minimum quefrency shown in s (default 5 samples)
+                --qmax         [OPTIONAL] Cepstrum/cepstrogram: maximum quefrency shown in s (default all)
+                --track        [OPTIONAL] Cepstrogram: overlay the dominant quefrency of every window
                 --extension    [OPTIONAL] file extension (Default: format png)
                 
         Examples:
@@ -2188,6 +2192,9 @@ def _specplot():
             Plot a saved spectrogram:
                 surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0 --split
         
+            Plot a saved cepstrogram (repetition periods between 0.05 and 2 s):
++                surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.ceps --qmin 0.05 --qmax 2 --track
+            
             Save plot to a file:
                 surfquake specplot --f "./spectral/WM.OBS01..SHZ.D.2015.260.cwt" -d --split 
                 --smooth --save_path "./spectral/" --cmap "gnuplot2"
@@ -2219,6 +2226,14 @@ def _specplot():
 
     parser.add_argument("-d", "--dates", help="if plot dates at x-asis", action="store_true")
 
+    parser.add_argument("--qmin", type=float, default=None, required=False,
+                                                     help = "Cepstrum/cepstrogram: minimum quefrency shown [s]")
+
+    parser.add_argument("--qmax", type=float, default=None, required=False,
+                                                     help = "Cepstrum/cepstrogram: maximum quefrency shown [s]")
+
+    parser.add_argument("--track", help="Cepstrogram: overlay the dominant quefrency", action="store_true")
+
     parser.add_argument( "--extension", type=str, default="png", required=False,
                         help="file format (default png)")
 
@@ -2248,6 +2263,17 @@ def _specplot():
         obj.plot_cwt(save_path=args.save_path, clip=args.clip, plot_date=args.dates,
                      split=args.split, vmax_db=args.vmax_db, cmap=args.cmap, smooth=args.smooth,
                      extension=args.extension, type_spec="cwt")
+
+    elif ext == ".cep":
+            obj = TraceCepstrumResult.from_pickle(filepath)
+            obj.plot_cepstrum(qmin=args.qmin, qmax=args.qmax, save_path=args.save_path,
+                                                         type_spec="cep", extension=args.extension)
+
+    elif ext == ".ceps":
+            obj = TraceCepstrogramResult.from_pickle(filepath)
+            obj.plot_cepstrogram(save_path=args.save_path, qmin=args.qmin, qmax=args.qmax, clip=args.clip,
+                                 vmax=args.vmax_db, plot_date=args.dates, cmap=args.cmap, smooth=args.smooth,
+                                 track=args.track, extension=args.extension, type_spec="ceps")
     else:
         raise ValueError(
             f"Unsupported file extension '{ext}'. "

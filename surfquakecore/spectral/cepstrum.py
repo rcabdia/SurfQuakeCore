@@ -148,6 +148,90 @@ def find_cepstral_peaks(result, qmin=None, qmax=None, n_peaks=5, min_snr=4.0):
              "value": float(c[i]), "snr": float((c[i] - med) / sigma)} for i in order]
 
 
+def cepstrogram(data, delta, win, step_percentage=0.5, kind="real", taper=0.1,
+                nfft=None, water_level=1e-10, qmin=0.0, qmax=None):
+    """
+    Sliding-window cepstrum ("cepstrogram"), same windowing logic as
+    SpectrumTool.compute_spectrogram.
+
+    Parameters
+    ----------
+    data            : 1D array, time series.
+    delta           : sampling interval (s).
+    win             : window length in SAMPLES.
+    step_percentage : step as a fraction of the window (0 < step <= 1).
+    kind            : "real" | "power". The complex cepstrum is not offered
+                      here: its per-window delay removal makes columns not
+                      comparable with each other.
+    taper           : Tukey fraction applied to every window; 0 = none.
+    nfft            : FFT length (default: next power of two >= 2 * win).
+    water_level     : |X| floored at water_level * max|X| of each window.
+    qmin, qmax      : quefrency range (s) kept in the output. Default qmax =
+                      win * delta (no repetition longer than the window can
+                      be resolved).
+
+    Returns
+    -------
+    ceps      : 2D array (quefrency x time). Columns of all-zero windows
+                (e.g. gaps filled with zeros) are NaN.
+    num_steps : int
+    t         : 1D array, time (s) at the CENTER of every window.
+    q         : 1D array, quefrency (s) within [qmin, qmax].
+    """
+    if kind not in ("real", "power"):
+        raise ValueError("cepstrogram kind must be 'real' or 'power'")
+
+    data = np.asarray(data, dtype=np.float64)
+    win = int(win)
+    if win < 4:
+        raise ValueError("window must contain at least 4 samples")
+    if nfft is None:
+        nfft = int(2 ** np.ceil(np.log2(2 * win)))
+    if nfft < win:
+        raise ValueError("nfft must be >= window length in samples")
+
+    step_size = max(1, int(round(win * step_percentage)))
+    lim = data.size - win
+    if lim < 0:
+        raise ValueError("Window length is longer than data length.")
+    starts = np.arange(0, lim + 1, step_size)
+    num_steps = starts.size
+
+    # quefrency axis and the rows we keep
+    q_full = np.arange(nfft // 2 + 1) * delta
+    if qmax is None:
+        qmax = win * delta
+    q_mask = (q_full >= qmin) & (q_full <= qmax)
+    q = q_full[q_mask]
+
+    tap = tukey(win, alpha=min(float(taper), 1.0)) if taper and taper > 0 else None
+
+    C = np.full((q.size, num_steps), np.nan)
+
+    for idx, n in enumerate(starts):
+        x = data[n:n + win]
+        x = x - x.mean()
+        if tap is not None:
+            x = x * tap
+
+        mag = np.abs(np.fft.rfft(x, nfft))
+        peak = mag.max()
+        if peak == 0.0:
+            continue                      # leave NaN column
+        mag = np.maximum(mag, water_level * peak)
+
+        if kind == "real":
+            c = np.fft.irfft(np.log(mag), nfft)[:nfft // 2 + 1]
+        else:
+            c = np.abs(np.fft.irfft(2.0 * np.log(mag), nfft)[:nfft // 2 + 1]) ** 2
+
+        C[:, idx] = c[q_mask]
+
+    t = (starts + (win - 1) / 2.0) * delta
+
+    return C, num_steps, t, q
+
+
 def plot_cepstrum(result, ax=None, qmax=None, peaks=None, **kw):
     """Quick matplotlib plot of a CepstrumResult (optionally marking peaks)."""
     import matplotlib.pyplot as plt
