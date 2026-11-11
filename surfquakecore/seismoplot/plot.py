@@ -1440,7 +1440,8 @@ class PlotProj:
         tt = int(tr.stats.sampling_rate / f_min)
 
         cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=f_min, fmax=f_max,
-            nf=80, use_wavelet=wavelet_type, m=param, decimate=False)
+            voices_per_octave=16, use_wavelet=wavelet_type, m=param,
+                         decimate=False)
 
         scalogram2 = cw.scalogram_in_dbs()
 
@@ -1452,9 +1453,9 @@ class PlotProj:
 
         f = np.logspace(np.log10(f_min), np.log10(f_max), scalogram2.shape[0])
 
-        c_f = param / 2 * math.pi
+        c_f = param / (2 * math.pi)
 
-        ff = np.linspace(f_min, f_max, scalogram2.shape[0])
+        ff = f      # same log-spaced axis as the scalogram
 
         pred = ((math.sqrt(2) * c_f / ff) - (math.sqrt(2) * c_f / f_max))
 
@@ -1512,11 +1513,13 @@ class PlotProj:
         # --- Plot scalogram ---
         pcm = ax_spec.pcolormesh(x, y, scalogram2, shading="auto", cmap="rainbow",
                                  vmin=np.min(scalogram2), vmax=0)
-        ax_spec.fill_between(pred_x, ff,0, color="black", edgecolor="red", alpha=0.3)
-        ax_spec.fill_between(pred_comp_x, ff,0, color="black", edgecolor="red", alpha=0.3)
+
+        ax_spec.fill_between(pred_x, ff, f_min, color="black", edgecolor="red", alpha=0.3)
+        ax_spec.fill_between(pred_comp_x, ff, f_min, color="black", edgecolor="red", alpha=0.3)
 
         ax_waveform.set_ylabel("Amplitude")
         ax_spec.set_ylim([np.min(f), np.max(f)])
+        ax_spec.set_yscale("log")
         ax_spec.set_ylabel("Frequency [Hz]")
 
         # ------------------------------------------------------

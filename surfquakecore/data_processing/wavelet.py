@@ -82,7 +82,7 @@ Usage example
                               voices_per_octave=16)
     cw.setup_wavelet()
 """
-
+import math
 import multiprocessing
 from multiprocessing.dummy import Pool as ThreadPool
 from typing import Optional
@@ -440,21 +440,22 @@ class ConvolveWaveletBase:
         -------
         cmw : complex128 array, length = len(self._wtime)
         """
+
         if self._use_wavelet == "Paul":
-            num = (2 ** self._m * 1j * np.math.factorial(self._m))
-            den = np.sqrt(np.pi * np.math.factorial(2 * self._m))
-            s   = (2 * self._m + 1) / (freq * np.pi * 4)
-            mu  = self._wtime / s
-            p   = 1 / (1 - 1j * mu) ** (self._m + 1)
-            cmw = (num * p) / den
+            num = 2 ** self._m * (1j) ** self._m * math.factorial(self._m)
+            den = np.sqrt(np.pi * math.factorial(2 * self._m))
+            s = (2 * self._m + 1) / (freq * np.pi * 4)
+            mu = self._wtime / s
+            p = 1 / (1 - 1j * mu) ** (self._m + 1)
+            cmw = (num * p) / den / np.sqrt(s)  # unit L2 energy, same as Morlet
 
         elif self._use_wavelet == "Mexican Hat":
-            m     = 2
-            sigma = (2 * m + 1) / (4 * np.pi * freq)
-            k1    = 2 / ((np.pi ** 0.25) * np.sqrt(2 * sigma))
-            k2    = (self._wtime ** 2) / (sigma ** 2) - 1
-            k3    = np.exp(-self._wtime ** 2 / (2 * sigma ** 2))
-            cmw   = -1 * k1 * k2 * k3
+            m = 2
+            sigma = np.sqrt(m + 0.5) / (2 * np.pi * freq)  # T&C: λ = 2πs/√(m+½)
+            k1 = 2 / (np.sqrt(3) * np.pi ** 0.25 * np.sqrt(sigma))  # proper L2 norm
+            k2 = (self._wtime ** 2) / (sigma ** 2) - 1
+            k3 = np.exp(-self._wtime ** 2 / (2 * sigma ** 2))
+            cmw = -1 * k1 * k2 * k3
 
         elif self._is_gabor_mode():
             # ---- Gabor / Gaussian filter bank ----

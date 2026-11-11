@@ -17,7 +17,7 @@ class TraceCWTResult:
         self.stats = trace.stats
         self.cwt_data = cwt_data  # tuple: (times, freqs, scalogram, pred_mask, pred_mask_comp)
 
-    def compute_cwt(self, wavelet_type="cm", param=6.0, fmin=None, fmax=None, nf=80):
+    def compute_cwt(self, wavelet_type="cm", param=6.0, fmin=None, fmax=None, voices_per_octave=16):
 
         if wavelet_type == "cm":
             wavelet_type = "Complex Morlet"
@@ -43,7 +43,7 @@ class TraceCWTResult:
         tt = int(tr.stats.sampling_rate / fmin)
 
         cw.setup_wavelet(wmin=param, wmax=param, tt=tt, fmin=fmin, fmax=fmax,
-                         nf=nf, use_wavelet=wavelet_type, m=param, decimate=False)
+                         voices_per_octave=voices_per_octave, use_wavelet=wavelet_type, m=param, decimate=False)
 
         scalogram_amplitude = cw.scalogram()
         t = np.linspace(0, tr.stats.delta * scalogram_amplitude.shape[1], scalogram_amplitude.shape[1])

@@ -103,9 +103,10 @@ Analysis:
 # sharp in frequency at low frequencies)
 #
 #   wavelet : 'cm' complex Morlet (recommended), 'mh' Mexican hat, 'pa' Paul
-#   param   : main wavelet parameter. 6.0 with 'cm' aligns scales with
+#   param   : main wavelet parameter. 6.0 with 'cm' and 'pa', aligns scales with
 #             Fourier frequencies.
 #   fmin, fmax : frequency band analysed (Hz). fmax must be below Nyquist.
+#   voices_per_octave: default 16, set the number of atoms in the CWT, log2 scale
 # =============================================================================
 
 #  process_1:

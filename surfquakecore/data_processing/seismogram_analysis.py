@@ -240,7 +240,14 @@ class SeismogramData:
                     else:
                         fmax = None
 
-                    cwt.compute_cwt(wavelet_type=_config['wavelet'], param=_config["param"], fmin=fmin, fmax=fmax, nf=80)
+                    if "voices_per_octave" in _config.keys():
+                        voices_per_octave = _config["voices_per_octave"]
+                    else:
+                        voices_per_octave = 16
+
+                    cwt.compute_cwt(wavelet_type=_config['wavelet'], param=_config["param"], fmin=fmin, fmax=fmax,
+                                    voices_per_octave=voices_per_octave)
+
                     cwt.to_pickle(folder_path=_config['output_path'])
 
                 if _config['name'] == 'cepstrogram':
