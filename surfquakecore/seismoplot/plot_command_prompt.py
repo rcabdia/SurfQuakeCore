@@ -1409,76 +1409,80 @@ class PlotCommandPrompt:
     def _cmd_cwt(self, args):
         """
         Run continuous wavelet transform.
-        Available wavelets: Complex Morlet (cm), Mexican Hat, and Paul Wavelet (pa).
-        'param' is the main wavelet parameter; recommended value is 6 for Fourier frequency alignment.
+
+        Wavelets: Complex Morlet (cm), Mexican Hat (mh), Paul (pa).
+        'param' is the number of cycles for cm (6 recommended) and the order m for pa
+        (integer, 4 is the standard value). It is ignored for mh.
 
         Usage:
             cwt <index> <wavelet> <param> [<fmin> <fmax>] [<clip> (negative value)] [--dates]
+        Example:
+            >> cwt 0 cm 6
+            >> cwt 0 pa 4 1 20 -40 --dates
         """
+        usage = ("Usage: cwt <index> <cm|mh|pa> <param> "
+                 "[<fmin> <fmax>] [<clip> (negative value)] [--dates]")
 
         if len(args) < 4:
-            print(
-                "Usage: cwt <index> <wavelet> <param> "
-                "[<fmin> <fmax>] [<clip> (negative value)] [--dates]"
-            )
+            print(usage)
             return
 
+        wavelet_codes = {"cm": "cm", "complex_morlet": "cm", "morlet": "cm",
+                         "mh": "mh", "mexican_hat": "mh",
+                         "pa": "pa", "paul": "pa"}
+
         try:
-
-            # Detect optional dates flag
+            # Optional dates flag
             dates = "--dates" in args
-
             if dates:
                 args = [arg for arg in args if arg != "--dates"]
 
             idx = int(args[1])
-            wavelet = args[2]
+
+            wavelet = wavelet_codes.get(args[2].lower())
+            if wavelet is None:
+                print(f"[ERROR] Unknown wavelet '{args[2]}'. Use cm, mh or pa.")
+                return
+
             param = float(args[3])
+            if wavelet == "pa" and (param < 1 or param != int(param)):
+                print("[ERROR] For Paul (pa), param is the order m: an integer >= 1.")
+                return
+            if wavelet == "cm" and param <= 0:
+                print("[ERROR] For Complex Morlet (cm), param (cycles) must be > 0.")
+                return
 
             clip = None
             fmin = fmax = None
 
-            # Detect clip value (if last arg is negative float)
+            # Clip value: last argument, if negative
             if len(args) >= 5 and float(args[-1]) < 0:
-
                 clip = float(args[-1])
                 extra_args = args[4:-1]
-
             else:
-
                 extra_args = args[4:]
 
-            # Parse fmin/fmax if present
+            # fmin / fmax, both or neither
             if len(extra_args) == 2:
-
                 fmin = float(extra_args[0])
                 fmax = float(extra_args[1])
-
+                if not 0 < fmin < fmax:
+                    print("[ERROR] Need 0 < fmin < fmax.")
+                    return
             elif len(extra_args) != 0:
-
-                print(
-                    "Error: Must provide both fmin and fmax, or neither."
-                )
+                print("[ERROR] Must provide both fmin and fmax, or neither.")
                 return
 
-            # Call with only the parameters that are not None
-            kwargs = {
-                "clip": clip,
-                "dates": dates
-            }
-
-            if fmin is not None and fmax is not None:
+            kwargs = {"clip": clip, "dates": dates}
+            if fmin is not None:
                 kwargs["fmin"] = fmin
                 kwargs["fmax"] = fmax
 
             self.plot_proj._plot_wavelet(idx, wavelet, param, **kwargs)
 
         except ValueError:
-
-            print(
-                "Error: index, param, fmin, fmax, and clip "
-                "must be numeric where applicable."
-            )
+            print("[ERROR] index, param, fmin, fmax and clip must be numeric where applicable.")
+            print(usage)
 
     def _cmd_smap(self, args):
         """

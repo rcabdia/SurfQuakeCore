@@ -1435,7 +1435,7 @@ class PlotProj:
 
         tr.trim(starttime=stime, endtime=etime)
 
-        cw = ConvolveWaveletScipy(tr)
+        cw = ConvolveWaveletScipy(tr, m=int(param))
 
         tt = int(tr.stats.sampling_rate / f_min)
 

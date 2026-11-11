@@ -12,7 +12,8 @@ Three filter-bank modes are now supported, selected via  use_wavelet=:
 
   'Gabor'  (alias 'Gaussian bank', 'AFTAN')
       Fixed-width Gaussian envelope × complex sine.
-      σ(f) = alpha(f) / (2π·f·sqrt(2))  where alpha = ffact·20·√(Δ/1000)
+      # σ(f) = alpha(f) / (2π·f·sqrt(2))  where alpha = ffact·20·√(Δ/1000)
+      new changed to σ(f) = √2·α/(2π·f₀) where alpha = ffact·20·√(Δ/1000)
       OR sigma_seconds is set directly via sigma_sec=<value>.
       Gives constant absolute bandwidth filtering — mathematically
       identical to AFTAN's Gaussian narrow-band filter bank.
@@ -86,17 +87,14 @@ import math
 import multiprocessing
 from multiprocessing.dummy import Pool as ThreadPool
 from typing import Optional
-
 import numpy as np
 import scipy
 import scipy.signal
+import scipy.fft
 from deprecated import deprecated
 from obspy import read, Stream, Trace, UTCDateTime
 from obspy.signal.filter import lowpass
-from scipy.signal import argrelextrema
-
 from Exceptions.exceptions import InvalidFile
-from surfquakecore.Structures.structures import TracerStats
 from surfquakecore.utils.obspy_utils import ObspyUtil, MseedUtil
 
 
@@ -137,7 +135,7 @@ def aftan_sigma(dist_km: float,
     alpha = ffact * 20.0 * np.sqrt(dist_km / 1000.0)
     if f0 is None:
         return alpha
-    sigma_sec = alpha / (2.0 * np.pi * f0 * np.sqrt(2.0))
+    sigma_sec = np.sqrt(2.0) * alpha / (2.0 * np.pi * f0)
     return sigma_sec
 
 
@@ -356,6 +354,7 @@ class ConvolveWaveletBase:
         else:
             self._nf = int(kwargs.get("nf", self._nf))
 
+        self._m = int(kwargs.get("m", self._m))
         self._validate_kwargs()
         self._tf = None
         self._setup_atoms()
@@ -824,11 +823,9 @@ class ConvolveWaveletScipy(ConvolveWaveletBase):
         n_proc = self.get_nproc()
         if parallel and n_proc > 1:
             with ThreadPool(n_proc) as pool:
-                tf = np.array(pool.map(self.__convolve, freq_index_pairs),
-                              copy=False, dtype=d_type)
+                tf = np.asarray(pool.map(self.__convolve, freq_index_pairs), dtype=d_type)
         else:
-            tf = np.array([self.__convolve(p) for p in freq_index_pairs],
-                          copy=False, dtype=d_type)
+            tf = np.asarray([self.__convolve(p) for p in freq_index_pairs], dtype=d_type)
         return tf
 
     def _convolve_atoms_stream(self):
@@ -863,6 +860,61 @@ class ConvolveWaveletScipy(ConvolveWaveletBase):
             self._tf = self._convolve_atoms(parallel)
 
 
+    def icwt(self, tf=None, water_level=1e-2):
+        """
+        Inverse CWT of the analysed trace.
+
+        Parameters
+        ----------
+        tf          : scalogram to invert (default: self._tf). It can be an
+                      edited copy (masked, thresholded, ...).
+        water_level : regularization relative to the kernel maximum.
+
+        Returns
+        -------
+        np.ndarray, length npts: the demeaned, tapered signal band-limited to
+        [fmin, fmax], sampled at self._sample_rate from self._start_time.
+        usage notes:
+        cw = ConvolveWaveletScipy(tr, wmin=6, wmax=6, fmin=1.0, fmax=10.0,
+                          voices_per_octave=16, tt=4 * 6 / (2 * np.pi * 1.0))
+        cw.setup_wavelet()
+
+        x = cw.icwt()                                        # ≈ tr band-limited to 1–10 Hz
+
+        # Denoising: keep coefficients above 3x each frequency's median
+        tf = cw.scalogram()
+        amp = np.abs(tf)
+        x_den = cw.icwt(tf=tf * (amp > 3 * np.median(amp, axis=1, keepdims=True)))
+
+        tr_rec = tr.copy()
+        tr_rec.data = x_den          # valid when no trimming/decimation was used
+        """
+        if tf is None:
+            if self._tf is None:
+                self.compute_tf()
+            tf = self._tf
+        if isinstance(tf, list):
+            raise ValueError("icwt works on a single trace, not in stream mode.")
+
+        n = tf.shape[1]
+        L = len(self._wtime)
+        c = (L - 1) // 2                      # centre used by oaconvolve(mode='same')
+        nfft = scipy.fft.next_fast_len(n + L - 1)
+
+        # Reconstruction kernel: sum_j Re(psi_j), centred at sample 0
+        k_sum = np.zeros(L)
+        for i, f in enumerate(self._frex):
+            k_sum += np.real(self.filter_win(f, i))
+        k = np.zeros(nfft)
+        k[:L - c] = k_sum[c:]
+        k[nfft - c:] = k_sum[:c]
+        D = scipy.fft.rfft(k)
+
+        # sum_j Re(W_j) = x * kernel  ->  divide by the kernel with a water level
+        S = scipy.fft.rfft(np.real(tf).sum(axis=0), n=nfft)
+        eps2 = (water_level * np.abs(D).max()) ** 2
+        x = scipy.fft.irfft(S * np.conj(D) / (np.abs(D) ** 2 + eps2), n=nfft)[:n]
+        return x
 
 def cwt_cf_stream( st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                   voices_per_octave: Optional[int] = 16, nf: Optional[int] = None,

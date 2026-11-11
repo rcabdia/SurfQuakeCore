@@ -26,18 +26,18 @@ class TraceCWTResult:
         elif wavelet_type == "pa":
             wavelet_type = "Paul"
 
-        if fmax is None:
-            fmax = self.trace.stats.sampling_rate // 2
-
-        if fmin is None:
-            fmin = 4//len(self.trace.data)
-
         tr = self.trace.copy()
 
         # Trim window
         stime = getattr(self, "utc_start", tr.stats.starttime)
         etime = getattr(self, "utc_end", tr.stats.endtime)
         tr.trim(starttime=stime, endtime=etime)
+
+        if fmax is None:
+            fmax = tr.stats.sampling_rate / 2
+
+        if fmin is None:
+            fmin = 4.0 / (tr.stats.npts * tr.stats.delta)  # 4 cycles in the window
 
         cw = ConvolveWaveletScipy(tr)
         tt = int(tr.stats.sampling_rate / fmin)
@@ -49,7 +49,7 @@ class TraceCWTResult:
         t = np.linspace(0, tr.stats.delta * scalogram_amplitude.shape[1], scalogram_amplitude.shape[1])
         f = np.logspace(np.log10(fmin), np.log10(fmax), scalogram_amplitude.shape[0])
 
-        # Prediction masks
+        # Prediction masks (cone of influence, Morlet formula)
         c_f = param / (2 * math.pi)
         ff = np.linspace(fmin, fmax, scalogram_amplitude.shape[0])
         pred = (math.sqrt(2) * c_f / ff) - (math.sqrt(2) * c_f / fmax)
