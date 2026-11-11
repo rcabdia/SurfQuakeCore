@@ -115,6 +115,7 @@ Analysis:
 #    param: 6.0
 #    fmin: 0.5
 #    fmax: 8.0
+#    voices_per_octave: 16
 #    output_path: "/Users/admin/Desktop/surf_test/cut/spec"
 
 
