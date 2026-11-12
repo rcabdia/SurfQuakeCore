@@ -23,4 +23,14 @@ Analysis:
     reference_idx: 0
     strict: True
     trim: True
+  process_6:
+    name: 'beam'
+    method: "FK"
+    timewindow: 3.0
+    overlap: 0.05
+    fmin: 1.0
+    fmax: 8.2
+    smax: 0.3
+    slow_grid: 0.05
+    output_folder: "/my_beamforming/results"
 

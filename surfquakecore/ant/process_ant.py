@@ -943,7 +943,7 @@ class clock_process:
             else:
                 years[year].append(julday + "." + year)
 
-        for keys in years:
+        for keys in sorted(years):
             date_index = years[keys]
             date_index = sorted(date_index, key=float)
             all_years = all_years + date_index
@@ -994,7 +994,7 @@ class clock_process:
                 numeration_days.append(self.common_date_list[days])
                 if type == "Linear":
                     data_new = np.zeros(self.dims[1])
-                if type == "PWS":
+                if type in ("PWS", "nrooth"):
                     data_new = np.zeros((part_day, self.dims[1]))
                 index = 0
                 for day in range(days, part_day + days):
@@ -1009,6 +1009,10 @@ class clock_process:
                 if type == "PWS":
                     stack_obj = array()
                     data_new = stack_obj.stack(data_new, stack_type='Phase Weigth Stack', order=power)
+
+                elif type == "nrooth":
+                    stack_obj = array()
+                    data_new = stack_obj.stack(data_new, stack_type='root', order=power)
 
                 # num = len(data_new)
                 # if (num % 2) == 0:

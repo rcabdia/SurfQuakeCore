@@ -260,17 +260,17 @@ class noisestack:
                                     if normalization == "PCC":
                                         corr_ij_time = np.real(np.fft.ifft(corr_ij_freq, axis=2))
                                         #corr_ij_time = np.fft.ifftshift(corr_ij_time)
-                                        corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
+                                        corr_ij_time = np.fft.fftshift(corr_ij_time, axes=2)
                                     else:
 
                                         corr_ij_time = np.real(np.fft.irfft(corr_ij_freq, axis=2))
                                         #corr_ij_time = np.fft.ifftshift(corr_ij_time)
-                                        corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
+                                        ccorr_ij_time = np.fft.fftshift(corr_ij_time, axes=2)
 
                                     # Crop in time domain 16/01/2025
                                     pad_length = corr_ij_time.shape[2]
 
-                                    start_idx = (pad_length - cross_length) // 2
+                                    start_idx = pad_length // 2 - cross_length // 2
                                     end_idx = start_idx + cross_length
                                     corr_ij_time = corr_ij_time[:, :, start_idx:end_idx]
 
@@ -286,9 +286,11 @@ class noisestack:
                                         #     corr_ij_time)
                                         # c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
 
-                                        corr_ij_time = np.sign(corr_ij_time) * np.abs(corr_ij_time) ** (1 / self.power)
-                                        c_stack = corr_ij_time[~zero_vectors].mean(axis=0)
+                                        # keep corr_ij_time linear: the daily stacks use it afterwards
+                                        corr_root = np.sign(corr_ij_time) * np.abs(corr_ij_time) ** (1 / self.power)
+                                        c_stack = corr_root[~zero_vectors].mean(axis=0)
                                         c_stack = np.sign(c_stack) * np.abs(c_stack) ** self.power
+                                        del corr_root
 
                                     elif self.stack == "Linear":
                                         c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
@@ -538,16 +540,16 @@ class noisestack:
                                 if normalization == "PCC":
                                     corr_ij_time = np.real(np.fft.ifft(corr_ij_freq, axis=2))
                                     #corr_ij_time = np.fft.ifftshift(corr_ij_time)
-                                    corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
+                                    corr_ij_time = np.fft.fftshift(corr_ij_time, axes=2)
                                 else:
                                     corr_ij_time = np.real(np.fft.irfft(corr_ij_freq, axis=2))
                                     #corr_ij_time = np.fft.ifftshift(corr_ij_time)
-                                    corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
+                                    corr_ij_time = np.fft.fftshift(corr_ij_time, axes=2)
 
                                 # Crop in time domain 16/01/2025
                                 pad_length = corr_ij_time.shape[2]
 
-                                start_idx = (pad_length - cross_length) // 2
+                                start_idx = pad_length // 2 - cross_length // 2
                                 end_idx = start_idx + cross_length
                                 corr_ij_time = corr_ij_time[:, :, start_idx:end_idx]
 
@@ -561,9 +563,12 @@ class noisestack:
                                 if self.stack == "nrooth":
                                     # corr_ij_time = (np.abs(corr_ij_time) ** (1 / self.power)) * np.sign(corr_ij_time)
                                     # c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
-                                    corr_ij_time = np.sign(corr_ij_time) * np.abs(corr_ij_time) ** (1 / self.power)
-                                    c_stack = corr_ij_time[~zero_vectors].mean(axis=0)
+
+                                    # keep corr_ij_time linear: the daily stacks use it afterwards
+                                    corr_root = np.sign(corr_ij_time) * np.abs(corr_ij_time) ** (1 / self.power)
+                                    c_stack = corr_root[~zero_vectors].mean(axis=0)
                                     c_stack = np.sign(c_stack) * np.abs(c_stack) ** self.power
+                                    del corr_root
 
                                 elif self.stack == "Linear":
                                     # Stack: Linear stack
