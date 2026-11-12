@@ -96,6 +96,12 @@ from obspy.signal.filter import lowpass
 from Exceptions.exceptions import InvalidFile
 from surfquakecore.utils.obspy_utils import ObspyUtil, MseedUtil
 
+# ---------------------------------------------------------------------------
+# Characteristic functions for a whole Stream (bank of atoms built once)
+# ---------------------------------------------------------------------------
+
+_WAVELET_ALIASES = {"cm": "Complex Morlet", "mh": "Mexican Hat", "pa": "Paul"}
+_CF_TYPES = ("power", "centroid", "entropy")
 
 # ---------------------------------------------------------------------------
 # AFTAN sigma helper  (kept outside the class as requested)
@@ -915,19 +921,19 @@ class ConvolveWaveletScipy(ConvolveWaveletBase):
         x = scipy.fft.irfft(S * np.conj(D) / (np.abs(D) ** 2 + eps2), n=nfft)[:n]
         return x
 
-def cwt_cf_stream( st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
+def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                   voices_per_octave: Optional[int] = 16, nf: Optional[int] = None,
                   wavelet: str = "Complex Morlet", tt: Optional[float] = None,
-                  lowpass_freq: float = 0.15) -> Stream:
-
-    _WAVELET_ALIASES = {"cm": "Complex Morlet", "mh": "Mexican Hat", "pa": "Paul"}
-
+                  lowpass_freq: float = 0.15, cf_type="power",
+                  win_before: float = 10.0, win_after: float = 2.0,
+                  direction: str = "up"):
     """
-    Wavelet characteristic function for every trace of a Stream.
+    Wavelet characteristic functions for every trace of a Stream.
 
     The bank of atoms (and its FFT) is computed once per sampling rate /
     FFT length and reused for all traces. Each trace is convolved with the
     whole bank in a single FFT product (equivalent to oaconvolve mode='same').
+    Several CF types can be computed from the same scalogram in one pass.
 
     Parameters
     ----------
@@ -940,16 +946,34 @@ def cwt_cf_stream( st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
     tt                : half-length of the atoms [s]; None keeps the legacy
                         value int(fs / fmin)
     lowpass_freq      : lowpass corner applied to the CF [Hz]
+    cf_type           : 'power' (default, mean d/dt of log power),
+                        'centroid' (shift of the energy centroid, octaves),
+                        'entropy' (drop of spectral entropy),
+                        or a tuple/list of them, e.g. ('power', 'centroid')
+    win_before        : window before t for centroid/entropy [s]
+    win_after         : window after t for centroid/entropy [s]
+                        (use at least ~2 periods of fmin)
+    direction         : centroid/entropy only: 'up' (raw), 'down' (sign
+                        flipped, for arrivals that lower the centroid) or
+                        'both' (absolute value)
 
     Returns
     -------
-    Stream of characteristic functions, start time shifted by the wavelet delay.
+    Stream if cf_type is a string, or dict {cf_type: Stream} if it is a
+    tuple/list. CF start times are shifted by the wavelet delay.
     """
+    cf_types = (cf_type,) if isinstance(cf_type, str) else tuple(cf_type)
+    bad = [c for c in cf_types if c not in _CF_TYPES]
+    if bad:
+        raise ValueError(f"Unknown cf_type {bad}. Use {_CF_TYPES}")
+    if direction not in ("up", "down", "both"):
+        raise ValueError("direction must be 'up', 'down' or 'both'")
+
     wavelet = _WAVELET_ALIASES.get(wavelet, wavelet)
 
-    banks = {}  # fs -> (atoms, delay)
+    banks = {}      # fs -> (atoms, delay, log2 frequencies)
     banks_fft = {}  # (fs, nfft) -> FFT of atoms
-    cfs = []
+    out = {c: [] for c in cf_types}
 
     for tr in st:
         fs = tr.stats.sampling_rate
@@ -966,14 +990,14 @@ def cwt_cf_stream( st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
             cw = ConvolveWaveletScipy(tr, **kw)
             cw.setup_wavelet()
             atoms = np.array([cw.filter_win(f, i) for i, f in enumerate(cw.frequencies)])
-            banks[fs] = (atoms, cw.get_time_delay())
-        atoms, delay = banks[fs]
+            banks[fs] = (atoms, cw.get_time_delay(), np.log2(cw.frequencies))
+        atoms, delay, log2_f = banks[fs]
 
         # 2. Same preprocessing as ConvolveWaveletBase
-        tr_cf = tr.copy()
-        tr_cf.detrend(type="demean")
-        tr_cf.taper(max_percentage=0.05)
-        data = tr_cf.data
+        tr_pre = tr.copy()
+        tr_pre.detrend(type="demean")
+        tr_pre.taper(max_percentage=0.05)
+        data = tr_pre.data
         n, m = len(data), atoms.shape[1]
 
         # 3. FFT of the bank, once per (fs, nfft)
@@ -985,18 +1009,106 @@ def cwt_cf_stream( st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
         # 4. Convolve the trace with all atoms at once
         tf = scipy.fft.ifft(banks_fft[key] * scipy.fft.fft(data, n=nfft), axis=1)
         start = (m - 1) // 2
-        tf = tf[:, start:start + n]
+        P = np.abs(tf[:, start:start + n]) ** 2
+        del tf
 
-        # 5. Characteristic function (same as cf_lowpass)
-        cf = np.mean(np.diff(np.log10(np.abs(tf) ** 2 + 1e-30), axis=1), axis=0)
-        cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
-        cf = lowpass(cf, lowpass_freq, df=fs, corners=3, zerophase=True)
+        # 5. Characteristic functions from the same scalogram
+        for c in cf_types:
+            if c == "power":
+                cf = np.mean(np.diff(np.log10(P + 1e-30), axis=1), axis=0)
+            else:
+                cf = _spectral_cf(P, log2_f, fs, c, win_before, win_after, direction)
+            cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
+            cf = lowpass(cf, lowpass_freq, df=fs, corners=3, zerophase=True)
 
-        tr_cf.data = cf
-        tr_cf.stats.starttime += delay
-        cfs.append(tr_cf)
+            tr_cf = tr_pre.copy()
+            tr_cf.data = cf
+            tr_cf.stats.starttime += delay
+            out[c].append(tr_cf)
 
-    return Stream(traces=cfs)
+    if isinstance(cf_type, str):
+        return Stream(traces=out[cf_type])
+    return {c: Stream(traces=out[c]) for c in cf_types}
+
+def robust_zscore(st: Stream) -> Stream:
+    """Copy of st with every trace as (x - median) / (1.4826 * MAD): sigma units."""
+    st = st.copy()
+    for tr in st:
+        med = np.median(tr.data)
+        mad = 1.4826 * np.median(np.abs(tr.data - med))
+        tr.data = (tr.data - med) / mad if mad > 0 else np.zeros_like(tr.data)
+    return st
+
+
+def combine_cf_streams(*streams, method: str = "max") -> Stream:
+    """
+    Combine several CF Streams trace by trace (one output trace per station).
+    Each Stream is z-scored first; traces must have the same ids in the same order.
+
+    method : 'max' (any CF fires) or 'mean' (CFs must agree)
+    """
+    zs = [robust_zscore(st) for st in streams]
+    out = []
+    for trs in zip(*zs):
+        if len({tr.id for tr in trs}) != 1:
+            raise ValueError(f"Trace ids differ: {[tr.id for tr in trs]}")
+        n = min(tr.stats.npts for tr in trs)
+        data = np.vstack([tr.data[:n] for tr in trs])
+        tr_out = trs[0].copy()
+        tr_out.data = data.max(axis=0) if method == "max" else data.mean(axis=0)
+        out.append(tr_out)
+    return Stream(traces=out)
+
+def _window_means(P, n_before, n_after):
+    """
+    Mean of P (nf, n) along time over the window before t, [t-n_before+1, t],
+    and the window after t, [t, t+n_after-1]. Windows are clipped at the edges
+    and are never empty.
+    """
+    nf, n = P.shape
+    cs = np.zeros((nf, n + 1))
+    np.cumsum(P, axis=1, out=cs[:, 1:])
+    t = np.arange(n)
+    b0 = np.maximum(t + 1 - n_before, 0)
+    a1 = np.minimum(t + n_after, n)
+    before = (cs[:, t + 1] - cs[:, b0]) / (t + 1 - b0)
+    after = (cs[:, a1] - cs[:, t]) / (a1 - t)
+    return before, after
+
+
+def _spectral_entropy(P):
+    """Normalized spectral entropy (0..1) of each time column of P (nf, n)."""
+    p = P / (P.sum(axis=0, keepdims=True) + 1e-30)
+    return -(p * np.log(p + 1e-30)).sum(axis=0) / np.log(P.shape[0])
+
+
+def _spectral_cf(P, log2_f, fs, cf_type, win_before, win_after, direction):
+    """
+    Centroid or entropy CF from the power scalogram P = |W|^2, shape (nf, n).
+
+    centroid : shift of the energy centroid in log2 frequency [octaves],
+               window after t minus window before t
+    entropy  : drop of spectral entropy, before minus after (> 0 when
+               energy concentrates, e.g. a coherent arrival)
+    """
+    # Whitening: each frequency relative to its own background level
+    P = P / (np.median(P, axis=1, keepdims=True) + 1e-30)
+
+    before, after = _window_means(P, max(1, int(round(win_before * fs))),
+                                  max(1, int(round(win_after * fs))))
+
+    if cf_type == "centroid":
+        c_before = (before * log2_f[:, None]).sum(axis=0) / (before.sum(axis=0) + 1e-30)
+        c_after = (after * log2_f[:, None]).sum(axis=0) / (after.sum(axis=0) + 1e-30)
+        cf = c_after - c_before
+    else:  # entropy
+        cf = _spectral_entropy(before) - _spectral_entropy(after)
+
+    if direction == "down":
+        cf = -cf
+    elif direction == "both":
+        cf = np.abs(cf)
+    return cf
 
 # ===========================================================================
 # AFTANWavelet — faithful reimplementation of the original FORTRAN AFTAN

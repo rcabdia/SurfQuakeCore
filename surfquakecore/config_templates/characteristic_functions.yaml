@@ -1,13 +1,48 @@
+###############################################################################
+#  SurfQuake — Characteristic Functions (CF) template
+#
+#  The steps under "Analysis" run in order (process_1, process_2, ...).
+#  1) Pre-processing: prepares the waveforms (merge, detrend, taper, filter).
+#  2) Characteristic function: transforms each trace into a CF trace
+#     (n traces in -> n traces out, same ids).
+#
+#  HOW TO USE
+#    - Keep the pre-processing block (adapt it to your data).
+#    - Uncomment ONE characteristic-function block below.
+#    - Each step needs a UNIQUE key: the CF block is process_5. If you add or
+#      remove pre-processing steps, renumber it. A repeated key (e.g. two
+#      "process_1") silently overwrites the previous step.
+#    - Times are in seconds, frequencies in Hz.
+#    - Write decimals with a dot (0.15, 2.0); some options require a float.
+###############################################################################
+
 Analysis:
+
+  # ===========================================================================
+  # PRE-PROCESSING
+  # ===========================================================================
+
+  # Merge segments of the same channel (gaps filled by interpolation)
   process_1:
     name: 'concat'
+
+  # Remove mean / trend.  method: simple | linear | constant | demean | polynomial | spline
   process_2:
     name: 'rmean'
     method: 'linear'
+
+  # Taper the ends before filtering.
+  #   method:         cosine | hann | hamming | blackman | ... (ObsPy taper types)
+  #   max_percentage: fraction of the trace tapered at EACH end (0.05 = 5 %)
   process_3:
     name: 'taper'
     method: 'cosine'
     max_percentage: 0.05
+
+  # Band-pass filter.  Choose the band where your events have energy.
+  #   type:      bandpass | lowpass | highpass | ...
+  #   corners:   filter order
+  #   zerophase: True = no phase shift (recommended for picking)
   process_4:
     name: 'filter'
     type: 'bandpass'
@@ -16,35 +51,149 @@ Analysis:
     corners: 4
     zerophase: True
 
-###### Select on of the available Characteristic functions #######
 
-#  process_1:
+  # ===========================================================================
+  # CHARACTERISTIC FUNCTIONS — uncomment ONE block
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # cwt_cf — Wavelet (CWT) characteristic function
+  # ---------------------------------------------------------------------------
+  # Builds a bank of wavelet atoms between fmin and fmax ONCE and convolves
+  # every trace with it (fast for many traces). From the same scalogram it can
+  # compute three CFs:
+  #
+  #   power    : mean over frequencies of d/dt log(power). Reacts to a jump
+  #              in energy -> best for impulsive onsets (typically P).
+  #   entropy  : drop of spectral entropy of the whitened scalogram. Reacts
+  #              when energy concentrates in a narrow band, even if the total
+  #              energy barely changes -> later phases inside a coda
+  #              (typically S), narrowband signals (tremor, LP events).
+  #   centroid : shift of the energy centroid in log-frequency (octaves).
+  #              Reacts when the signal is spectrally different from the
+  #              noise (e.g. a local event above the microseism band).
+  #
+  # Required options
+  #   cycles:            number of cycles of the wavelet. Larger = better
+  #                      frequency resolution, worse time resolution
+  #                      (cm: 6 recommended). For pa it is not used as cycles.
+  #   fmin, fmax:        analysis band [Hz]. Keep it inside the band of the
+  #                      pre-processing filter.
+  #   voices_per_octave: frequency sampling (8 coarse, 16 standard, 32 fine).
+  #   wavelet_type:      cm = Complex Morlet (recommended)
+  #                      mh = Mexican Hat (real wavelet; power CF only)
+  #                      pa = Paul
+  #
+  # Optional options (defaults in brackets)
+  #   lowpass_freq: corner of the lowpass applied to the CF [0.15]. Lower =
+  #                 smoother CF, less time resolution.
+  #   cf_type:      power | entropy | centroid, or several separated by
+  #                 commas, e.g. 'power,entropy' [power].
+  #                 With several types they are combined into ONE CF per trace.
+  #   combine:      how several CFs are combined [max]
+  #                   max  = fires if ANY CF fires (more detections, more
+  #                          false alarms)
+  #                   mean = fires only if the CFs AGREE (more conservative)
+  #   win_before:   entropy/centroid: window before each sample, background [10.0 s]
+  #   win_after:    entropy/centroid: window after each sample, signal [2.0 s].
+  #                 Use at least ~2 periods of fmin; win_before ~5-10 x win_after.
+  #   direction:    entropy/centroid sign [up]
+  #                   up   = increase (centroid moves to higher frequency /
+  #                          energy concentrates)
+  #                   down = opposite sign
+  #                   both = absolute value
+  #
+  # Output units
+  #   - Single cf_type: raw CF (not normalized).
+  #   - Several cf_type: already in sigma units (robust z-score:
+  #     (x - median) / (1.4826 * MAD)), so thresholds like 4-5 sigma apply.
+  #
+  # Tip: 'power,entropy' with combine 'max' recovered both P and S arrivals
+  # in our tests where power alone missed the S.
+
+#  process_5:
 #    name: 'cwt_cf'
 #    cycles: 6
 #    fmin: 0.5
-#    fmax: 8.5
+#    fmax: 8.0
 #    voices_per_octave: 32
 #    wavelet_type: 'cm'
 #    lowpass_freq: 0.15
+#    cf_type: 'power,entropy'
+#    combine: 'max'
+#    win_before: 10.0
+#    win_after: 2.0
+#    direction: 'up'
 
-#  process_1:
+
+  # ---------------------------------------------------------------------------
+  # kurtosis — multi-band recursive kurtosis (higher-order statistics)
+  # ---------------------------------------------------------------------------
+  # Filters the trace in 20 log-spaced bands between fmin and fmax, computes
+  # a recursive 4th-order (kurtosis) CF in each band and stacks them.
+  # Kurtosis is high when the signal becomes impulsive / non-Gaussian, so it
+  # is sensitive to sharp onsets.
+  #
+  #   CF_decay_win: memory of the recursive estimator [s]. Shorter = sharper
+  #                 response, noisier; longer = smoother, slower.
+  #   fmin, fmax:   band [Hz] (fmax is capped at 0.98 x Nyquist).
+
+#  process_5:
 #    name: 'kurtosis'
 #    CF_decay_win: 4.0
 #    fmin: 0.5
-#    fmax: 8.5
+#    fmax: 8.0
 
-#  process_1:
+
+  # ---------------------------------------------------------------------------
+  # envelope — amplitude envelope (Hilbert transform)
+  # ---------------------------------------------------------------------------
+  # Instantaneous amplitude of the signal. Simple and robust, but only reacts
+  # to amplitude, not to changes in frequency content.
+  #
+  #   method:      FULL   = raw envelope
+  #                SMOOTH = envelope + lowpass (recommended for triggering)
+  #   corner_freq: lowpass corner for SMOOTH [Hz]. Must be a float (0.15, not 1).
+
+#  process_5:
 #    name: 'envelope'
 #    method: 'SMOOTH'
 #    corner_freq: 0.15
 
-# process_1:
+
+  # ---------------------------------------------------------------------------
+  # snr — STA/LTA family (ObsPy triggers)
+  # ---------------------------------------------------------------------------
+  # Ratio of short-term to long-term average energy. The classic detector.
+  #
+  #   method:    classic   = classic STA/LTA
+  #              recursive = recursive STA/LTA (faster, smoother)
+  #              z_detect  = Z-detector (uses only sign_win)
+  #   sign_win:  STA window, signal [s]. ~1-2 periods of the dominant
+  #              frequency of the arrivals.
+  #   noise_win: LTA window, noise [s]. Typically 10-40 x sign_win.
+  #              Ignored by z_detect.
+
+#  process_5:
 #    name: 'snr'
 #    method: 'classic'
 #    sign_win: 1
 #    noise_win: 40
 
-#  process_1:
+
+  # ---------------------------------------------------------------------------
+  # entropy — spectral entropy in sliding windows (Welch-type spectra)
+  # ---------------------------------------------------------------------------
+  # Normalized spectral entropy (0..1) of each window: HIGH for broadband
+  # noise, LOW when energy concentrates in a few frequencies.
+  # Note: this is the raw entropy (it DROPS at an arrival). For a CF that
+  # RISES at arrivals and is whitened against the background noise, use
+  # cwt_cf with cf_type: 'entropy' instead.
+  #
+  #   win:     window length [s]
+  #   overlap: overlap between windows [%] (default 50)
+
+#  process_5:
 #    name: 'entropy'
 #    win: 5.0
 #    overlap: 50

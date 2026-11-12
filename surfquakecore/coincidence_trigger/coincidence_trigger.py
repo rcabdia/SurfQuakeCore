@@ -21,7 +21,7 @@ from obspy import Stream, UTCDateTime
 import matplotlib.dates as mdt
 import matplotlib.pyplot as plt
 import re
-from surfquakecore.data_processing.wavelet import cwt_cf_stream
+from surfquakecore.data_processing.wavelet import cwt_cf_stream, robust_zscore, combine_cf_streams
 import numpy as np
 
 class CoincidenceTrigger:
@@ -61,6 +61,18 @@ class CoincidenceTrigger:
             self.cycles = cwt_config.cycles
             self.voices_per_octave = cwt_config.voices_per_octave
             self.wavelet_type = cwt_config.wavelet_type
+            self.cf_types = [c.strip() for c in cwt_config.cf_type.split(",") if c.strip()]
+            self.combine = cwt_config.combine
+            self.win_before = cwt_config.win_before
+            self.win_after = cwt_config.win_after
+            self.direction = cwt_config.direction
+
+            if not self.cf_types or any(c not in ("power", "entropy", "centroid") for c in self.cf_types):
+                raise ValueError("[CWT] cf_type must be power, entropy, centroid or a combination, "
+                                 "e.g. power,entropy")
+            if self.combine not in ("max", "mean"):
+                raise ValueError("[CWT] combine must be max or mean")
+
         else:
             print("Available preferred methods are: SNR, Kurtosis or CWT")
 
@@ -214,14 +226,19 @@ class CoincidenceTrigger:
         print("Ready to run coincidence Trigger at: ")
         print(st.__str__(extended=True))
 
-        print("Computing CWT characteristic function")
-        st_cf = cwt_cf_stream(st, fmin=self.fmin, fmax=self.fmax, cycles=self.cycles,
-                              voices_per_octave=self.voices_per_octave,
-                              wavelet=self.wavelet_type)
-        for tr in st_cf:
-            med = np.median(tr.data)
-            mad = 1.4826 * np.median(np.abs(tr.data - med))  # robust estimate of σ
-            tr.data = (tr.data - med) / mad if mad > 0 else np.zeros_like(tr.data)
+        print("Computing CWT characteristic function:", ", ".join(self.cf_types))
+        cfs = cwt_cf_stream(st, fmin=self.fmin, fmax=self.fmax, cycles=self.cycles,
+                            voices_per_octave=self.voices_per_octave,
+                            wavelet=self.wavelet_type,
+                            cf_type=tuple(self.cf_types),
+                            win_before=self.win_before, win_after=self.win_after,
+                            direction=self.direction)
+
+        # sigma units (robust z-score); several CFs are combined into one per station
+        if len(self.cf_types) == 1:
+            st_cf = robust_zscore(cfs[self.cf_types[0]])
+        else:
+            st_cf = combine_cf_streams(*[cfs[c] for c in self.cf_types], method=self.combine)
 
         events, events_times_cluster = self.run_coincidence(st_cf)
 
@@ -276,6 +293,7 @@ class CoincidenceTrigger:
                                      similarity_threshold=0.8, details=True)
 
         triggers = self._extract_event_info(events)
+        events_times_cluster = []
 
         if len(triggers) > 0:
             events_times_cluster, _ = MseedUtil.cluster_events(triggers, eps=self.centroid_radio)

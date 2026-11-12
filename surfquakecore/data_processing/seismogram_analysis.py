@@ -886,20 +886,31 @@ class StreamProcessing:
         self.stream = cf_kurt.run_kurtosis()
 
     def apply_cwt_cf(self, step_config):
-        from surfquakecore.data_processing.wavelet import cwt_cf_stream
+        from surfquakecore.data_processing.wavelet import cwt_cf_stream, combine_cf_streams
 
-        if "lowpass_freq" in step_config.keys():
-            pass
+        # cf_type: "power" (default) | "centroid" | "entropy",
+        # or several, e.g. "power,entropy" or ["power", "entropy"] -> combined per station
+        cf_type = step_config.get("cf_type", "power")
+        if isinstance(cf_type, str):
+            cf_type = [c.strip() for c in cf_type.split(",") if c.strip()]
+
+        cfs = cwt_cf_stream(self.stream,
+                            fmin=step_config["fmin"],
+                            fmax=step_config["fmax"],
+                            cycles=step_config["cycles"],
+                            voices_per_octave=step_config["voices_per_octave"],
+                            wavelet=step_config["wavelet_type"],
+                            lowpass_freq=step_config.get("lowpass_freq", 0.15),
+                            cf_type=tuple(cf_type),
+                            win_before=step_config.get("win_before", 10.0),
+                            win_after=step_config.get("win_after", 2.0),
+                            direction=step_config.get("direction", "up"))
+
+        if len(cf_type) == 1:
+            self.stream = cfs[cf_type[0]]
         else:
-            step_config["lowpass_freq"] = 0.15
-
-        self.stream = cwt_cf_stream(self.stream,
-                                    fmin=step_config["fmin"],
-                                    fmax=step_config["fmax"],
-                                    cycles=step_config["cycles"],
-                                    voices_per_octave=step_config["voices_per_octave"],
-                                    wavelet=step_config["wavelet_type"],
-                                    lowpass_freq=step_config["lowpass_freq"])
+            self.stream = combine_cf_streams(*[cfs[c] for c in cf_type],
+                                             method=step_config.get("combine", "max"))
 
     def apply_snr(self, step_config):
 

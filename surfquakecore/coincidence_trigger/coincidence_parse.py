@@ -46,10 +46,20 @@ def load_concidence_configuration(config_file: str) -> CoincidenceConfig:
 
     cwt_configuration = None
     if 'CWT' in coincidence_config_ini:
+        cwt_ini = coincidence_config_ini['CWT']
+
+        def _opt(key, cast, default):
+            return Cast(cwt_ini[key], cast) if key in cwt_ini else default
+
         cwt_configuration = CWT(
-            cycles=Cast(coincidence_config_ini['CWT']['cycles'], float),
-            voices_per_octave=Cast(coincidence_config_ini['CWT']['voices_per_octave'], int),
-            wavelet_type=Cast(coincidence_config_ini['CWT']['wavelet_type'], str))
+            cycles=Cast(cwt_ini['cycles'], float),
+            voices_per_octave=Cast(cwt_ini['voices_per_octave'], int),
+            wavelet_type=Cast(cwt_ini['wavelet_type'], str),
+            cf_type=_opt('cf_type', str, "power"),
+            combine=_opt('combine', str, "max"),
+            win_before=_opt('win_before', float, 10.0),
+            win_after=_opt('win_after', float, 2.0),
+            direction=_opt('direction', str, "up"))
 
     return CoincidenceConfig(
             kurtosis_configuration=Kurtosis(
