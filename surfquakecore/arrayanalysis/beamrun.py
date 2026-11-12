@@ -174,7 +174,7 @@ class TraceBeamResult:
                         self.smax, self.timewindow, self.slow_grid, n_signals)
 
                 backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
-                slowness = np.abs(Sxpow, Sypow)
+                slowness = np.hypot(Sxpow, Sypow)
 
                 Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
                 nx = len(Sx[0])
@@ -191,7 +191,7 @@ class TraceBeamResult:
                 if self.method_beam == "FK":
                     clabel = "FK Normalized Power"
                 elif self.method_beam == "CAPON":
-                    clabel = "CAPON Power"
+                    clabel = "CAPON Rel Power"
                 elif self.method_beam == "MTP.COHERENCE":
                     clabel = "Multitaper Magnitude Coherence"
                 elif (self.method_beam == "MUSIC" or self.method_beam == "MUSIC_2_signals" or

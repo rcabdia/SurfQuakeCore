@@ -1649,7 +1649,7 @@ class PlotProj:
                     self.smax, timewindow, self.slow_grid, self.nsignals)
 
             backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
-            slowness = np.abs(Sxpow, Sypow)
+            slowness = np.hypot(Sxpow, Sypow)
 
             Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
             nx = len(Sx[0])
@@ -1853,7 +1853,7 @@ class PlotProj:
                         self.smax, self.timewindow, self.slow_grid, n_signals)
 
                 backacimuth = wavenumber.azimuth2mathangle(np.arctan2(Sypow, Sxpow) * 180 / np.pi)
-                slowness = np.abs(Sxpow, Sypow)
+                slowness = np.hypot(Sxpow, Sypow)
 
                 Sx = np.arange(-1 * self.smax, self.smax, self.slow_grid)[np.newaxis]
                 nx = len(Sx[0])
