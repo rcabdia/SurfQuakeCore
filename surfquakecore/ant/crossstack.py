@@ -13,7 +13,7 @@ from obspy.geodetics import gps2dist_azimuth
 from surfquakecore.ant.process_ant import clock_process
 import gc
 import re
-
+from scipy.signal import hilbert
 
 class noisestack:
 
@@ -248,7 +248,8 @@ class noisestack:
                                     # Se reserva el espacio para la matriz de correlaciones en el dominio del tiempo
                                     size_1d = corr_ij_freq.shape[0]
                                     size_2d = corr_ij_freq.shape[1]
-                                    size_2d_all = size_1d + size_2d
+                                    #size_2d_all = size_1d + size_2d
+                                    size_2d_all = size_1d * size_2d
                                     corr_ij_freq[np.isnan(corr_ij_freq)] = 0.0 + 0.0j
                                     zero_vectors = np.all(corr_ij_freq == 0.0 + 0.0j, axis=2)
                                     count_zero_vectors = np.sum(zero_vectors)
@@ -258,11 +259,13 @@ class noisestack:
 
                                     if normalization == "PCC":
                                         corr_ij_time = np.real(np.fft.ifft(corr_ij_freq, axis=2))
-                                        corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                        #corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                        corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
                                     else:
 
                                         corr_ij_time = np.real(np.fft.irfft(corr_ij_freq, axis=2))
-                                        corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                        #corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                        corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
 
                                     # Crop in time domain 16/01/2025
                                     pad_length = corr_ij_time.shape[2]
@@ -271,71 +274,37 @@ class noisestack:
                                     end_idx = start_idx + cross_length
                                     corr_ij_time = corr_ij_time[:, :, start_idx:end_idx]
 
-                                    # save memory
-                                    if self.stack != "PWS":
-                                        try:
-                                            del data_matrix_file_i_corr
-                                            del data_matrix_file_j_corr
-                                            del corr_ij_freq
-                                            gc.collect()
-                                        except:
-                                            pass
-                                    else:
-                                        try:
-                                            del data_matrix_file_i_corr
-                                            del data_matrix_file_j_corr
-                                            gc.collect()
-                                        except:
-                                            pass
+                                    try:
+                                        # save memory: the spectra are no longer needed (PWS now works in the time domain)
+                                        del data_matrix_file_i_corr, data_matrix_file_j_corr, corr_ij_freq
+                                        gc.collect()
+                                    except:
+                                        pass
 
                                     if self.stack == "nrooth":
-                                        corr_ij_time = (np.abs(corr_ij_time) ** (1 / self.power)) * np.sign(
-                                            corr_ij_time)
-                                        c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
+                                        # corr_ij_time = (np.abs(corr_ij_time) ** (1 / self.power)) * np.sign(
+                                        #     corr_ij_time)
+                                        # c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
+
+                                        corr_ij_time = np.sign(corr_ij_time) * np.abs(corr_ij_time) ** (1 / self.power)
+                                        c_stack = corr_ij_time[~zero_vectors].mean(axis=0)
+                                        c_stack = np.sign(c_stack) * np.abs(c_stack) ** self.power
 
                                     elif self.stack == "Linear":
                                         c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
 
 
                                     elif self.stack == "PWS":
-
-                                        # estimate the analytic function and then the instantaneous phase matrix
-                                        # analytic_signal = np.zeros((size_1d, size_2d, size_3d), dtype=np.complex64)
-                                        # if normalization == "CC":
-                                        f, c, d = corr_ij_freq.shape
-                                        dim_full = 2 * d - 1
-                                        non_real_dim = (dim_full - d)
-
-                                        c = np.zeros((f, c, non_real_dim), dtype=np.complex64)
-                                        signal_rfft_mod = np.concatenate((corr_ij_freq, c), axis=2)
-                                        signal_rfft_mod[((non_real_dim // 2) + 1):] = signal_rfft_mod[((non_real_dim
-                                                                                                        // 2) + 1):] * 0
-                                        signal_rfft_mod[1:non_real_dim // 2] = 2 * signal_rfft_mod[1:non_real_dim // 2]
-
-                                        # Generate the analytic function matrix
-                                        analytic_signal = np.fft.ifft(signal_rfft_mod, axis=2)
-                                        analytic_signal = np.fft.ifftshift(analytic_signal)
-
-                                        # elif normalization != "CC":
-                                        #
-                                        #     # Generate the analytic function matrix
-                                        #     analytic_signal = np.fft.ifft(corr_ij_freq, cross_length, axis=2)
-                                        #     analytic_signal = np.fft.ifftshift(analytic_signal)
-
-                                        # Compute linear stack
-
-                                        # Crop the analytic signal 16/01/2025
-                                        analytic_signal = analytic_signal[:, :, start_idx:end_idx]
-
-                                        c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
-                                        c_stack_max = np.max(c_stack)
-
-                                        phase_stack = np.sum(np.sum(analytic_signal, axis=1), axis=0) / size_2d_all
-
-                                        # this point proceed to the PWS
-                                        phase_stack = (np.abs(phase_stack)) ** self.power
-                                        c_stack = c_stack * phase_stack
-                                        c_stack = (c_stack * c_stack_max) / np.max(c_stack)
+                                        # Phase-weighted stack (Schimmel & Paulssen, 1997)
+                                        # analytic signal of the cropped correlations; valid for CC and PCC
+                                        valid = ~zero_vectors
+                                        analytic_signal = hilbert(corr_ij_time[valid], axis=-1)
+                                        phasors = analytic_signal / np.maximum(np.abs(analytic_signal),
+                                                                               np.finfo(float).tiny)
+                                        phase_stack = np.abs(phasors.mean(axis=0)) ** self.power
+                                        c_lin = corr_ij_time[valid].mean(axis=0)
+                                        c_stack = c_lin * phase_stack
+                                        del analytic_signal, phasors
 
                                     # c_stack par, impar ...
                                     # num = len(c_stack)
@@ -558,7 +527,8 @@ class noisestack:
                                 # Se reserva el espacio para la matriz de correlaciones en el dominio del tiempo
                                 size_1d = corr_ij_freq.shape[0]
                                 size_2d = corr_ij_freq.shape[1]
-                                size_2d_all = size_1d + size_2d
+                                #size_2d_all = size_1d + size_2d
+                                size_2d_all = size_1d * size_2d
 
                                 corr_ij_freq[np.isnan(corr_ij_freq)] = 0.0 + 0.0j
                                 zero_vectors = np.all(corr_ij_freq == 0.0 + 0.0j, axis=2)
@@ -567,10 +537,12 @@ class noisestack:
 
                                 if normalization == "PCC":
                                     corr_ij_time = np.real(np.fft.ifft(corr_ij_freq, axis=2))
-                                    corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                    #corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                    corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
                                 else:
                                     corr_ij_time = np.real(np.fft.irfft(corr_ij_freq, axis=2))
-                                    corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                    #corr_ij_time = np.fft.ifftshift(corr_ij_time)
+                                    corr_ij_time = np.fft.ifftshift(corr_ij_time, axes=2)
 
                                 # Crop in time domain 16/01/2025
                                 pad_length = corr_ij_time.shape[2]
@@ -579,68 +551,35 @@ class noisestack:
                                 end_idx = start_idx + cross_length
                                 corr_ij_time = corr_ij_time[:, :, start_idx:end_idx]
 
-                                # save memory
-                                if self.stack != "PWS":
-                                    try:
-                                        del data_matrix_file_i_corr
-                                        del data_matrix_file_j_corr
-                                        del corr_ij_freq
-                                        gc.collect()
-                                    except:
-                                        pass
-                                else:
-                                    try:
-                                        del data_matrix_file_i_corr
-                                        del data_matrix_file_j_corr
-                                        gc.collect()
-                                    except:
-                                        pass
+                                try:
+                                    # save memory: the spectra are no longer needed (PWS now works in the time domain)
+                                    del data_matrix_file_i_corr, data_matrix_file_j_corr, corr_ij_freq
+                                    gc.collect()
+                                except:
+                                    pass
 
                                 if self.stack == "nrooth":
-                                    corr_ij_time = (np.abs(corr_ij_time) ** (1 / self.power)) * np.sign(corr_ij_time)
-                                    c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
+                                    # corr_ij_time = (np.abs(corr_ij_time) ** (1 / self.power)) * np.sign(corr_ij_time)
+                                    # c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
+                                    corr_ij_time = np.sign(corr_ij_time) * np.abs(corr_ij_time) ** (1 / self.power)
+                                    c_stack = corr_ij_time[~zero_vectors].mean(axis=0)
+                                    c_stack = np.sign(c_stack) * np.abs(c_stack) ** self.power
 
                                 elif self.stack == "Linear":
                                     # Stack: Linear stack
                                     c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
 
                                 elif self.stack == "PWS":
-
-                                    # estimate the analytic function and then the instantaneous phase matrix
-                                    # analytic_signal = np.zeros((size_1d, size_2d, size_3d), dtype=np.complex64)
-                                    if normalization == "CC":
-                                        f, c, d = corr_ij_freq.shape
-                                        dim_full = 2 * d - 1
-                                        non_real_dim = (dim_full - d)
-                                        c = np.zeros((f, c, non_real_dim), dtype=np.complex64)
-                                        signal_rfft_mod = np.concatenate((corr_ij_freq, c), axis=2)
-                                        signal_rfft_mod[((non_real_dim // 2) + 1):] = signal_rfft_mod[
-                                                                                      ((non_real_dim // 2) + 1):] * 0
-                                        signal_rfft_mod[1:non_real_dim // 2] = 2 * signal_rfft_mod[1:non_real_dim // 2]
-
-                                        # Generate the analytic function matrix
-                                        analytic_signal = np.fft.ifft(signal_rfft_mod, axis=2)
-                                        analytic_signal = np.fft.ifftshift(analytic_signal)
-
-                                    # elif normalization != "CC":
-                                    #
-                                    #     # Generate the analytic function matrix
-                                    #     analytic_signal = np.fft.ifft(corr_ij_freq,  axis=2)
-                                    #     analytic_signal = np.fft.ifftshift(analytic_signal)
-
-                                    # Crop the analytic signal 16/01/2025
-                                    analytic_signal = analytic_signal[:, :, start_idx:end_idx]
-
-                                    # Compute linear stack
-                                    c_stack = np.sum(np.sum(corr_ij_time, axis=1), axis=0) / size_2d_all
-                                    c_stack_max = np.max(c_stack)
-
-                                    phase_stack = np.sum(np.sum(analytic_signal, axis=1), axis=0) / size_2d_all
-
-                                    # this point proceed to the PWS
-                                    phase_stack = (np.abs(phase_stack)) ** self.power
-                                    c_stack = c_stack * phase_stack
-                                    c_stack = (c_stack * c_stack_max) / np.max(c_stack)
+                                    # Phase-weighted stack (Schimmel & Paulssen, 1997)
+                                    # analytic signal of the cropped correlations; valid for CC and PCC
+                                    valid = ~zero_vectors
+                                    analytic_signal = hilbert(corr_ij_time[valid], axis=-1)
+                                    phasors = analytic_signal / np.maximum(np.abs(analytic_signal),
+                                                                           np.finfo(float).tiny)
+                                    phase_stack = np.abs(phasors.mean(axis=0)) ** self.power
+                                    c_lin = corr_ij_time[valid].mean(axis=0)
+                                    c_stack = c_lin * phase_stack
+                                    del analytic_signal, phasors
 
                                 # c_stack par, impar ...
                                 # num = len(c_stack)
@@ -690,18 +629,17 @@ class noisestack:
                                 print(path_name)
                                 st.write(path_name, format='H5')
 
-                            if self.dailyStacks:
-                                path_name = os.path.join(self.stack_daily_files_path, filename + "_daily")
-                                dims = [corr_ij_time.shape[1], corr_ij_time.shape[2]]
-                                stack_day = np.sum(corr_ij_time, axis=0)
+                                if self.dailyStacks:
+                                    path_name = os.path.join(self.stack_daily_files_path, filename + "_daily")
+                                    dims = [corr_ij_time.shape[1], corr_ij_time.shape[2]]
+                                    stack_day = np.sum(corr_ij_time, axis=0)
 
-                                # here I can delete corr_ij_time
-                                del corr_ij_time
-                                gc.collect()
+                                    # here I can delete corr_ij_time
+                                    del corr_ij_time
+                                    gc.collect()
 
-                                clock = clock_process(stack_day, stats, path_name, common_dates_list, dims)
-                                clock.daily_stack_part(type=self.stack, power=self.power, overlap=self.overlap)
-
+                                    clock = clock_process(stack_day, stats, path_name, common_dates_list, dims)
+                                    clock.daily_stack_part(type=self.stack, power=self.power, overlap=self.overlap)
                             else:
                                 print("Empty date_list.")
                             print("-----")
@@ -1212,7 +1150,7 @@ class noisestack:
             else:
                 years[year].append(julday + "." + year)
 
-        for keys in years:
+        for keys in sorted(years):
             date_index = years[keys]
             date_index = sorted(date_index, key=float)
             all_years = all_years + date_index

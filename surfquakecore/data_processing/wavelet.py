@@ -12,8 +12,7 @@ Three filter-bank modes are now supported, selected via  use_wavelet=:
 
   'Gabor'  (alias 'Gaussian bank', 'AFTAN')
       Fixed-width Gaussian envelope × complex sine.
-      # σ(f) = alpha(f) / (2π·f·sqrt(2))  where alpha = ffact·20·√(Δ/1000)
-      new changed to σ(f) = √2·α/(2π·f₀) where alpha = ffact·20·√(Δ/1000)
+      σ(f) = √(2α) / (2π·f)  where alpha = ffact·20·√(Δ/1000)
       OR sigma_seconds is set directly via sigma_sec=<value>.
       Gives constant absolute bandwidth filtering — mathematically
       identical to AFTAN's Gaussian narrow-band filter bank.
@@ -46,8 +45,8 @@ Gabor (fixed σ = sigma_sec):
     → same formula, but s is constant across all f instead of scaling with 1/f.
 
 AFTAN Gaussian filter (for reference):
-    H(ω; ω₀) = exp[-α²(ω/ω₀ - 1)²]   with α = ffact·20·√(Δ/1000)
-    The Gabor mode with sigma_sec = alpha / (2π·f₀·√2) is equivalent
+    H(ω; ω₀) = exp[-α(ω/ω₀ - 1)²]   with α = ffact·20·√(Δ/1000)
+    The Gabor mode with sigma_sec = √(2α) / (2π·f₀) is equivalent
     to AFTAN's filter evaluated at centre frequency f₀.
 
 Usage example
@@ -110,11 +109,11 @@ def aftan_sigma(dist_km: float,
     wavelet at frequency f0 equivalent to AFTAN's adaptive Gaussian filter.
 
     AFTAN filter in the frequency domain:
-        H(ω; ω₀) = exp[ -α² (ω/ω₀ - 1)² ]
+        H(ω; ω₀) = exp[-α(ω/ω₀ - 1)²]
         α = ffact · 20 · √(dist_km / 1000)
 
     This corresponds to a Gaussian envelope in the time domain with:
-        sigma_time = α / (2π · f₀ · √2)   [seconds]
+        sigma_time = √(2α) / (2π·f₀)   [seconds]
 
     When f0 is None, the geometric mean of fmin and fmax is commonly used
     as a representative frequency, but since AFTAN actually uses a different
@@ -135,7 +134,7 @@ def aftan_sigma(dist_km: float,
     alpha = ffact * 20.0 * np.sqrt(dist_km / 1000.0)
     if f0 is None:
         return alpha
-    sigma_sec = np.sqrt(2.0) * alpha / (2.0 * np.pi * f0)
+    sigma_sec = np.sqrt(2.0 * alpha) / (2.0 * np.pi * f0)
     return sigma_sec
 
 
@@ -1015,7 +1014,7 @@ class AFTANWavelet:
     The filter is NOT a standard Gabor/Morlet atom.  It is applied directly
     in the frequency domain as:
 
-        H(ω; ω₀) = exp[ -α² · (ω/ω₀ - 1)² ]
+        H(ω; ω₀) = exp[-α(ω/ω₀ - 1)²]
 
     where  α = ffact · 20 · √(dist_km / 1000)
 
@@ -1244,7 +1243,8 @@ class AFTANWavelet:
             # Trick 1: ratio-based Gaussian in frequency domain
             freqs = np.arange(ns) * dom
             with np.errstate(over='ignore', invalid='ignore'):
-                gauss = np.exp(-self._alpha ** 2 * (freqs / om0 - 1.0) ** 2)
+                expo = -self._alpha * (freqs / om0 - 1.0) ** 2
+                gauss = np.where(np.abs(expo) <= 40.0, np.exp(expo), 0.0)
 
             fils = sf * gauss
 
