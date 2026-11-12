@@ -86,10 +86,16 @@ plotting:
   # default: false
   show_info_picks: false
 
-  # Show a crosshair (horizontal + vertical line) following the mouse in every
-  # subplot. Useful for precise picking. Only for interactive plots.
+  # Crosshair (dashed lines following the mouse). Only for interactive plots.
+  #   false      : no crosshair
+  #   single     : vertical line in all subplots + horizontal line only in the
+  #                subplot under the mouse  (recommended; "true" means this)
+  #   vertical   : vertical line in all subplots
+  #   horizontal : horizontal line in all subplots, at the same amplitude
+  #                (useful with sharey: true)
+  #   all        : vertical and horizontal lines in all subplots
   # default: false
-  show_crosshair: false
+  show_crosshair: single
 
   # ---------------------------------------------------------------------------
   #  SAVING FIGURES  (see the table at the end of this section)

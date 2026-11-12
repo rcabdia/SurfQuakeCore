@@ -1,170 +1,100 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-crosshair
-"""
-class Cursor:
-    """
-    A cross hair cursor.
-    """
-    def __init__(self, ax):
-        self.ax = ax
-        self.horizontal_line = ax.axhline(color='k', lw=0.8, ls='--')
-        self.vertical_line = ax.axvline(color='k', lw=0.8, ls='--')
-        # text location in axes coordinates
-        #self.text = ax.text(0.72, 0.9, '', transform=ax.transAxes)
+from matplotlib.lines import Line2D
 
-    def set_cross_hair_visible(self, visible):
-        need_redraw = self.horizontal_line.get_visible() != visible
-        self.horizontal_line.set_visible(visible)
-        self.vertical_line.set_visible(visible)
-        #self.text.set_visible(visible)
-        return need_redraw
+CROSSHAIR_MODES = ("single", "vertical", "horizontal", "all")
 
-    def on_mouse_move(self, event):
-        if not event.inaxes:
-            need_redraw = self.set_cross_hair_visible(False)
-            if need_redraw:
-                self.ax.figure.canvas.draw()
-        else:
-            self.set_cross_hair_visible(True)
-            x, y = event.xdata, event.ydata
-            # update the line positions
-            self.horizontal_line.set_ydata([y])
-            self.vertical_line.set_xdata([x])
-            #self.text.set_text(f'x={x:1.2f}, y={y:1.2f}')
-            self.ax.figure.canvas.draw()
-class BlittedCursor:
-    def __init__(self, ax, all_axes):
-        self.ax = ax
-        self.all_axes = all_axes
+
+class MultiAxesCrosshair:
+    """
+    Crosshair shared by all the axes of one figure.
+
+    mode:
+        single     : vertical line in all axes + horizontal line only in the axes
+                     under the mouse (default)
+        vertical   : vertical line in all axes
+        horizontal : horizontal line in all axes, at the same y value
+                     (meaningful when the axes share the Y scale, sharey: true)
+        all        : vertical and horizontal lines in all axes
+    """
+
+    def __init__(self, axes, mode="single", color="k", lw=0.8, ls="--", useblit=True):
+        if mode not in CROSSHAIR_MODES:
+            raise ValueError(f"crosshair mode must be one of {CROSSHAIR_MODES}, got '{mode}'")
+
+        self.axes = list(axes)
+        self._axset = set(self.axes)
+        self.mode = mode
+        self.canvas = self.axes[0].figure.canvas
+        self.useblit = useblit and getattr(self.canvas, "supports_blit", False)
         self.background = None
-        self.horizontal_line = ax.axhline(color='k', lw=0.8, ls='--')
-        #self.text = ax.text(0.72, 0.9, '', transform=ax.transAxes)
 
-        # Vertical lines in all axes
-        self.vertical_lines = []
-        for other_ax in all_axes:
-            line = other_ax.axvline(color='k', lw=0.8, ls='--')
-            self.vertical_lines.append(line)
+        # animated lines are skipped in normal draws and in savefig (blit mode)
+        style = dict(color=color, lw=lw, ls=ls, animated=self.useblit, visible=False)
 
-        self._creating_background = False
-        ax.figure.canvas.mpl_connect('draw_event', self.on_draw)
+        self.vlines = {}
+        self.hlines = {}
+        for ax in self.axes:
+            if mode != "horizontal":
+                # x in data units, y in axes fraction -> full-height line
+                v = Line2D([0, 0], [0, 1], transform=ax.get_xaxis_transform(), **style)
+                ax.add_artist(v)  # add_artist does not change the data limits
+                self.vlines[ax] = v
+            if mode != "vertical":
+                # x in axes fraction, y in data units -> full-width line
+                h = Line2D([0, 1], [0, 0], transform=ax.get_yaxis_transform(), **style)
+                ax.add_artist(h)
+                self.hlines[ax] = h
 
-    def on_draw(self, event):
-        self.create_new_background()
+        self._cids = [
+            self.canvas.mpl_connect("motion_notify_event", self.on_move),
+            self.canvas.mpl_connect("figure_leave_event", lambda event: self._hide()),
+        ]
+        if self.useblit:
+            self._cids.append(self.canvas.mpl_connect("draw_event", self._on_draw))
 
-    def set_horizontal_visible(self, visible):
-        changed = self.horizontal_line.get_visible() != visible
-        self.horizontal_line.set_visible(visible)
-        #self.text.set_visible(visible)
-        return changed
+    def _lines(self):
+        return list(self.vlines.values()) + list(self.hlines.values())
 
-    def create_new_background(self):
-        if self._creating_background:
+    def _on_draw(self, event):
+        # new clean background after every full redraw (zoom, picks, resize...)
+        self.background = self.canvas.copy_from_bbox(self.canvas.figure.bbox)
+
+    def on_move(self, event):
+        ax = event.inaxes
+        if ax not in self._axset or event.xdata is None:
+            self._hide()
             return
-        self._creating_background = True
-        self.set_horizontal_visible(False)
-        for vline in self.vertical_lines:
-            vline.set_visible(False)
-        self.ax.figure.canvas.draw()
-        self.background = self.ax.figure.canvas.copy_from_bbox(self.ax.figure.bbox)
-        self.set_horizontal_visible(True)
-        for vline in self.vertical_lines:
-            vline.set_visible(True)
-        self._creating_background = False
-
-    def on_mouse_move(self, event):
-        if self.background is None:
-            self.create_new_background()
 
         x, y = event.xdata, event.ydata
-        if not event.inaxes:
-            if self.set_horizontal_visible(False):
-                self.ax.figure.canvas.restore_region(self.background)
-                for vline in self.vertical_lines:
-                    vline.set_visible(False)
-                self.ax.figure.canvas.blit(self.ax.figure.bbox)
-            return
+        for v in self.vlines.values():
+            v.set_xdata([x, x])
+            v.set_visible(True)
+        for a, h in self.hlines.items():
+            h.set_ydata([y, y])
+            h.set_visible(self.mode != "single" or a is ax)
+        self._update()
 
-        # Update lines
-        for vline in self.vertical_lines:
-            vline.set_xdata([x])
-            vline.set_visible(True)
+    def _hide(self):
+        changed = False
+        for line in self._lines():
+            if line.get_visible():
+                line.set_visible(False)
+                changed = True
+        if changed:
+            self._update()
 
-        if event.inaxes == self.ax:
-            self.set_horizontal_visible(True)
-            self.horizontal_line.set_ydata([y])
-            #self.text.set_text(f'x={x:1.2f}, y={y:1.2f}')
+    def _update(self):
+        if self.useblit:
+            if self.background is None:  # figure not drawn yet
+                return
+            self.canvas.restore_region(self.background)
+            for line in self._lines():
+                if line.get_visible():
+                    line.axes.draw_artist(line)
+            self.canvas.blit(self.canvas.figure.bbox)
         else:
-            self.set_horizontal_visible(False)
+            self.canvas.draw_idle()
 
-        # Redraw
-        self.ax.figure.canvas.restore_region(self.background)
-        for vline in self.vertical_lines:
-            self.ax.draw_artist(vline)
-        if self.horizontal_line.get_visible():
-            self.ax.draw_artist(self.horizontal_line)
-            #self.ax.draw_artist(self.text)
-        self.ax.figure.canvas.blit(self.ax.figure.bbox)
-
-class BlittedCursor:
-    """
-    A cross-hair cursor using blitting for faster redraw.
-    """
-
-    def __init__(self, ax):
-        self.ax = ax
-        self.background = None
-        self.horizontal_line = ax.axhline(color='k', lw=0.8, ls='--')
-        self.vertical_line = ax.axvline(color='k', lw=0.8, ls='--')
-        # text location in axes coordinates
-        #self.text = ax.text(0.72, 0.9, '', transform=ax.transAxes)
-        self._creating_background = False
-        ax.figure.canvas.mpl_connect('draw_event', self.on_draw)
-
-    def on_draw(self, event):
-        self.create_new_background()
-
-    def set_cross_hair_visible(self, visible):
-        need_redraw = self.horizontal_line.get_visible() != visible
-        self.horizontal_line.set_visible(visible)
-        self.vertical_line.set_visible(visible)
-        #self.text.set_visible(visible)
-        return need_redraw
-
-    def create_new_background(self):
-        if self._creating_background:
-            # discard calls triggered from within this function
-            return
-        self._creating_background = True
-        self.set_cross_hair_visible(False)
-        self.ax.figure.canvas.draw()
-        self.background = self.ax.figure.canvas.copy_from_bbox(self.ax.bbox)
-        self.set_cross_hair_visible(True)
-        self._creating_background = False
-
-    def on_mouse_move(self, event):
-        if self.background is None:
-            self.create_new_background()
-
-        # Case: mouse outside any axes
-        if not event.inaxes or event.inaxes != self.ax:
-            need_redraw = self.set_cross_hair_visible(False)
-            if need_redraw:
-                self.ax.figure.canvas.restore_region(self.background)
-                self.ax.figure.canvas.blit(self.ax.bbox)
-            return
-
-        # Inside the active axes
-        self.set_cross_hair_visible(True)
-        x, y = event.xdata, event.ydata
-        self.horizontal_line.set_ydata([y])
-        self.vertical_line.set_xdata([x])
-        #self.text.set_text(f'x={x:1.2f}, y={y:1.2f}')
-
-        self.ax.figure.canvas.restore_region(self.background)
-        self.ax.draw_artist(self.horizontal_line)
-        self.ax.draw_artist(self.vertical_line)
-        #self.ax.draw_artist(self.text)
-        self.ax.figure.canvas.blit(self.ax.bbox)
+    def disconnect(self):
+        for cid in self._cids:
+            self.canvas.mpl_disconnect(cid)
+        self._cids = []

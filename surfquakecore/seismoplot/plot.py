@@ -28,7 +28,7 @@ from obspy.signal.polarization import flinn
 from surfquakecore.arrayanalysis import array_analysis
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 from surfquakecore.data_processing.wavelet import ConvolveWaveletScipy
-from surfquakecore.seismoplot.crosshair import Cursor
+from surfquakecore.seismoplot.crosshair import MultiAxesCrosshair, CROSSHAIR_MODES
 from surfquakecore.seismoplot.fast_plot import FastLine
 from surfquakecore.seismoplot.plot_command_prompt import PlotCommandPrompt
 from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
@@ -138,6 +138,26 @@ class PlotProj:
 
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(os.path.expanduser(path)) if path else None
+
+    def _crosshair_mode(self):
+        """Crosshair mode from plot_config['show_crosshair'], or None if disabled.
+        Accepts false/true (true = single) or single|vertical|horizontal|all."""
+        value = self.plot_config.get("show_crosshair", False)
+        if value is True:
+            return "single"
+        if not value:
+            return None
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in ("false", "no", "off", "none"):
+                return None
+            if v in ("true", "yes", "on"):
+                return "single"
+            if v in CROSSHAIR_MODES:
+                return v
+        print(f"[WARNING] show_crosshair '{value}' not recognized "
+              f"(use false or {', '.join(CROSSHAIR_MODES)}), using 'single'")
+        return "single"
 
     def _print_help_table(self):
         """Print available keyboard commands in a table format."""
@@ -282,13 +302,11 @@ class PlotProj:
         self.__selected_ax_index = 0
 
         # Crosshair cursor
-        if self.plot_config.get("show_crosshair", True):
-            self.cursors = []
-            for ax in self.axs:
-                cursor = Cursor(ax)
-                #cursor = BlittedCursor(ax)
-                ax.figure.canvas.mpl_connect('motion_notify_event', cursor.on_mouse_move)
-                self.cursors.append(cursor)
+        # Crosshair cursor
+        self.crosshair = None
+        mode = self._crosshair_mode()
+        if mode and self.plot_config.get("show_plot", True):  # pointless in batch mode
+            self.crosshair = MultiAxesCrosshair(self.axs, mode=mode)
 
         self._setup_pick_interaction()
         self._restore_state()
