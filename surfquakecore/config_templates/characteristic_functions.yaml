@@ -25,6 +25,7 @@ Analysis:
 #    fmax: 8.5
 #    voices_per_octave: 32
 #    wavelet_type: 'cm'
+#    lowpass_freq: 0.15
 
 #  process_1:
 #    name: 'kurtosis'

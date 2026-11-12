@@ -887,12 +887,19 @@ class StreamProcessing:
 
     def apply_cwt_cf(self, step_config):
         from surfquakecore.data_processing.wavelet import cwt_cf_stream
+
+        if "lowpass_freq" in step_config.keys():
+            pass
+        else:
+            step_config["lowpass_freq"] = 0.15
+
         self.stream = cwt_cf_stream(self.stream,
                                     fmin=step_config["fmin"],
                                     fmax=step_config["fmax"],
                                     cycles=step_config["cycles"],
                                     voices_per_octave=step_config["voices_per_octave"],
-                                    wavelet=step_config["wavelet_type"])
+                                    wavelet=step_config["wavelet_type"],
+                                    lowpass_freq=step_config["lowpass_freq"])
 
     def apply_snr(self, step_config):
 
