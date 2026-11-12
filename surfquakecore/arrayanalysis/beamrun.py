@@ -60,8 +60,7 @@ class TraceBeamResult:
             common_start, common_end,
             self.fmin, self.fmax,
             self.smax, self.slow_grid,
-            self.timewindow, self.overlap
-        )
+            self.timewindow, self.overlap)
 
     def plot_beam(self, save_path: str = None):
 
@@ -118,7 +117,31 @@ class TraceBeamResult:
             self.fig_fk.savefig(save_path, dpi=300)
             plt.close(self.fig_fk)
         else:
+            self._print_fk_help()
             plt.show()
+
+    def _print_fk_help(self):
+
+        commands = [
+            ("KEY", "ACTION"),
+            ("---", "------"),
+            ("1", "Conventional FK"),
+            ("2", "Capon"),
+            ("3", "Multitaper Coherence"),
+            ("4", "Music for 1 signal"),
+            ("5", "Music for 2 signals"),
+            ("6", "Music for 3 signals"),
+        ]
+
+        print("\n" + "=" * 55)
+        print("Plot Interaction Help, hold mouse over power pannel at any time.\n Press key '1-6' to select a method, "
+              "then press the key 'e' to run the process")
+        print("=" * 55)
+
+        for key, desc in commands:
+            print(f"{key:<15} | {desc}")
+
+        print("=" * 55 + "\n")
 
     def _on_beam_key_press(self, event):
         method_map = {

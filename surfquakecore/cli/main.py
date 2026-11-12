@@ -2352,7 +2352,7 @@ def _beamplot():
         except Exception as e:
             print(f"[ERROR] Failed to detect peaks: {e}")
 
-        beam_obj.plot_beam(save_path=make_abs(args.save_path) if args.save_path else None)
+    beam_obj.plot_beam(save_path=make_abs(args.save_path) if args.save_path else None)
 
 
 def _info():

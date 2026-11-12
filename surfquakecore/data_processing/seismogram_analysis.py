@@ -876,7 +876,7 @@ class StreamProcessing:
     def apply_beam(self, step_config):
         bm = TraceBeamResult(stream=self.stream, overlap=step_config["overlap"], fmin=step_config["fmin"],
                              fmax=step_config["fmax"], smax=step_config["smax"], slow_grid=step_config["slow_grid"],
-                             inventory=self.inventory, method=step_config["method"])
+                             inventory=self.inventory, method="FK")
 
         bm.compute_beam()
         bm.to_pickle(folder_path=step_config["output_folder"])
