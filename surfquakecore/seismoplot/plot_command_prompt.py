@@ -46,6 +46,7 @@ class PlotCommandPrompt:
             "flip": self._cmd_flip,
             "reverse": self._cmd_reverse,
             "back2future": self._cmd_back2future,
+            "b2f": self._cmd_back2future,
             "taper": self._cmd_taper,
             "remove_spikes": self._cmd_remove_spikes,
             "wiener": self._cmd_wiener,
@@ -2648,7 +2649,7 @@ class PlotCommandPrompt:
                 ("n", "Next trace page"),
                 ("b", "Previous trace page"),
                 ("p", "Return to picking mode"),
-                ("back2future", "Restore original waveforms (undo all processing)"),
+                ("back2future/ b2f", "Restore original waveforms (undo all processing)"),
                 ("exit", "Close interactive session"),
                 ("history [N]", "Show the last N commands entered at the prompt (default 10)")
             ],
@@ -3211,6 +3212,7 @@ class PlotCommandPrompt:
                 "sp": "spectrum",
                 "spec": "spectrogram",
                 "tf": "coh",
+                "b2f": "back2future",
             }
             cmd = aliases.get(cmd, cmd)
 
