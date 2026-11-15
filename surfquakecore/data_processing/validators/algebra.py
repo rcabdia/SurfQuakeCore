@@ -17,15 +17,11 @@ def validate_algebra(config: dict) -> bool:
       - fill_gaps (bool)  : whether to fill gaps before applying algebra
       - resample  (int|float) : target sampling rate; must be positive
     """
-    require_keys(config, ['expression', 'trim', 'fill_gaps', 'resample'])
+    require_keys(config, ['expression', 'trim', 'fill_gaps'])
 
     _validate_equation(config['expression'])
 
     require_type(config, 'trim', bool)
     require_type(config, 'fill_gaps', bool)
-
-    require_type(config, 'resample', (int, float))
-    if config['resample'] <= 0:
-        raise ValueError("'resample' must be a positive number.")
 
     return True

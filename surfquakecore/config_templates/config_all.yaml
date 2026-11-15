@@ -1,21 +1,59 @@
+###############################################################################
+#  SurfQuake — processing methods reference (config_all)
+#
+#  Steps under "Analysis" run in order: process_1, process_2, ...
+#  Each key must be unique; a repeated key silently replaces the earlier step.
+#  This file lists every method once, as a reference. In practice, copy only
+#  the steps you need and renumber them.
+#
+#  [trace]  = applied to each trace independently
+#  [stream] = uses several traces together (reference trace, stacking, ...)
+#  Times in seconds, frequencies in Hz. Write floats with a dot (0.5, 2.0).
+###############################################################################
+
 Analysis:
+
+  # --- rmean [trace]: remove mean / trend
+  #   method: simple | linear | constant | demean | polynomial | spline
+  #           polynomial needs `order`; spline needs `order` (1-5) and `dspline`
   process_1:
     name: 'rmean'
     method: 'linear'
+
+  # --- taper [trace]: taper the trace ends
+  #   method:         cosine | hann | hamming | blackman | ... (ObsPy window types)
+  #   max_percentage: fraction tapered at EACH end, 0.0-0.5 (float)
+  #   optional: max_length [s], side: both | left | right
   process_2:
     name: 'taper'
     method: 'cosine'
     max_percentage: 0.05
+
+  # --- resample [trace]: change the sampling rate
+  #   sampling_rate: new rate [Hz]
+  #   pre_filter:    True = anti-alias lowpass before downsampling
   process_3:
     name: 'resample'
     sampling_rate: 20
     pre_filter: True
+
+  # --- fill_gaps [trace]: merge segments and fill gaps
+  #   method: latest = repeat the last valid value | interpolate = linear
   process_4:
     name: 'fill_gaps'
     method: 'latest'
+
+  # --- normalize [trace]: amplitude normalisation
+  #   norm: True = divide by the absolute maximum | <float> = divide by that value
   process_5:
     name: 'normalize'
     norm: True
+
+  # --- filter [trace]: frequency filter
+  #   type:      bandpass | bandstop | lowpass | highpass | cheby1 | cheby2 | elliptic | bessel
+  #   fmin/fmax: corners [Hz] (floats)
+  #   corners:   filter order
+  #   zerophase: True = forward-backward, no phase shift (recommended for picking)
   process_6:
     name: 'filter'
     type: 'bandpass'
@@ -23,93 +61,139 @@ Analysis:
     fmax: 8.5
     corners: 4
     zerophase: True
+
+  # --- add_noise [trace]: add synthetic noise (tests, sensitivity studies)
+  #   noise_type: white | pink | brown | blue | violet (spectral shape)
+  #   SNR_dB:     signal-to-noise ratio of the result [dB]
   process_7:
     name: 'add_noise'
     noise_type: 'pink'
     SNR_dB: 1
+
+  # --- wavelet_denoise [trace]: discrete wavelet thresholding
+  #   dwt:       wavelet family: db2-db20 | sym2-sym20 | coif2-coif16 | bior...
+  #   threshold: fraction of the maximum coefficient of each level removed (0-1)
   process_8:
     name: 'wavelet_denoise'
     dwt: 'sym8'
     threshold: 0.1
+
+  # --- differentiate [trace]: time derivative (e.g. displacement -> velocity)
+  #   method: spectral (i*omega in frequency) | gradient (ObsPy, time domain)
   process_9:
     name: 'differentiate'
     method: 'spectral'
+
+  # --- integrate [trace]: time integral (e.g. velocity -> displacement)
+  #   method: spectral | cumtrapz | spline
   process_10:
     name: 'integrate'
     method: 'spectral'
+
+  # --- whitening [trace]: flatten the amplitude spectrum in a band (ambient noise)
+  #   fmin/fmax:  whitening band [Hz]; outside it the spectrum is strongly attenuated
+  #   freq_width: smoothing width of the amplitude spectrum [Hz]
+  #   taper_edge: True = taper the band edges
   process_11:
     name: 'whitening'
     fmin: 0.05
     fmax: 9.5
     freq_width: 0.02
     taper_edge: True
+
+  # --- smoothing [trace]: smooth the trace
+  #   method: mean     = moving average over `time_window` [s]
+  #           gaussian = Gaussian kernel of width `FWHM` [s] (time_window not used)
+  #           adaptive = Savitzky-Golay (order 3) over `time_window` [s]
+  #           tkeo     = Teager-Kaiser energy operator (no parameters used)
+  #   time_window, FWHM: required keys
   process_12:
     name: 'smoothing'
     method: 'gaussian'
     time_window: 5
     FWHM: 0.05
+
+  # --- time_normalization [trace]: remove the effect of large transients (ambient noise)
+  #   method:   1bit               = keep only the sign
+  #             clipping           = clip at 6 x std
+  #             clipping iteration = repeatedly divide values above 6 x std
+  #             time normalization = running-absolute-mean normalisation
+  #   norm_win: window of the running mean [s] (time normalization only)
   process_13:
     name: "time_normalization"
     method: 'time normalization'
     norm_win: 10
+
+  # --- remove_spikes [trace]: Hampel filter (median / MAD)
+  #   window_size: window [s]
+  #   sigma:       samples further than sigma x MAD from the median are replaced
   process_14:
     name: 'remove_spikes'
     window_size: 10
     sigma: 4
+
+  # --- wiener_smoothing [trace]: adaptive Wiener noise filter (scipy)
+  #   time_window: local window [s]; 0 = scipy default (3 samples)
+  #   noise_power: noise level as a multiple of the trace std; 0 = estimated from data
   process_15:
     name: "wiener_smoothing"
     time_window: 1.0
     noise_power: 0
+
+  # --- cut [trace]: cut a time window
+  #   method: absolute  = start / end (UTC date-times)
+  #           phase     = phase_name, t_before, t_after around a pick
+  #           reference = t_before, t_after around the reference time
+  #   optional: pad (True/False), fill_value (value used when padding)
   process_16:
-    name: 'shift'
-    time_shifts: [-5, 2]
-  process_17:
-    name: 'envelope'
-    method: 'SMOOTH'
-    corner_freq: 0.15
-  process_18:
     name: 'cut'
     method: 'absolute'
     start: 2018-08-21T00:27:15
     end: 2018-08-21T00:31:45
-  process_19:
-    name: 'rotate'
-    type: 'NE->RT'
-    method: 'FREE'
-    angle: 30.0
-    inclination: 0.0
-  process_20:
-    name: 'cross_correlate'
-    mode: 'full'
-    normalize: 'full'
-    reference_idx: 0
-    strict: True
-    trim: True
-  process_21:
-    name: 'synch'
-    method: 'MCCC'
-  process_22:
-    name: 'concat'
-  process_23:
-    name: 'stack'
-    method: 'pw'
-    order: 2
-  process_24:
+
+  # --- raw [trace]: keep every `factor`-th sample, without anti-alias filter
+  #   factor:   decimation factor (integer)
+  #   integers: True = scale and convert the data to int32
+  process_17:
     name: 'raw'
     factor: 2
     integers: True
-  process_25:
+
+  # --- reverse [trace]: time reversal of the samples
+  process_18:
       name: 'reverse'
-  process_26:
+
+  # --- flip [trace]: polarity inversion (multiply by -1)
+  process_19:
     name: 'flip'
-  process_27:
+
+  # --- wiener [trace]: SAC WIENER adaptive prediction-error filter (prewhitening)
+  #   window_start / window_end: design window (seconds from the trace start, or UTC times)
+  #   optional: ncoeff (2-100, default 30), mu, epsilon
+  process_20:
     name: 'wiener'
     window_start: 0
     window_end: 20
-  process_28:
-    name: 'deconv'
-    reference_idx: 0
-    water_level: 0.0001
-    normalize: True
-    trim: True
-    gauss_filter: 2.5
+
+  # --- rename [trace]: rename network / station / location / channel codes
+  #   All maps are optional; write them as  old: new.
+  #   networks, stations, locations: map of whole codes
+  #   channels:   map of whole channel codes (e.g. HHZ -> BHZ)
+  #   components: map of the last channel letter (e.g. 1 -> N, 2 -> E);
+  #               only used when the channel is not matched in `channels`
+  #   Special keys: '*' = any code not matched explicitly
+  #                 ''  = empty code (e.g. an empty location)
+  #   Always quote the codes: unquoted 00 becomes 0, and NO (Norway) becomes False.
+  process_21:
+    name: 'rename'
+    networks:
+      'XX': 'ES'
+    stations:
+      'EAL1': 'EALB'
+    locations:
+      '': '00'
+    channels:
+      'HHZ': 'BHZ'
+    components:
+      '1': 'N'
+      '2': 'E'

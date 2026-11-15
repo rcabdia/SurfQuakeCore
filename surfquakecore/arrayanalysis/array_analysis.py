@@ -269,7 +269,7 @@ class array:
         res = (90 - np.asarray(mathangle, dtype=float)) % 360
         return res.item() if res.ndim == 0 else res
 
-    def FK(self, st, inv, stime, etime, fmin, fmax, slim, sres, win_len, win_frac):
+    def FK(self, st, inv, stime, etime, fmin, fmax, slim, sres, win_len, win_frac, method=0):
 
         _attach_coordinates(st, inv)
 
@@ -282,7 +282,7 @@ class array:
             frqlow=fmin, frqhigh=fmax, prewhiten=0,
             # restrict output
             semb_thres=-1e9, vel_thres=-1e9, timestamp='mlabday',
-            stime=stime + 0.1, etime=etime - 0.1)
+            stime=stime + 0.1, etime=etime - 0.1, method=method)
 
         try:
             out = array_processing(st, **kwargs)

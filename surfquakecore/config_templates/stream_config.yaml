@@ -1,14 +1,52 @@
+###############################################################################
+#  SurfQuake — Stream methods template
+#
+#  Stream methods use several traces together: a reference trace, the
+#  components of a station, an array, or the whole stream. They run after
+#  the trace-by-trace pre-processing.
+#
+#  HOW TO USE
+#    - Keep the pre-processing block (adapt it to your data).
+#    - Uncomment the stream method(s) you need. Every block below is numbered
+#      process_5: if you chain several, renumber them (process_5, process_6...)
+#      in the order you want them to run. A repeated key silently replaces
+#      the earlier step.
+#    - Times in seconds, frequencies in Hz. Write floats with a dot (0.5, 2.0).
+#    - "stream unchanged" = the method writes results to disk and the
+#      following steps receive the same traces.
+#
+#  Characteristic functions (cwt_cf, kurtosis, snr, entropy, envelope) are
+#  also stream methods: see characteristic_functions.yaml.
+###############################################################################
+
 Analysis:
+
+  # ===========================================================================
+  # PRE-PROCESSING (trace by trace)
+  # ===========================================================================
+
+  # --- fill_gaps: merge segments and fill gaps
+  #   method: latest = repeat the last valid value | interpolate = linear
   process_1:
     name: 'fill_gaps'
     method: 'latest'
+
+  # --- rmean: remove mean / trend
+  #   method: simple | linear | constant | demean | polynomial | spline
   process_2:
     name: 'rmean'
     method: 'linear'
+
+  # --- taper: taper the trace ends
+  #   method: cosine | hann | ... ; max_percentage: fraction at EACH end (0.0-0.5)
   process_3:
     name: 'taper'
     method: 'cosine'
     max_percentage: 0.05
+
+  # --- filter: frequency filter
+  #   type: bandpass | bandstop | lowpass | highpass | cheby1 | cheby2 | elliptic | bessel
+  #   fmin/fmax [Hz]; corners = order; zerophase = no phase shift
   process_4:
     name: 'filter'
     type: 'bandpass'
@@ -16,21 +54,222 @@ Analysis:
     fmax: 12.0
     corners: 4
     zerophase: True
-  process_5:
-    name: 'cross_correlate'
-    mode: 'full'
-    normalize: 'full'
-    reference_idx: 0
-    strict: True
-    trim: True
-  process_6:
-    name: 'beam'
-    method: "FK"
-    timewindow: 3.0
-    overlap: 0.05
-    fmin: 1.0
-    fmax: 8.2
-    smax: 0.3
-    slow_grid: 0.05
-    output_folder: "/my_beamforming/results"
 
+
+  # ===========================================================================
+  # A. MERGING, ALIGNMENT AND STACKING
+  # ===========================================================================
+
+  # --- concat: merge segments of the same channel into one trace
+  #   (gaps are interpolated). No options.
+
+#  process_5:
+#    name: 'concat'
+
+
+  # --- synch: synchronise the traces
+  #   method: starttime = give all traces the same (dummy) start time,
+  #                       e.g. to overlay or stack records of different events
+  #           MCCC      = align by multichannel cross-correlation
+
+#  process_5:
+#    name: 'synch'
+#    method: 'MCCC'
+
+
+  # --- shift: shift the start time of the traces (use ONE of the options)
+  #   time_shifts: list of shifts [s], one per trace in stream order
+  #   phase:       align every trace on its pick of this phase
+  #   phase_theo:  align every trace on this theoretical arrival
+  #   If phase and time_shifts are both given, phase takes precedence.
+
+#  process_5:
+#    name: 'shift'
+#    time_shifts: [-5.0, 2.0]
+
+
+  # --- cut_stream: cut all traces (padded with zeros outside the data)
+  #   method: absolute  = start / end (UTC date-times)
+  #           phase     = phase_name, t_before, t_after around each trace's pick
+  #           reference = t_before, t_after around the reference time
+
+#  process_5:
+#    name: 'cut_stream'
+#    method: 'absolute'
+#    start: 2018-08-21T00:27:15
+#    end: 2018-08-21T00:31:45
+
+
+  # --- stack: stack all traces into ONE trace (id NET.STA..STK)
+  #   Traces are cut to the shortest length before stacking.
+  #   method: linear | pw (phase-weighted) | root (n-th root)
+  #   order:  exponent for pw / root (integer)
+
+#  process_5:
+#    name: 'stack'
+#    method: 'pw'
+#    order: 2
+
+
+  # ===========================================================================
+  # B. COMPONENTS: ROTATION AND POLARISATION
+  # ===========================================================================
+
+  # --- rotate: rotate the 3-component groups of each station
+  #   Components are standardised to Z/N/E and cut to their common window.
+  #   type:        NE->RT | RT->NE | ZNE->LQT | LQT->ZNE
+  #   method:      GAC  = back-azimuth (and inclination) from the trace headers
+  #                FREE = angles given below
+  #   angle:       back-azimuth [deg] (FREE)
+  #   inclination: [deg] (FREE; give it always, 0.0 for NE->RT)
+
+#  process_5:
+#    name: 'rotate'
+#    type: 'NE->RT'
+#    method: 'FREE'
+#    angle: 30.0
+#    inclination: 0.0
+
+
+  # --- particle_motion: particle-motion / polarisation analysis per station
+  #   Needs complete Z-N-E (or Z-1-2, Z-Y-X) sets; traces are cut to their
+  #   common window. Stream unchanged.
+  #   output_path: optional folder for the results
+
+#  process_5:
+#    name: 'particle_motion'
+#    output_path: './particle_motion'
+
+
+  # ===========================================================================
+  # C. OPERATIONS AGAINST A REFERENCE TRACE (n traces in -> n traces out)
+  # ===========================================================================
+
+  # --- cross_correlate: correlate every trace with the reference trace
+  #   mode:          full | valid | same
+  #   normalize:     full | naive (normalised correlation coefficient)
+  #   reference_idx: index of the reference trace
+  #   trim:          True = cut all traces to the common time window first
+
+#  process_5:
+#    name: 'cross_correlate'
+#    mode: 'full'
+#    normalize: 'full'
+#    reference_idx: 0
+#    trim: True
+
+
+  # --- convolve: convolve every trace with the reference trace
+  #   Same options as cross_correlate (normalize is not applied).
+
+#  process_5:
+#    name: 'convolve'
+#    mode: 'full'
+#    normalize: 'full'
+#    reference_idx: 0
+#    trim: True
+
+
+  # --- deconv: water-level spectral deconvolution by the reference trace
+  #   (e.g. receiver functions, source deconvolution)
+  #   reference_idx:   index of the reference trace
+  #   water_level:     fraction of the maximum reference power used as floor
+  #   normalize:       True = normalise the output
+  #   trim:            True = cut all traces to the common time window first
+  #   gaussian_filter: optional Gaussian lowpass width applied to the result
+
+#  process_5:
+#    name: 'deconv'
+#    reference_idx: 0
+#    water_level: 0.0001
+#    normalize: True
+#    trim: True
+#    gaussian_filter: 2.5
+
+
+  # --- cross_spectrum: cross-spectral density, coherence and transfer function
+  #   of every trace with respect to the reference trace.
+  #   Results are saved as pickles in output_path. Stream unchanged.
+  #   method:          welch | multitaper
+  #   win:             window length [s] (welch)
+  #   overlap_percent: window overlap [%]
+  #   reference_idx:   index of the reference trace
+  #   output_path:     folder for the results
+  #   optional: nw (multitaper time-bandwidth, 4.0), linf / lsup (band limits
+  #             [Hz]), trim (True), compress (True)
+
+#  process_5:
+#    name: 'cross_spectrum'
+#    method: 'welch'
+#    win: 20.0
+#    overlap_percent: 50.0
+#    reference_idx: 0
+#    output_path: './cross_spectrum'
+
+
+  # ===========================================================================
+  # D. ARRAY ANALYSIS
+  # ===========================================================================
+
+  # --- beam: beamforming over the whole stream (slowness and back-azimuth)
+  #   Needs an inventory with the coordinates of every station.
+  #   Results are saved as a pickle in output_folder. Stream unchanged.
+  #   method:        FK (frequency-wavenumber) or CAPON (minimum variance)
+  #   timewindow:    length of each analysis window [s]
+  #   overlap:       overlap between consecutive windows (fraction, 0.05 = 5 %)
+  #   fmin/fmax:     analysis band [Hz]
+  #   smax:          maximum slowness of the grid [s/km]
+  #   slow_grid:     slowness grid spacing [s/km]
+  #   output_folder: folder for the results
+
+#  process_5:
+#    name: 'beam'
+#    method: 'FK'
+#    timewindow: 3.0
+#    overlap: 0.05
+#    fmin: 1.0
+#    fmax: 8.2
+#    smax: 0.3
+#    slow_grid: 0.05
+#    output_folder: './beamforming'
+
+
+  # ===========================================================================
+  # E. TRACE ALGEBRA
+  # ===========================================================================
+
+  # --- algebra: evaluate an expression on the traces
+  #   expression: traces are tr1, tr2, ... (tr1 = first trace of the stream).
+  #               Operators + - * / ** ; functions such as abs, sqrt, exp, log,
+  #               log10, sin, cos, tan, sign, diff, cumsum, gradient, power;
+  #               constants pi, e. Several outputs separated by commas,
+  #               e.g. 'tr1 + tr2, tr1 - tr2'. Output channels ALG, ALG1, ...
+  #   trim:       True = cut the traces to their common window first
+  #   fill_gaps:  True = fill gaps first
+
+#  process_5:
+#    name: 'algebra'
+#    expression: 'sqrt(tr1**2 + tr2**2)'
+#    trim: True
+#    fill_gaps: True
+#    resample: 100.0
+
+
+  # ===========================================================================
+  # F. EXPORT
+  # ===========================================================================
+
+  # --- chop: cut continuous data into clock-aligned MiniSEED files
+  #   Stream unchanged.
+  #   chunk_length: length of each output file [s] (e.g. 3600 = 1 h)
+  #   min_length:   minimum amount of real data a file must contain [s]
+  #   overlap:      overlap between consecutive files [s] (0 = contiguous)
+  #   output_dir:   folder for the files
+  #   optional: max_interpolation_gap: largest gap interpolated [s] (default 2)
+
+#  process_5:
+#    name: 'chop'
+#    chunk_length: 3600.0
+#    min_length: 3540.0
+#    overlap: 30.0
+#    output_dir: './chopped'

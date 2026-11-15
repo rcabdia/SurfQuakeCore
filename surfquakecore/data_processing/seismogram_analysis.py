@@ -530,7 +530,7 @@ class StreamProcessing:
 
         from surfquakecore.algebra.trace_algebra import TraceAlgebra
         ta = TraceAlgebra(self.stream, output_label="ALG", trim=step_config.get("trim"),
-            fill_gaps=step_config.get("fill_gaps"), resample=step_config.get("resample"))
+            fill_gaps=step_config.get("fill_gaps"), resample=True)
 
         self.stream = ta.evaluate(step_config["expression"])
 
@@ -684,7 +684,7 @@ class StreamProcessing:
         """
         normalize = step_config.get("normalize", 'full')
         mode = step_config.get("mode", 'full')
-        reference_idx = step_config.get("reference", 0)
+        reference_idx = step_config.get("reference_idx", 0)
         strict = step_config.get("trim", False)
 
         st = self.stream.copy()
@@ -876,7 +876,8 @@ class StreamProcessing:
     def apply_beam(self, step_config):
         bm = TraceBeamResult(stream=self.stream, overlap=step_config["overlap"], fmin=step_config["fmin"],
                              fmax=step_config["fmax"], smax=step_config["smax"], slow_grid=step_config["slow_grid"],
-                             inventory=self.inventory, method="FK")
+                             inventory=self.inventory, timewindow=step_config["timewindow"],
+                             method=step_config["method"])
 
         bm.compute_beam()
         bm.to_pickle(folder_path=step_config["output_folder"])

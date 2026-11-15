@@ -50,6 +50,14 @@ class TraceBeamResult:
         # Trim all traces to the common interval
         self.st.trim(starttime=common_start, endtime=common_end, pad=True, fill_value=0)
 
+
+        # select method
+        #DEFAULT FK
+        method_beam = 0
+        if self.method_beam == "FK" or self.method_beam == "fk":
+            method_beam = 0
+        elif self.method_beam == "CAPON" or self.method_beam == "capon":
+            method_beam = 1
         # Filter inventory stations to match stream
         selection = MseedUtil.filter_inventory_by_stream(self.st, self.inventory)
 
@@ -60,7 +68,7 @@ class TraceBeamResult:
             common_start, common_end,
             self.fmin, self.fmax,
             self.smax, self.slow_grid,
-            self.timewindow, self.overlap)
+            self.timewindow, self.overlap, method=method_beam)
 
     def plot_beam(self, save_path: str = None):
 
