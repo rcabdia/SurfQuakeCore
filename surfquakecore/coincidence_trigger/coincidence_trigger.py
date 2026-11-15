@@ -21,7 +21,8 @@ from obspy import Stream, UTCDateTime
 import matplotlib.dates as mdt
 import matplotlib.pyplot as plt
 import re
-from surfquakecore.data_processing.wavelet import cwt_cf_stream, robust_zscore, combine_cf_streams
+from surfquakecore.data_processing.wavelet import cwt_cf_stream, robust_zscore, combine_cf_streams, _CF_TYPES, \
+    _COMBINE_METHODS, _NORMS
 import numpy as np
 
 class CoincidenceTrigger:
@@ -55,27 +56,50 @@ class CoincidenceTrigger:
 
         elif self.method_preferred == "CWT":
 
-            cwt_config = self.coincidence_config.cwt_configuration
-            if cwt_config is None:
+            cwt = self.coincidence_config.cwt_configuration
+            if cwt is None:
                 raise ValueError("method_preferred = CWT needs a [CWT] section in the config file")
-            self.cycles = cwt_config.cycles
-            self.voices_per_octave = cwt_config.voices_per_octave
-            self.wavelet_type = cwt_config.wavelet_type
-            self.cf_types = [c.strip() for c in cwt_config.cf_type.split(",") if c.strip()]
-            self.combine = cwt_config.combine
-            self.win_before = cwt_config.win_before
-            self.win_after = cwt_config.win_after
-            self.direction = cwt_config.direction
-
-            if not self.cf_types or any(c not in ("power", "entropy", "centroid") for c in self.cf_types):
-                raise ValueError("[CWT] cf_type must be power, entropy, centroid or a combination, "
-                                 "e.g. power,entropy")
-            if self.combine not in ("max", "mean"):
-                raise ValueError("[CWT] combine must be max or mean")
+            self.cycles = cwt.cycles
+            self.voices_per_octave = cwt.voices_per_octave
+            self.wavelet_type = cwt.wavelet_type
+            self.cf_types = [c.strip() for c in cwt.cf_type.split(",") if c.strip()]
+            self.lowpass_freq = cwt.lowpass_freq
+            self.win_before = cwt.win_before
+            self.win_after = cwt.win_after
+            self.gap = cwt.gap
+            self.direction = cwt.direction
+            self.win_kurt = cwt.win_kurt
+            self.combine = cwt.combine
+            self.norm = cwt.norm
+            self.tail_quantile = cwt.tail_quantile
+            self.tolerance = cwt.tolerance
+            self.p = cwt.p
+            self.final_norm = cwt.final_norm
+            self._check_cwt_config()
 
         else:
             print("Available preferred methods are: SNR, Kurtosis or CWT")
 
+    def _check_cwt_config(self):
+        bad = [c for c in self.cf_types if c not in _CF_TYPES]
+        if not self.cf_types or bad:
+            raise ValueError(f"[CWT] cf_type: unknown {bad}. Use {', '.join(_CF_TYPES)}")
+        if self.combine not in _COMBINE_METHODS:
+            raise ValueError(f"[CWT] combine must be one of {', '.join(_COMBINE_METHODS)}")
+        if self.norm not in _NORMS:
+            raise ValueError(f"[CWT] norm must be one of {', '.join(_NORMS)}")
+        if self.direction not in ("up", "down", "both"):
+            raise ValueError("[CWT] direction must be up, down or both")
+        if not 0.5 < self.tail_quantile < 1.0:
+            raise ValueError("[CWT] tail_quantile must be between 0.5 and 1")
+        for name in ("lowpass_freq", "win_before", "win_after", "win_kurt"):
+            if getattr(self, name) <= 0:
+                raise ValueError(f"[CWT] {name} must be > 0")
+        for name in ("gap", "tolerance"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"[CWT] {name} must be >= 0")
+        if self.p < 1:
+            raise ValueError("[CWT] p must be >= 1")
 
     def __get_coincidence_config(self, coincidence_config):
         if isinstance(coincidence_config, str) and os.path.isfile(coincidence_config):
@@ -210,14 +234,13 @@ class CoincidenceTrigger:
     def thresholding_cwt_cf(self, files_list):
 
         traces = []
-
         for file in files_list:
             try:
                 tr = read(file)[0]
                 tr = self.fill_gaps(tr)
                 if tr is not None:
                     traces.append(tr)
-            except:
+            except Exception:
                 print("File not included: ", file)
 
         st = Stream(traces)
@@ -229,22 +252,26 @@ class CoincidenceTrigger:
         print("Computing CWT characteristic function:", ", ".join(self.cf_types))
         cfs = cwt_cf_stream(st, fmin=self.fmin, fmax=self.fmax, cycles=self.cycles,
                             voices_per_octave=self.voices_per_octave,
-                            wavelet=self.wavelet_type,
-                            cf_type=tuple(self.cf_types),
+                            wavelet=self.wavelet_type, cf_type=tuple(self.cf_types),
+                            lowpass_freq=self.lowpass_freq,
                             win_before=self.win_before, win_after=self.win_after,
-                            direction=self.direction)
+                            gap=self.gap, direction=self.direction, win_kurt=self.win_kurt)
 
-        # sigma units (robust z-score); several CFs are combined into one per station
+        # sigma units; several CFs are combined into one per station
         if len(self.cf_types) == 1:
-            st_cf = robust_zscore(cfs[self.cf_types[0]])
+            st_cf = robust_zscore(cfs[self.cf_types[0]], norm=self.norm, q=self.tail_quantile)
         else:
-            st_cf = combine_cf_streams(*[cfs[c] for c in self.cf_types], method=self.combine)
+            st_cf = combine_cf_streams(*[cfs[c] for c in self.cf_types], method=self.combine,
+                                       norm=self.norm, q=self.tail_quantile,
+                                       tolerance=self.tolerance, p=self.p,
+                                       final_norm=self.final_norm)
 
         events, events_times_cluster = self.run_coincidence(st_cf)
 
         if self.plot and self.output_folder:
             print("Plotting CFs")
-            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, type="CWT", events=events_times_cluster,
+            PlotCoincidence.plot_stream_and_cf_simple(st, st_cf, type=f"CWT ({', '.join(self.cf_types)})",
+                                                      events=events_times_cluster,
                                                       savepath=self.output_folder, show=False)
 
         return events, events_times_cluster

@@ -2521,7 +2521,7 @@ def _ppsdDB():
 
 
     Key Arguments:
-        -p,  --project_file        [REQUIRED] Path to waveform data directory (or file pattern)
+        -p,  --project_file        [REQUIRED] Path to the project file
         -i,  --inventory_file      [REQUIRED] Path to stations metadata (XML or RESP)
         -s,  --save_file           [REQUIRED] Path where the PPSD database (.pkl) will be saved
         -le, --length              [OPTIONAL] Length of data segments passed to PSD, in seconds (default: 3600)
@@ -2531,7 +2531,23 @@ def _ppsdDB():
         -nt, --net                 [OPTIONAL] Network filter(s) (default: all networks)
         -st, --station             [OPTIONAL] Station filter(s) (default: all stations)
         -ch, --channel             [OPTIONAL] Channel filter(s) (default: all channels)
+        -r,  --robust              [OPTIONAL] Keep only files covered by the inventory (default: off)
 
+    
+    Robust mode (--robust):
+
+        Before a file is added to the DB, its channel is checked against the
+        inventory. A file is kept only if:
+            - NET.STA.LOC.CHN exists in the metadata,
+            - a channel epoch covers the file start time,
+            - that epoch has an instrument response.
+        Rejected files are listed with the reason at the end of the scan.
+        Without --robust, every file that passes the filters is added and
+        files without valid metadata simply fail later during PPSD processing.
+
+        Example:
+            surfquake ppsdDB -p "./project.pkl" -i "./meta/metadata.xml" -s "./output/test.pkl" -ch "HH?" --robust
+    
     Filtering (--net / --station / --channel):
 
         Each of these three filters accepts ONE OR MORE values, separated by spaces.
@@ -2597,6 +2613,10 @@ def _ppsdDB():
     arg_parse.add_argument("-ch", "--channel", help="Channel filter(s), wildcards allowed", type=str,
                            nargs="+", required=False, default=None)
 
+    arg_parse.add_argument("-r", "--robust", action="store_true", default=False,
+                           help="Only include files whose channel exists in the inventory "
+                                "(matching epoch and instrument response)")
+
     parsed_args = arg_parse.parse_args()
     print("Input Arguments")
     print(parsed_args)
@@ -2617,8 +2637,17 @@ def _ppsdDB():
                      period=parsed_args.period, overlap=parsed_args.overlap)
 
     ini_dict, size = ppsds.create_dict(net_list=parsed_args.net, sta_list=parsed_args.station,
-                                       chn_list=parsed_args.channel)
+                                       chn_list=parsed_args.channel, robust=parsed_args.robust)
     print(f"  Found {size} channel file(s) to process.")
+
+    if parsed_args.robust and ppsds.skipped_files:
+        print(f"  Robust mode: {len(ppsds.skipped_files)} file(s) skipped (not covered by metadata):")
+        for path, seed_id, reason in ppsds.skipped_files:
+            print(f"    {seed_id:<20} {reason:<45} {path}")
+
+    if size == 0:
+        print("\nNo files to process. Nothing saved.")
+        return
 
     db = ppsds.get_all_values(ini_dict)
     ppsds.save_PPSDs(db, file_name=save_file)

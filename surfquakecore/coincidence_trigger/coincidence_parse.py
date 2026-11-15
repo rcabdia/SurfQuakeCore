@@ -51,15 +51,28 @@ def load_concidence_configuration(config_file: str) -> CoincidenceConfig:
         def _opt(key, cast, default):
             return Cast(cwt_ini[key], cast) if key in cwt_ini else default
 
+        def _opt_bool(key, default):
+            if key not in cwt_ini:
+                return default
+            return str(cwt_ini[key]).strip().lower() in ("true", "1", "yes")
+
         cwt_configuration = CWT(
             cycles=Cast(cwt_ini['cycles'], float),
             voices_per_octave=Cast(cwt_ini['voices_per_octave'], int),
             wavelet_type=Cast(cwt_ini['wavelet_type'], str),
             cf_type=_opt('cf_type', str, "power"),
-            combine=_opt('combine', str, "max"),
+            lowpass_freq=_opt('lowpass_freq', float, 0.15),
             win_before=_opt('win_before', float, 10.0),
             win_after=_opt('win_after', float, 2.0),
-            direction=_opt('direction', str, "up"))
+            gap=_opt('gap', float, 0.5),
+            direction=_opt('direction', str, "up"),
+            win_kurt=_opt('win_kurt', float, 3.0),
+            combine=_opt('combine', str, "max"),
+            norm=_opt('norm', str, "mad"),
+            tail_quantile=_opt('tail_quantile', float, 0.99),
+            tolerance=_opt('tolerance', float, 0.0),
+            p=_opt('p', float, 3.0),
+            final_norm=_opt_bool('final_norm', False))
 
     return CoincidenceConfig(
             kurtosis_configuration=Kurtosis(

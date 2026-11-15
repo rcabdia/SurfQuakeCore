@@ -90,6 +90,8 @@ import numpy as np
 import scipy
 import scipy.signal
 import scipy.fft
+from scipy.ndimage import maximum_filter1d
+from scipy.special import ndtri          # inverse Gaussian CDF, ndtri(0.99) = 2.326
 from deprecated import deprecated
 from obspy import read, Stream, Trace, UTCDateTime
 from obspy.signal.filter import lowpass
@@ -101,7 +103,9 @@ from surfquakecore.utils.obspy_utils import ObspyUtil, MseedUtil
 # ---------------------------------------------------------------------------
 
 _WAVELET_ALIASES = {"cm": "Complex Morlet", "mh": "Mexican Hat", "pa": "Paul"}
-_CF_TYPES = ("power", "centroid", "entropy")
+_CF_TYPES = ("power", "power_win", "power_mod", "centroid", "entropy", "kurtosis")
+_NORMS = ("mad", "tail")
+_COMBINE_METHODS = ("max", "mean", "stouffer", "gmean")
 
 # ---------------------------------------------------------------------------
 # AFTAN sigma helper  (kept outside the class as requested)
@@ -766,11 +770,9 @@ class ConvolveWavelet(ConvolveWaveletBase):
         n_proc = self.get_nproc()
         if parallel and n_proc > 1:
             with ThreadPool(n_proc) as pool:
-                tf = np.array(pool.map(self.__compute_cwt, self.__conv),
-                              copy=False, dtype=np.float32)
+                tf = np.asarray(pool.map(self.__compute_cwt, self.__conv), dtype=np.float32)
         else:
-            tf = np.array([self.__compute_cwt(row) for row in self.__conv],
-                          copy=False, dtype=np.float32)
+            tf = np.asarray([self.__compute_cwt(row) for row in self.__conv], dtype=np.float32)
         self.__conv = None
         return tf
 
@@ -841,8 +843,7 @@ class ConvolveWaveletScipy(ConvolveWaveletBase):
             for i, fi in enumerate(self._frex):
                 cmw = self.filter_win(fi, i)
                 tf.append(scipy.signal.oaconvolve(trace_index, cmw, mode='same'))
-            tfs.append([np.array(tf, copy=False, dtype=d_type),
-                        trace_index.stats])
+            tfs.append([np.asarray(tf, dtype=d_type), trace_index.stats])
         return tfs
 
     def compute_tf(self, parallel=True, stream=False):
@@ -921,12 +922,17 @@ class ConvolveWaveletScipy(ConvolveWaveletBase):
         x = scipy.fft.irfft(S * np.conj(D) / (np.abs(D) ** 2 + eps2), n=nfft)[:n]
         return x
 
+
+# ===========================================================================
+# Characteristic functions (CF) from the CWT scalogram
+# ===========================================================================
+
 def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                   voices_per_octave: Optional[int] = 16, nf: Optional[int] = None,
                   wavelet: str = "Complex Morlet", tt: Optional[float] = None,
                   lowpass_freq: float = 0.15, cf_type="power",
                   win_before: float = 10.0, win_after: float = 2.0,
-                  direction: str = "up"):
+                  direction: str = "up", gap: float = 0.5, win_kurt: float = 3.0):
     """
     Wavelet characteristic functions for every trace of a Stream.
 
@@ -946,21 +952,33 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
     tt                : half-length of the atoms [s]; None keeps the legacy
                         value int(fs / fmin)
     lowpass_freq      : lowpass corner applied to the CF [Hz]
-    cf_type           : 'power' (default, mean d/dt of log power),
-                        'centroid' (shift of the energy centroid, octaves),
-                        'entropy' (drop of spectral entropy),
-                        or a tuple/list of them, e.g. ('power', 'centroid')
-    win_before        : window before t for centroid/entropy [s]
-    win_after         : window after t for centroid/entropy [s]
+    cf_type           : one of the types below, or a tuple/list of them,
+                        e.g. ('power_mod', 'entropy', 'kurtosis')
+                        'power'     mean d/dt of log power (original CF)
+                        'power_win' mean_f log10(A+/A-), windowed spectral ratio
+                                    (Gibbons et al. 2008, eqs. 1-2, without exp)
+                        'power_mod' energy-weighted spectral ratio
+                                    (Gibbons et al. 2008, eqs. 4-5, without exp,
+                                    whitened weight clipped at 0, signed sqrt)
+                        'centroid'  shift of the energy centroid [octaves]
+                        'entropy'   drop of spectral entropy
+                        'kurtosis'  multi-band excess kurtosis (impulsive onsets)
+    win_before        : window CFs: background window before t [s]
+    win_after         : window CFs: signal window after t [s]
                         (use at least ~2 periods of fmin)
     direction         : centroid/entropy only: 'up' (raw), 'down' (sign
                         flipped, for arrivals that lower the centroid) or
                         'both' (absolute value)
+    gap               : window CFs: the before window ends `gap` s before t
+                        (epsilon of Gibbons et al. 2008, eq. 7)
+    win_kurt          : kurtosis only: trailing window [s] (1-5 s; at least a
+                        few periods of fmin)
 
     Returns
     -------
     Stream if cf_type is a string, or dict {cf_type: Stream} if it is a
-    tuple/list. CF start times are shifted by the wavelet delay.
+    tuple/list. CF start times are shifted by the wavelet delay, so all CF
+    types of a trace share the same sample grid.
     """
     cf_types = (cf_type,) if isinstance(cf_type, str) else tuple(cf_type)
     bad = [c for c in cf_types if c not in _CF_TYPES]
@@ -1009,16 +1027,28 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
         # 4. Convolve the trace with all atoms at once
         tf = scipy.fft.ifft(banks_fft[key] * scipy.fft.fft(data, n=nfft), axis=1)
         start = (m - 1) // 2
-        P = np.abs(tf[:, start:start + n]) ** 2
-        del tf
+        seg = tf[:, start:start + n]
+        P = np.abs(seg) ** 2
+        # kurtosis needs the band-passed signals Re(W), so compute it now
+        k_cf = _kurtosis_cf(seg.real, fs, win_kurt) if "kurtosis" in cf_types else None
+        del tf, seg
 
         # 5. Characteristic functions from the same scalogram
         for c in cf_types:
             if c == "power":
                 cf = np.mean(np.diff(np.log10(P + 1e-30), axis=1), axis=0)
+            elif c == "kurtosis":
+                cf = k_cf
             else:
-                cf = _spectral_cf(P, log2_f, fs, c, win_before, win_after, direction)
-            cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
+                cf = _spectral_cf(P, log2_f, fs, c, win_before, win_after, direction, gap=gap)
+
+            if c == "power":
+                # original CF unchanged
+                cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
+            else:
+                # taper around the baseline, so the edges settle on the background
+                base = np.median(cf)
+                cf = base + Trace(cf - base).taper(max_percentage=0.05, type="blackman").data
             cf = lowpass(cf, lowpass_freq, df=fs, corners=3, zerophase=True)
 
             tr_cf = tr_pre.copy()
@@ -1030,34 +1060,6 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
         return Stream(traces=out[cf_type])
     return {c: Stream(traces=out[c]) for c in cf_types}
 
-def robust_zscore(st: Stream) -> Stream:
-    """Copy of st with every trace as (x - median) / (1.4826 * MAD): sigma units."""
-    st = st.copy()
-    for tr in st:
-        med = np.median(tr.data)
-        mad = 1.4826 * np.median(np.abs(tr.data - med))
-        tr.data = (tr.data - med) / mad if mad > 0 else np.zeros_like(tr.data)
-    return st
-
-
-def combine_cf_streams(*streams, method: str = "max") -> Stream:
-    """
-    Combine several CF Streams trace by trace (one output trace per station).
-    Each Stream is z-scored first; traces must have the same ids in the same order.
-
-    method : 'max' (any CF fires) or 'mean' (CFs must agree)
-    """
-    zs = [robust_zscore(st) for st in streams]
-    out = []
-    for trs in zip(*zs):
-        if len({tr.id for tr in trs}) != 1:
-            raise ValueError(f"Trace ids differ: {[tr.id for tr in trs]}")
-        n = min(tr.stats.npts for tr in trs)
-        data = np.vstack([tr.data[:n] for tr in trs])
-        tr_out = trs[0].copy()
-        tr_out.data = data.max(axis=0) if method == "max" else data.mean(axis=0)
-        out.append(tr_out)
-    return Stream(traces=out)
 
 def _window_means(P, n_before, n_after):
     """
@@ -1082,20 +1084,47 @@ def _spectral_entropy(P):
     return -(p * np.log(p + 1e-30)).sum(axis=0) / np.log(P.shape[0])
 
 
-def _spectral_cf(P, log2_f, fs, cf_type, win_before, win_after, direction):
+def _spectral_cf(P, log2_f, fs, cf_type, win_before, win_after, direction, gap=0.0):
     """
-    Centroid or entropy CF from the power scalogram P = |W|^2, shape (nf, n).
+    Window-based CFs from the power scalogram P = |W|^2, shape (nf, n).
 
-    centroid : shift of the energy centroid in log2 frequency [octaves],
-               window after t minus window before t
-    entropy  : drop of spectral entropy, before minus after (> 0 when
-               energy concentrates, e.g. a coherent arrival)
+    Windows (Gibbons et al. 2008, GJI 172, eqs. 6-7):
+        after  = [t, t + win_after]                 -> A(f)_{t+}
+        before = [t - win_before - gap, t - gap]    -> A(f)_{t-}
+
+    power_win : mean_f [log10 A+ - log10 A-]                 (eqs. 1-2, without exp)
+    power_mod : signed sqrt of mean_f [(log10 A+ - log10 A-) * w],
+                w = max(log10 A+_whitened, 0)                (eqs. 4-5, without exp)
+                The weight is the energy above background (unit-free); the signed
+                sqrt brings the result back to log-amplitude units.
+    centroid  : shift of the energy centroid in log2 frequency [octaves]
+    entropy   : drop of spectral entropy (before minus after)
+    `direction` applies to centroid and entropy only.
     """
     # Whitening: each frequency relative to its own background level
     P = P / (np.median(P, axis=1, keepdims=True) + 1e-30)
 
     before, after = _window_means(P, max(1, int(round(win_before * fs))),
                                   max(1, int(round(win_after * fs))))
+
+    # eq. 7: the before window ends `gap` (epsilon) s before t
+    k = int(round(gap * fs))
+    if 0 < k < before.shape[1]:
+        shifted = np.empty_like(before)
+        shifted[:, k:] = before[:, :-k]
+        shifted[:, :k] = before[:, :1]
+        before = shifted
+
+    if cf_type in ("power_win", "power_mod"):
+        # window amplitude spectra: A = sqrt(mean power)
+        log_a_after = 0.5 * np.log10(after + 1e-30)
+        log_a_before = 0.5 * np.log10(before + 1e-30)
+        D = log_a_after - log_a_before                      # eq. 1
+        if cf_type == "power_win":
+            return D.mean(axis=0)                           # eq. 2 without exp
+        S = D * np.maximum(log_a_after, 0.0)                # eq. 4 (weight >= 0)
+        s_mean = S.mean(axis=0)                             # eq. 5 without exp
+        return np.sign(s_mean) * np.sqrt(np.abs(s_mean))    # back to log-amplitude scale
 
     if cf_type == "centroid":
         c_before = (before * log2_f[:, None]).sum(axis=0) / (before.sum(axis=0) + 1e-30)
@@ -1109,6 +1138,144 @@ def _spectral_cf(P, log2_f, fs, cf_type, win_before, win_after, direction):
     elif direction == "both":
         cf = np.abs(cf)
     return cf
+
+
+def _kurtosis_cf(X, fs, win_kurt):
+    """
+    Multi-band kurtosis CF from the real part of the scalogram, X = Re(W), shape (nf, n).
+
+    Every row is a band-passed version of the trace. For each band, the excess
+    kurtosis is computed in a trailing window [t - win_kurt, t] using cumulative
+    sums of x, x^2, x^3 and x^4. The bands are averaged and the result is
+    compressed with a signed log1p so its peaks stay comparable with the other CFs.
+    About 0 on Gaussian noise, > 0 when the signal becomes impulsive.
+    """
+    nf, n = X.shape
+    nk = max(4, int(round(win_kurt * fs)))
+    t = np.arange(n)
+    b0 = np.maximum(t + 1 - nk, 0)
+    cnt = (t + 1 - b0).astype(float)
+    k_sum = np.zeros(n)
+
+    for j in range(nf):
+        x = np.asarray(X[j], dtype=float)
+        s = np.std(x)
+        if s <= 0:
+            continue
+        x = x / s          # kurtosis is scale-free; this keeps x**4 well conditioned
+        raw = []
+        for p in (1, 2, 3, 4):
+            cs = np.concatenate(([0.0], np.cumsum(x ** p)))
+            raw.append((cs[t + 1] - cs[b0]) / cnt)
+        m1, m2r, m3r, m4r = raw                                      # raw moments
+        var = m2r - m1 ** 2
+        m4 = m4r - 4 * m1 * m3r + 6 * m1 ** 2 * m2r - 3 * m1 ** 4    # 4th central moment
+        k_sum += np.where(var > 1e-12, m4 / (var ** 2 + 1e-30) - 3.0, 0.0)
+
+    k_mean = k_sum / nf
+    k_mean[:nk] = 0.0      # incomplete windows at the start of the trace
+    return np.sign(k_mean) * np.log1p(np.abs(k_mean))
+
+
+# ---------------------------------------------------------------------------
+# Normalisation and combination of CFs
+# ---------------------------------------------------------------------------
+
+def _normalize_array(x, norm="mad", q=0.99):
+    """
+    Robust standardisation of a CF array.
+
+    mad  : (x - median) / (1.4826 * MAD)
+           sigma units of the bulk (centre) of the distribution.
+    tail : (x - median) / (Q_q - median) * Phi^-1(q)
+           the q-quantile is mapped to its Gaussian value (0.99 -> 2.33), so the
+           same threshold gives a similar exceedance rate for CFs with different
+           tail shapes. Falls back to mad if the upper tail is flat.
+    """
+    x = np.asarray(x, dtype=float)
+    med = np.median(x)
+    scale = 0.0
+    if norm == "tail":
+        scale = (np.quantile(x, q) - med) / ndtri(q)
+    if scale <= 0:
+        scale = 1.4826 * np.median(np.abs(x - med))
+    return (x - med) / scale if scale > 0 else np.zeros_like(x)
+
+
+def robust_zscore(st: Stream, norm: str = "mad", q: float = 0.99) -> Stream:
+    """Copy of st with every trace robustly standardised (see _normalize_array)."""
+    if norm not in _NORMS:
+        raise ValueError(f"norm must be one of {_NORMS}")
+    st = st.copy()
+    for tr in st:
+        tr.data = _normalize_array(tr.data, norm, q)
+    return st
+
+
+def combine_cf_streams(*streams, method: str = "max", norm: str = "mad", q: float = 0.99,
+                       tolerance: float = 0.0, p: float = 3.0,
+                       final_norm: bool = False) -> Stream:
+    """
+    Combine several CF Streams trace by trace (one output trace per station).
+    Traces must have the same ids in the same order.
+
+    Parameters
+    ----------
+    method     : 'max'      any CF fires
+                 'mean'     CFs must agree
+                 'stouffer' sum / sqrt(sum of the correlation matrix): rewards
+                            agreement, and correlated CFs are not double counted
+                 'gmean'    generalised mean of the positive parts, power p
+                            (p=1 ~ mean, large p ~ max)
+    norm       : 'mad' or 'tail' standardisation of each CF (see _normalize_array)
+    q          : quantile used by norm='tail' (0.95 for ~1 h windows with events,
+                 0.99-0.999 for full days)
+    tolerance  : running maximum over +/- tolerance [s] before combining, so peaks
+                 that are slightly offset in time add up (0 = off)
+    p          : power for method='gmean'
+    final_norm : standardise the combined CF again with the same norm, so the
+                 thresholds mean the same for every method
+    """
+    if method not in _COMBINE_METHODS:
+        raise ValueError(f"method must be one of {_COMBINE_METHODS}")
+    if norm not in _NORMS:
+        raise ValueError(f"norm must be one of {_NORMS}")
+
+    out = []
+    for trs in zip(*streams):
+        if len({tr.id for tr in trs}) != 1:
+            raise ValueError(f"Trace ids differ: {[tr.id for tr in trs]}")
+        n = min(tr.stats.npts for tr in trs)
+        Z = np.vstack([_normalize_array(tr.data, norm, q)[:n] for tr in trs])
+
+        # Time tolerance: running max, then standardise again (the max filter
+        # raises the baseline)
+        if tolerance > 0:
+            w = int(round(tolerance * trs[0].stats.sampling_rate))
+            if w > 0:
+                Z = maximum_filter1d(Z, size=2 * w + 1, axis=1, mode="nearest")
+                Z = np.vstack([_normalize_array(z, norm, q) for z in Z])
+
+        if method == "max":
+            data = Z.max(axis=0)
+        elif method == "mean":
+            data = Z.mean(axis=0)
+        elif method == "stouffer":
+            R = np.atleast_2d(np.corrcoef(Z)) if len(Z) > 1 else np.ones((1, 1))
+            R = np.nan_to_num(R, nan=0.0)
+            np.fill_diagonal(R, 1.0)
+            data = Z.sum(axis=0) / np.sqrt(max(R.sum(), 1e-12))
+        else:  # gmean
+            data = np.mean(np.maximum(Z, 0.0) ** p, axis=0) ** (1.0 / p)
+
+        if final_norm:
+            data = _normalize_array(data, norm, q)
+
+        tr_out = trs[0].copy()
+        tr_out.data = data
+        out.append(tr_out)
+    return Stream(traces=out)
+
 
 # ===========================================================================
 # AFTANWavelet — faithful reimplementation of the original FORTRAN AFTAN

@@ -7,11 +7,20 @@ Created on Tue Aug  9 11:00:00 2020
 Updated to accept a SurfProject object directly.
 """
 
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Created on Tue Aug  9 11:00:00 2020
+@author: robertocabieces
+Updated to accept a SurfProject object directly.
+"""
+
 import os
 import pickle
 from fnmatch import fnmatch
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
-from obspy import Inventory, read_inventory
+from obspy import Inventory, UTCDateTime, read_inventory
 from obspy.io.mseed.core import _is_mseed
 from obspy.signal import PPSD
 
@@ -48,6 +57,11 @@ class PPSDSurf:
         self.period = period
         self.check = False
         self.processedFiles = 0
+
+        # Filled by create_dict / add_db_files when robust=True:
+        # list of (filepath, seed_id, reason) for files rejected against metadata
+        self.skipped_files = []
+        self._meta_cache = {}
 
         self._check_metadata()
 
@@ -103,6 +117,96 @@ class PPSDSurf:
 
         value = (value or "").strip().upper()
         return any(fnmatch(value, p) for p in patterns)
+
+    # ---------------------------------------------------------------------
+    # Metadata check (robust mode)
+    # ---------------------------------------------------------------------
+
+    @staticmethod
+    def _stats_get(stats, key, default=None):
+        """Read a field from an ObsPy Stats object or a plain dict."""
+        if stats is None:
+            return default
+        if isinstance(stats, dict):
+            return stats.get(key, default)
+        return getattr(stats, key, default)
+
+    def _metadata_channels(self, net: str, sta: str, loc: str, chn: str):
+        """Cached inventory lookup -> list of matching Channel epochs."""
+        key = (net, sta, loc, chn)
+        if key not in self._meta_cache:
+            sub = self.metadata.select(network=net, station=sta,
+                                       location=loc, channel=chn)
+            self._meta_cache[key] = [cha for n in sub for s in n for cha in s]
+        return self._meta_cache[key]
+
+    def _check_in_metadata(self, net: str, sta: str, chn: str, stats=None) -> Tuple[bool, str]:
+        """
+        Check whether a waveform entry is covered by the inventory.
+
+        - Channel NET.STA.LOC.CHN must exist (LOC taken from stats, '*' if unknown).
+        - If the file start time is known, one channel epoch must cover it.
+        - That epoch must carry an instrument response (PPSD needs it).
+
+        Returns (ok, reason).
+        """
+        loc = self._stats_get(stats, "location")
+        loc = "*" if loc is None else str(loc).strip()
+
+        channels = self._metadata_channels(net, sta, loc, chn)
+        if not channels:
+            return False, "channel not in metadata"
+
+        t = self._stats_get(stats, "starttime")
+        if t is not None:
+            try:
+                t = UTCDateTime(t)
+            except Exception:
+                t = None
+
+        if t is not None:
+            channels = [c for c in channels
+                        if (c.start_date is None or c.start_date <= t)
+                        and (c.end_date is None or t <= c.end_date)]
+            if not channels:
+                return False, f"no metadata epoch covering {t}"
+
+        if not any(c.response is not None and c.response.response_stages for c in channels):
+            return False, "metadata epoch has no response"
+
+        return True, ""
+
+    def _fill_map(self, data_map, net_list="", sta_list="", chn_list="", robust=False):
+        """Shared loop for create_dict / add_db_files."""
+        net_filter = self._normalize_filter(net_list)
+        sta_filter = self._normalize_filter(sta_list)
+        chn_filter = self._normalize_filter(chn_list)
+
+        size = 0
+        for filepath, stats, net, sta, chn in self._iter_source_entries():
+            if not self._matches(net, net_filter):
+                continue
+            if not self._matches(sta, sta_filter):
+                continue
+            if not self._matches(chn, chn_filter):
+                continue
+
+            if robust:
+                ok, reason = self._check_in_metadata(net, sta, chn, stats)
+                if not ok:
+                    seed_id = f"{net}.{sta}.{chn}"
+                    self.skipped_files.append((filepath, seed_id, reason))
+                    print(f"Skipping {filepath} ({seed_id}): {reason}")
+                    continue
+
+            print("Adding to DB ", filepath)
+            if self._append_to_nested_map(data_map, net, sta, chn, filepath):
+                size += 1
+
+        if robust and self.skipped_files:
+            print(f"Robust mode: {len(self.skipped_files)} file(s) skipped, not covered by metadata")
+
+        return data_map, size
 
     @staticmethod
     def _is_surf_project_instance(obj: Any) -> bool:
@@ -213,28 +317,22 @@ class PPSDSurf:
         """
         Create the legacy nested data_map structure from either a filesystem
         path or a SurfProject object.
+
+        Keyword arguments
+        -----------------
+        net_list, sta_list, chn_list : str | list
+            Wildcard filters (see _normalize_filter).
+        robust : bool, default False
+            If True, only add files whose channel exists in the metadata
+            (with a matching epoch and a response). Rejected files are
+            listed in self.skipped_files as (filepath, seed_id, reason).
         """
-        net_filter = self._normalize_filter(kwargs.pop("net_list", ""))
-        sta_filter = self._normalize_filter(kwargs.pop("sta_list", ""))
-        chn_filter = self._normalize_filter(kwargs.pop("chn_list", ""))
-
-        data_map = {"nets": {}}
-        size = 0
-
-        for filepath, _stats, net, sta, chn in self._iter_source_entries():
-            if not self._matches(net, net_filter):
-                continue
-            if not self._matches(sta, sta_filter):
-                continue
-            if not self._matches(chn, chn_filter):
-                continue
-
-            print("Adding to DB ", filepath)
-            added = self._append_to_nested_map(data_map, net, sta, chn, filepath)
-            if added:
-                size += 1
-
-        return data_map, size
+        self.skipped_files = []
+        return self._fill_map({"nets": {}},
+                              net_list=kwargs.pop("net_list", ""),
+                              sta_list=kwargs.pop("sta_list", ""),
+                              chn_list=kwargs.pop("chn_list", ""),
+                              robust=kwargs.pop("robust", False))
 
     def get_all_values(self, nested_dictionary):
         for key, value in nested_dictionary.items():
@@ -322,26 +420,14 @@ class PPSDSurf:
     def add_db_files(self, data_map, **kwargs):
         """
         Add new files from a path or SurfProject into an existing legacy data_map.
+        Accepts the same keywords as create_dict, including robust=True.
         """
-        net_filter = self._normalize_filter(kwargs.pop("net_list", ""))
-        sta_filter = self._normalize_filter(kwargs.pop("sta_list", ""))
-        chn_filter = self._normalize_filter(kwargs.pop("chn_list", ""))
-
-        size = 0
-        for filepath, _stats, net, sta, chn in self._iter_source_entries():
-            if not self._matches(net, net_filter):
-                continue
-            if not self._matches(sta, sta_filter):
-                continue
-            if not self._matches(chn, chn_filter):
-                continue
-
-            print("Adding to DB ", filepath)
-            added = self._append_to_nested_map(data_map, net, sta, chn, filepath)
-            if added:
-                size += 1
-
-        return data_map, size
+        self.skipped_files = []
+        return self._fill_map(data_map,
+                              net_list=kwargs.pop("net_list", ""),
+                              sta_list=kwargs.pop("sta_list", ""),
+                              chn_list=kwargs.pop("chn_list", ""),
+                              robust=kwargs.pop("robust", False))
 
 
 if __name__ == "__main__":
@@ -353,6 +439,6 @@ if __name__ == "__main__":
     sp = SurfProject.load_project(project)
     print(sp)
     ppsds = PPSDSurf(files_path=sp, metadata=metadata, length=3600)
-    ini_dict, size = ppsds.create_dict(net_list="*", sta_list="OBS5", chn_list="CH?")
+    ini_dict, size = ppsds.create_dict(net_list="*", sta_list="OBS5", chn_list="CH?", robust=True)
     db = ppsds.get_all_values(ini_dict)
     ppsds.save_PPSDs(db, file_name=name)

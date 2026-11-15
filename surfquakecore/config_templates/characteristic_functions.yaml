@@ -57,21 +57,32 @@ Analysis:
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
-  # cwt_cf — Wavelet (CWT) characteristic function
+  # cwt_cf — Wavelet (CWT) characteristic functions
   # ---------------------------------------------------------------------------
   # Builds a bank of wavelet atoms between fmin and fmax ONCE and convolves
   # every trace with it (fast for many traces). From the same scalogram it can
-  # compute three CFs:
+  # compute several CFs in one pass:
   #
-  #   power    : mean over frequencies of d/dt log(power). Reacts to a jump
-  #              in energy -> best for impulsive onsets (typically P).
-  #   entropy  : drop of spectral entropy of the whitened scalogram. Reacts
-  #              when energy concentrates in a narrow band, even if the total
-  #              energy barely changes -> later phases inside a coda
-  #              (typically S), narrowband signals (tremor, LP events).
-  #   centroid : shift of the energy centroid in log-frequency (octaves).
-  #              Reacts when the signal is spectrally different from the
-  #              noise (e.g. a local event above the microseism band).
+  #   power     : mean over frequencies of d/dt log(power). The original CF.
+  #               Reacts to a jump in energy -> impulsive onsets (typically P).
+                  # (Cabieces et al. 2008)
+  #   power_win : windowed spectral ratio, mean over frequencies of
+  #               log(after / before) (Gibbons et al. 2008, no exponential). A multi-band
+  #               STA/LTA in the log domain.
+  #   power_mod : as power_win, but weighted by the energy above the
+  #               background after t (Gibbons et al. 2008): favours high
+  #               contrast AND high energy -> strong, impulsive arrivals.
+  #   entropy   : drop of spectral entropy of the whitened scalogram. Reacts
+  #               when energy concentrates in a narrow band, even if the total
+  #               energy barely changes -> later phases inside a coda
+  #               (typically S), narrowband signals (tremor, LP events).
+  #   centroid  : shift of the energy centroid in log-frequency (octaves).
+  #               Reacts when the signal is spectrally different from the
+  #               noise (e.g. a local event above the microseism band).
+  #   kurtosis  : multi-band excess kurtosis of the band-passed signals in a
+  #               trailing window. Reacts when the signal becomes impulsive
+  #               -> weak sharp onsets, precise onset timing. Does not help
+  #               emergent signals; sensitive to spikes (despike first).
   #
   # Required options
   #   cycles:            number of cycles of the wavelet. Larger = better
@@ -85,45 +96,86 @@ Analysis:
   #                      pa = Paul
   #
   # Optional options (defaults in brackets)
-  #   lowpass_freq: corner of the lowpass applied to the CF [0.15]. Lower =
-  #                 smoother CF, less time resolution.
-  #   cf_type:      power | entropy | centroid, or several separated by
-  #                 commas, e.g. 'power,entropy' [power].
+  #   cf_type:      one type or several separated by commas [power]
+  #                   power | power_win | power_mod | entropy | centroid | kurtosis
   #                 With several types they are combined into ONE CF per trace.
-  #   combine:      how several CFs are combined [max]
-  #                   max  = fires if ANY CF fires (more detections, more
-  #                          false alarms)
-  #                   mean = fires only if the CFs AGREE (more conservative)
-  #   win_before:   entropy/centroid: window before each sample, background [10.0 s]
-  #   win_after:    entropy/centroid: window after each sample, signal [2.0 s].
-  #                 Use at least ~2 periods of fmin; win_before ~5-10 x win_after.
+  #                 Recommended: 'power_mod,entropy,kurtosis'.
+  #   lowpass_freq: corner of the lowpass applied to the CF [0.15]. Lower =
+  #                 smoother CF, less time resolution. The window-based CFs are
+  #                 already smoothed by their windows: use 0.5-1.0 for them.
+  #
+  #   Windows (power_win, power_mod, entropy, centroid):
+  #   win_before:   background window before each sample [10.0 s]
+  #   win_after:    signal window after each sample [2.0 s]. Use at least
+  #                 ~2 periods of fmin (fmin = 0.5 Hz -> >= 4 s);
+  #                 win_before ~5-10 x win_after.
+  #   gap:          the background window ends `gap` s before each sample, so
+  #                 the start of an emergent arrival does not enter the
+  #                 background (Gibbons et al. 2008) [0.5 s]. 0 = no gap.
   #   direction:    entropy/centroid sign [up]
   #                   up   = increase (centroid moves to higher frequency /
   #                          energy concentrates)
   #                   down = opposite sign
   #                   both = absolute value
   #
+  #   Kurtosis:
+  #   win_kurt:     trailing window [3.0 s]. 1-5 s, at least a few periods
+  #                 of fmin. Shorter = sharper and noisier.
+  #
+  #   Combination (only with several cf_type):
+  #   combine:      combination rule [max]
+  #                   max      = fires if ANY CF fires (more detections, more
+  #                              false alarms)
+  #                   mean     = fires only if the CFs AGREE (conservative)
+  #                   stouffer = sum / sqrt(sum of the correlations): rewards
+  #                              agreement and does not count correlated CFs
+  #                              twice (recommended)
+  #                   gmean    = between mean and max, controlled by p
+  #   p:            power for gmean [3.0]. 1 = mean, large = max.
+  #   tolerance:    running maximum of each CF over +/- tolerance [s] before
+  #                 combining, so peaks slightly offset in time add up [0.0].
+  #                 0.3-0.5 recommended; the trigger can move up to this earlier.
+  #   norm:         standardisation of each CF before combining [mad]
+  #                   mad  = (x - median) / (1.4826 * MAD): scales the centre
+  #                          of the distribution
+  #                   tail = the tail_quantile maps to its Gaussian value
+  #                          (0.99 -> 2.33 sigma): the same threshold gives a
+  #                          similar false-alarm rate for every CF (recommended)
+  #   tail_quantile: quantile used by norm 'tail' [0.99]. Must be above the
+  #                 fraction of time occupied by events: 0.95 for ~1 h windows
+  #                 containing an event, 0.99-0.999 for full days.
+  #   final_norm:   standardise the combined CF again with the same norm, so
+  #                 thresholds mean the same for every rule [False]. True or False.
+  #
   # Output units
   #   - Single cf_type: raw CF (not normalized).
-  #   - Several cf_type: already in sigma units (robust z-score:
-  #     (x - median) / (1.4826 * MAD)), so thresholds like 4-5 sigma apply.
+  #   - Several cf_type: in sigma units, according to `norm`, so thresholds
+  #     like 4-5 sigma apply. Calibrate them on a quiet day with the combined
+  #     CF: with combine 'max' the background is higher than for a single CF.
   #
-  # Tip: 'power,entropy' with combine 'max' recovered both P and S arrivals
-  # in our tests where power alone missed the S.
+  # Tip: in our tests power_mod found the P (broadband, impulsive) and entropy
+  # the S inside the P coda, which the energy CFs missed. Kurtosis adds weak
+  # impulsive onsets and sharper picks. Combine them with 'stouffer'.
 
 #  process_5:
 #    name: 'cwt_cf'
 #    cycles: 6
 #    fmin: 0.5
 #    fmax: 8.0
-#    voices_per_octave: 32
+#    voices_per_octave: 16
 #    wavelet_type: 'cm'
+#    cf_type: 'power_mod,entropy,kurtosis'
 #    lowpass_freq: 0.15
-#    cf_type: 'power,entropy'
-#    combine: 'max'
-#    win_before: 10.0
-#    win_after: 2.0
+#    win_before: 20.0
+#    win_after: 4.0
+#    gap: 0.5
 #    direction: 'up'
+#    win_kurt: 4.0
+#    combine: 'stouffer'
+#    tolerance: 0.5
+#    norm: 'tail'
+#    tail_quantile: 0.99
+#    final_norm: True
 
 
   # ---------------------------------------------------------------------------
@@ -133,6 +185,8 @@ Analysis:
   # a recursive 4th-order (kurtosis) CF in each band and stacks them.
   # Kurtosis is high when the signal becomes impulsive / non-Gaussian, so it
   # is sensitive to sharp onsets.
+  # Note: to combine kurtosis with other CFs from a single CWT, use cwt_cf
+  # with cf_type: 'kurtosis' (e.g. 'power_mod,entropy,kurtosis') instead.
   #
   #   CF_decay_win: memory of the recursive estimator [s]. Shorter = sharper
   #                 response, noisier; longer = smoother, slower.
