@@ -14,6 +14,7 @@ import sys
 import numpy as np
 from surfquakecore.data_processing.spectral_tools import SpectrumTool
 
+
 class TraceSpectrumResult:
     def __init__(self, trace, spectrum=None):
 
@@ -26,7 +27,8 @@ class TraceSpectrumResult:
     PARAMETRIC = ("burg", "yule", "covar", "modcovar", "minvar", "music", "ev")
     PSEUDO = ("music", "ev")  # pseudo-spectra: no physical amplitude
 
-    def compute_spectrum(self, method="fft", order=20, nsig=None):
+    def compute_spectrum(self, method="fft", order=20, nsig=None, scaling="fourier"):
+        """scaling: 'fourier' (|X|·dt, unit·s) or 'asd' (unit/√Hz), same for every method."""
         method = method.lower()
         data, delta = self.trace.data, self.trace.stats.delta
 
@@ -36,13 +38,16 @@ class TraceSpectrumResult:
 
         if method == "fft":
             self.spectrum, self.freq, self.phase = SpectrumTool.compute_spectrum(data, delta, mode=method,
-                                                                                 save_phase=True)
+                                                                                 save_phase=True,
+                                                                                 scaling=scaling)
         elif method == "multitaper":
-            self.spectrum, self.freq = SpectrumTool.compute_spectrum(data, delta, mode=method)
+            self.spectrum, self.freq = SpectrumTool.compute_spectrum(data, delta, mode=method,
+                                                                     scaling=scaling)
             self.phase = None
         elif method in self.PARAMETRIC:
             self.spectrum, self.freq = SpectrumTool.compute_spectrum(data, delta, mode=method,
-                                                                     order=order, nsig=nsig)
+                                                                     order=order, nsig=nsig,
+                                                                     scaling=scaling)
             self.phase = None
             self.order = order
             self.nsig = nsig if method in self.PSEUDO else None
@@ -50,6 +55,7 @@ class TraceSpectrumResult:
             raise ValueError(f"Unknown spectrum method '{method}'")
 
         self.method = method
+        self.scaling = scaling
 
     def plot_spectrum(self, axis_type="loglog", save_path: str = None, type_spec: str = "sp", extension: str = "png"):
 
@@ -76,10 +82,11 @@ class TraceSpectrumResult:
 
         if axis_type != "linlin":
             ax.set_ylim(self.spectrum.min() / 10.0, self.spectrum.max() * 100.0)
-        
+
         ax.set_xlim(self.freq[1], self.freq[-1])
         ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Amplitude")
+        ax.set_ylabel(SpectrumTool.spectrum_ylabel(getattr(self, "scaling", "fourier"),
+                                                   self.method or "fft"))
         ax.set_title(f"Spectrum for {self.trace.id}")
         plt.grid(True, which='both', linestyle='--', alpha=0.4)
         plt.tight_layout()
@@ -171,12 +178,12 @@ class TraceSpectrogramResult:
         elif method == "fft":
             self.spectrogram, self.num_steps, self.time, self.freq, self.phase = (
                 SpectrumTool.compute_spectrogram(self.trace.data, round(win * self.trace.stats.sampling_rate),
-                                             self.trace.stats.delta, linf, lsup, step_percentage,
-                                             method, nw, save_phase=True))
+                                                 self.trace.stats.delta, linf, lsup, step_percentage,
+                                                 method, nw, save_phase=True))
 
     def plot_spectrogram(self, save_path: str = None, clip: float = None, plot_date: bool = False, split=None,
-            vmax_db: float = None, cmap: str = "rainbow",
-            smooth: bool = False, extension="png", type_spec: str = ""):
+                         vmax_db: float = None, cmap: str = "rainbow",
+                         smooth: bool = False, extension="png", type_spec: str = ""):
 
         import platform
         import numpy as np
@@ -209,10 +216,9 @@ class TraceSpectrogramResult:
 
             spectrogram = 10.0 * np.log10(self.spectrogram / max_power)
 
-
         if vmax_db is None:
 
-            #vmax_db = np.percentile(spectrogram, q=99.5, axis=None)
+            # vmax_db = np.percentile(spectrogram, q=99.5, axis=None)
             vmax_db = 0.0
 
         else:
@@ -244,7 +250,7 @@ class TraceSpectrogramResult:
         # ------------------------------------------------------
         if vmin_db >= vmax_db:
             raise ValueError(f"vmin_db ({vmin_db:g} dB) must be lower than "
-                f"vmax_db ({vmax_db:g} dB).")
+                             f"vmax_db ({vmax_db:g} dB).")
 
         # Replace -inf produced by log10(0)
         spectrogram = np.where(np.isfinite(spectrogram), spectrogram, vmin_db)
@@ -299,7 +305,7 @@ class TraceSpectrogramResult:
 
             self.fig_spec = plt.figure(figsize=(10, 5))
 
-            gs = gridspec.GridSpec(2,2, width_ratios=[1, 0.03], height_ratios=[1, 1], hspace=0.02,
+            gs = gridspec.GridSpec(2, 2, width_ratios=[1, 0.03], height_ratios=[1, 1], hspace=0.02,
                                    wspace=0.02)
 
             ax_waveform = self.fig_spec.add_subplot(gs[0, 0])
@@ -322,20 +328,19 @@ class TraceSpectrogramResult:
             # --------------------------------------------------
             # Full spectrogram
             # --------------------------------------------------
-            #pcm = ax_spec.pcolormesh(spec_x, freq, spectrogram, shading="auto",
+            # pcm = ax_spec.pcolormesh(spec_x, freq, spectrogram, shading="auto",
             #    cmap=cmap, vmin=vmin_db, vmax=vmax_db)
-
 
             if smooth:
                 # Levels used only by contourf
 
                 pcm = ax_spec.contourf(spec_x, freq, spectrogram, levels=levels,
-                    cmap=cmap, vmin=vmin_db, vmax=vmax_db, extend="both")
+                                       cmap=cmap, vmin=vmin_db, vmax=vmax_db, extend="both")
 
             else:
 
                 pcm = ax_spec.pcolormesh(spec_x, freq, spectrogram, shading="auto", cmap=cmap,
-                    vmin=vmin_db, vmax=vmax_db)
+                                         vmin=vmin_db, vmax=vmax_db)
 
             ax_spec.set_ylabel("Frequency [Hz]")
 
@@ -435,7 +440,7 @@ class TraceSpectrogramResult:
             self.fig_spec = plt.figure(figsize=(10, 8))
 
             gs = gridspec.GridSpec(3, 2, width_ratios=[1, 0.03],
-                height_ratios=[1, 1, 2], hspace=0.04, wspace=0.02)
+                                   height_ratios=[1, 1, 2], hspace=0.04, wspace=0.02)
 
             # Low-frequency waveform uses LEFT amplitude axis
             ax_waveform_low = self.fig_spec.add_subplot(gs[0, 0])
@@ -502,7 +507,7 @@ class TraceSpectrogramResult:
 
             # Combined legend for both waveform axes
             ax_waveform_low.legend([line_low, line_high], [
-                    line_low.get_label(), line_high.get_label()], loc="upper right", fontsize=8, framealpha=0.7)
+                line_low.get_label(), line_high.get_label()], loc="upper right", fontsize=8, framealpha=0.7)
 
             # ==================================================
             # HIGH-FREQUENCY SPECTROGRAM
@@ -510,12 +515,12 @@ class TraceSpectrogramResult:
             if smooth:
 
                 pcm = ax_high.contourf(spec_x, freq_high, spec_high, levels=levels, cmap=cmap, vmin=vmin_db,
-                    vmax=vmax_db, extend="both")
+                                       vmax=vmax_db, extend="both")
 
             else:
 
                 pcm = ax_high.pcolormesh(spec_x, freq_high, spec_high, shading="auto", cmap=cmap,
-                    vmin=vmin_db, vmax=vmax_db)
+                                         vmin=vmin_db, vmax=vmax_db)
 
             ax_high.set_ylabel("Frequency [Hz]")
 
@@ -528,8 +533,8 @@ class TraceSpectrogramResult:
             # ==================================================
             if smooth:
 
-                ax_low.contourf( spec_x, period_low, spec_low, levels=levels, cmap=cmap,
-                    vmin=vmin_db, vmax=vmax_db, extend="both")
+                ax_low.contourf(spec_x, period_low, spec_low, levels=levels, cmap=cmap,
+                                vmin=vmin_db, vmax=vmax_db, extend="both")
 
             else:
 
@@ -620,8 +625,8 @@ class TraceSpectrogramResult:
         textstr = f"JD {starttime.julday} / "f"{starttime.year}\n" f"{date_str}"
 
         annotation_axis.text(0.01, 0.95, textstr, transform=annotation_axis.transAxes,
-            fontsize=8, va="top", ha="left", bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow",
-                                                       ec="gray", alpha=0.5))
+                             fontsize=8, va="top", ha="left", bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow",
+                                                                        ec="gray", alpha=0.5))
 
         plt.tight_layout()
 
@@ -631,8 +636,9 @@ class TraceSpectrogramResult:
         if save_path:
 
             if os.path.isdir(save_path):
-                textstr = str(starttime.julday)+"_"+str(starttime.year)+"_"+starttime.strftime("%Y_%m_%d_%H_%M_%S")
-                file_name = self.trace.id+"."+textstr+"."+type_spec+"."+extension
+                textstr = str(starttime.julday) + "_" + str(starttime.year) + "_" + starttime.strftime(
+                    "%Y_%m_%d_%H_%M_%S")
+                file_name = self.trace.id + "." + textstr + "." + type_spec + "." + extension
                 save_path = os.path.join(save_path, file_name)
 
             self.fig_spec.savefig(save_path, dpi=300)

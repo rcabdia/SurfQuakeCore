@@ -117,7 +117,7 @@ class SeismogramData:
 
                 if _config['name'] == 'wiener_smoothing':
                     tr = wiener_smoothing(tr, time_window=_config['time_window'],
-                                       noise_power=_config['noise_power'])
+                                          noise_power=_config['noise_power'])
 
                 if _config['name'] == 'remove_response':
                     if _config['units'] != "Wood Anderson":
@@ -203,7 +203,8 @@ class SeismogramData:
 
                 if _config['name'] == 'spectrum':
                     spec = TraceSpectrumResult(tr)
-                    spec.compute_spectrum(method=_config['method'])
+                    spec.compute_spectrum(method=_config['method'],
+                                          scaling=_config.get('scaling', 'fourier'))
                     spec.to_pickle(folder_path=_config['output_path'])
 
                 if _config['name'] == 'spectrogram':
@@ -328,7 +329,6 @@ class StreamProcessing:
                       "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum", "cwt_cf", "snr",
                       "entropy", "envelope"}
 
-
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
         self.config = config
@@ -393,7 +393,6 @@ class StreamProcessing:
 
             return self.stream
 
-
     def apply_deconv(self, step_config):
         """
         Cross-correlate all traces in the stream with respect to a reference trace.
@@ -424,8 +423,8 @@ class StreamProcessing:
             gaussian_filter = None
 
         self.stream = deconvolve(self.stream, reference=reference_idx, water_level=water_level,
-               tshift=0.0, normalize=normalize, trim=strict, taper_pct=0.05, gaussian_filter=gaussian_filter)
-
+                                 tshift=0.0, normalize=normalize, trim=strict, taper_pct=0.05,
+                                 gaussian_filter=gaussian_filter)
 
         return self.stream
 
@@ -530,7 +529,7 @@ class StreamProcessing:
 
         from surfquakecore.algebra.trace_algebra import TraceAlgebra
         ta = TraceAlgebra(self.stream, output_label="ALG", trim=step_config.get("trim"),
-            fill_gaps=step_config.get("fill_gaps"), resample=True)
+                          fill_gaps=step_config.get("fill_gaps"), resample=True)
 
         self.stream = ta.evaluate(step_config["expression"])
 
@@ -620,7 +619,7 @@ class StreamProcessing:
                 if hasattr(tr.stats, "references"):
                     ref_time = tr.stats.references[-1]
                     if isinstance(ref_time, (float, int)):
-                       ref_time = UTCDateTime(ref_time)
+                        ref_time = UTCDateTime(ref_time)
 
             if not ref_time:
                 print("[ERROR] No reference time found. Cannot cut.")
@@ -767,7 +766,7 @@ class StreamProcessing:
 
         # Rename channels to reflect rotated components
         self.stream = SeismicUtils.rename_rotated_channels(self.stream, step_config["type"])
-            
+
         return self.stream
 
     def apply_shift(self, step_config):
@@ -883,7 +882,7 @@ class StreamProcessing:
         bm.to_pickle(folder_path=step_config["output_folder"])
 
     def apply_kurtosis(self, step_config):
-        cf_kurt = CFKurtosis(self.stream, step_config["CF_decay_win"], 4,  step_config["fmin"], step_config["fmax"])
+        cf_kurt = CFKurtosis(self.stream, step_config["CF_decay_win"], 4, step_config["fmin"], step_config["fmax"])
         self.stream = cf_kurt.run_kurtosis()
 
     def apply_cwt_cf(self, step_config):
@@ -919,11 +918,10 @@ class StreamProcessing:
 
         for tr in self.stream:
             snr = compute_snr(tr, method=step_config['method'], sign_win=step_config['sign_win'],
-                             noise_win=step_config['noise_win'])
+                              noise_win=step_config['noise_win'])
             snr_list.append(snr)
 
         self.stream = Stream(snr_list)
-
 
     def apply_entropy(self, step_config):
 
@@ -939,7 +937,6 @@ class StreamProcessing:
             entropy_list.append(entropy_tr)
 
         self.stream = Stream(entropy_list)
-
 
     def apply_envelope(self, step_config):
 

@@ -11,27 +11,59 @@ from scipy.signal import welch, csd
 
 class SpectrumTool:
 
+    SCALINGS = ("fourier", "asd")
+
     @staticmethod
-    def compute_spectrum(data, delta, mode="fft", save_phase=False, order=20, nsig=None):
+    def spectrum_ylabel(scaling="fourier", mode="fft"):
+        """Y-axis label matching the scaling returned by compute_spectrum."""
+        if mode in ("music", "ev"):
+            return "Pseudo-spectrum (arbitrary units)"
+        return "Fourier amplitude [unit·s]" if scaling == "fourier" else "ASD [unit/√Hz]"
+
+    @staticmethod
+    def _psd_to_scaling(psd, n, delta, scaling):
         """
-        Return the amplitude spectrum using multitaper and compare with FFT.
+        One-sided PSD (unit²/Hz) -> requested scaling.
+          asd     : sqrt(PSD)                      [unit/√Hz]
+          fourier : |X|·dt = sqrt(PSD · T / 2)     [unit·s], T = n·dt (record length)
+        """
+        psd = np.maximum(np.asarray(psd, dtype=float), 0.0)
+        if scaling == "asd":
+            return np.sqrt(psd)
+        return np.sqrt(psd * n * delta / 2.0)
+
+    @staticmethod
+    def compute_spectrum(data, delta, mode="fft", save_phase=False, order=20, nsig=None,
+                         scaling="fourier"):
+        """
+        One-sided spectrum with the SAME physical scaling for every mode.
 
         Parameters:
         - data: array-like, time-domain signal
         - delta: float, sample spacing (1 / sampling rate)
-        - sta: unused (can be removed or kept for future use)
+        - mode: 'fft', 'multitaper', or a parametric mode (burg, yule, covar,
+                modcovar, minvar, music, ev)
         - save_phase: bool, if True also return the phase (only with mode='fft')
-        - order: model order for the parametric modes (burg, yule, covar, modcovar,
-                 minvar, music, ev). Ignored by 'fft' and 'multitaper'.
+        - order: model order for the parametric modes. Ignored by 'fft' and 'multitaper'.
         - nsig: signal-subspace dimension, required by 'music' and 'ev'
                 (2 per real sinusoid). Ignored by the other modes.
+        - scaling:
+            'fourier' (default): Fourier amplitude |X(f)|·dt, units = unit·s
+                      (SAC convention). Use for transients (earthquakes, source
+                      spectra): independent of the window length around the event.
+            'asd'   : amplitude spectral density sqrt(PSD), units = unit/√Hz.
+                      Use for continuous noise: independent of the record length.
+          fft, multitaper and the AR modes give comparable values for the same
+          scaling. music/ev are pseudo-spectra (no physical units).
 
         Returns:
-        - amplitude: one-sided amplitude spectrum (same units as input)
+        - amplitude: one-sided spectrum in the requested scaling
         - freq: frequencies (Hz) corresponding to the spectrum
         - phase: phase in radians (only if save_phase=True)
         """
-        # PSD (amplitude²/Hz)	Amplitude (unit)	amplitude = sqrt(psd * df)
+        scaling = str(scaling).lower()
+        if scaling not in SpectrumTool.SCALINGS:
+            raise ValueError(f"scaling must be one of {SpectrumTool.SCALINGS}, got '{scaling}'")
 
         if save_phase and mode != "fft":
             raise ValueError("save_phase is only available with mode='fft'")
@@ -48,16 +80,13 @@ class SpectrumTool:
 
             # Compute multitaper PSD
             freq, psd, _ = tsa.multi_taper_psd(data, 1 / delta, adaptive=True, jackknife=False, low_bias=True, NFFT=nfft)
-            df = freq[1] - freq[0]  # Frequency bin width
-
-            # Convert PSD to amplitude spectrum
-            amplitude = np.sqrt(psd * df)
+            # one-sided PSD (unit²/Hz) -> requested scaling
+            amplitude = SpectrumTool._psd_to_scaling(psd, N, delta, scaling)
 
         elif mode in ("burg", "yule", "covar", "modcovar", "minvar", "music", "ev"):
             psd, freq, _ = SpectrumTool.compute_spectrum_parametric(data, delta, method=mode,
                                                                     order=order, nsig=nsig)
-            df = freq[1] - freq[0]
-            return np.sqrt(psd * df), freq
+            return SpectrumTool._psd_to_scaling(psd, N, delta, scaling), freq
 
         else:
             # Compute FFT amplitude spectrum for comparison
@@ -94,16 +123,16 @@ class SpectrumTool:
             # Phase (radians), referenced to the first sample of data
             phase = np.angle(fft_vals)
 
-            # One-sided amplitude spectrum
-            amplitude = (2.0 / N) * np.abs(fft_vals) # STANDARD METHOD
-            # amplitude = 2.0 / np.sum(taper) # SHOULD BE MORE ACCURATE
-
-            # DC must not be doubled
-            amplitude[0] /= 2.0
-
-            # Nyquist must not be doubled
-            if nfft % 2 == 0:
-                amplitude[-1] /= 2.0
+            if scaling == "fourier":
+                # Fourier amplitude |X(f)|·dt (SAC convention), unit·s
+                amplitude = np.abs(fft_vals) * delta
+            else:
+                # one-sided PSD, normalised by the taper power (sum of w²)
+                psd = 2.0 * delta * np.abs(fft_vals) ** 2 / np.sum(taper ** 2)
+                psd[0] /= 2.0                    # DC is not doubled
+                if nfft % 2 == 0:
+                    psd[-1] /= 2.0               # Nyquist is not doubled
+                amplitude = np.sqrt(psd)         # ASD, unit/√Hz
 
             freq = np.fft.rfftfreq(nfft, d=delta)
 
@@ -511,3 +540,4 @@ class SpectrumTool:
         if n_avg < 2:
             return 1.0
         return float(1.0 - alpha ** (1.0 / (n_avg - 1)))
+

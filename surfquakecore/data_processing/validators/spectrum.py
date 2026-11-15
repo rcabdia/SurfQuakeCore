@@ -13,6 +13,10 @@ def validate_spectrum(config):
     require_keys(config, ['output_path'])
 
     if config['method'] not in SPECTRUM_METHODS:
-        raise ValueError(f"Unsupported integrate method: {config['method']}")
+        raise ValueError(f"Unsupported spectrum method: {config['method']}")
+
+    # optional: 'fourier' (|X|·dt, unit·s, default) or 'asd' (unit/√Hz)
+    if config.get('scaling', 'fourier') not in ('fourier', 'asd'):
+        raise ValueError(f"Unsupported spectrum scaling: {config['scaling']} (use fourier or asd)")
 
     return True

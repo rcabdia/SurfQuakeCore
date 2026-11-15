@@ -1316,7 +1316,11 @@ class PlotCommandPrompt:
         Plot amplitude spectrum.
 
         Usage:
-            spectrum <index>|all [axis_type] [--mode <mode>] [--order <n>] [--nsig <n>]
+            spectrum <index>|all [axis_type] [--mode <mode>] [--order <n>] [--nsig <n>] [--scaling fourier|asd]
+
+        Scaling (same for every mode):
+            fourier (default)  Fourier amplitude |X|·dt [unit·s]   transients / earthquakes
+            asd                amplitude spectral density [unit/√Hz]   continuous noise
 
         Modes:
             fft (default), multitaper
@@ -1328,11 +1332,12 @@ class PlotCommandPrompt:
             spectrum all loglog --mode multitaper
             spectrum 0 --mode burg --order 30
             spectrum 0 --mode music --order 20 --nsig 4
+            spectrum all --mode multitaper --scaling asd
         """
         usage = ("Usage: spectrum <index>|all [axis_type] [--mode fft|multitaper|burg|yule|covar|modcovar|"
-                 "minvar|music|ev] [--order <n>] [--nsig <n>]")
+                 "minvar|music|ev] [--order <n>] [--nsig <n>] [--scaling fourier|asd]")
 
-        mode, order, nsig = "fft", 20, None
+        mode, order, nsig, scaling = "fft", 20, None, "fourier"
         order_given = nsig_given = False
         rest = []
         i = 0
@@ -1344,7 +1349,7 @@ class PlotCommandPrompt:
                 if a.startswith("--") and "=" in a:
                     opt, value = a.split("=", 1)
                     i += 1
-                elif a in ("--mode", "--order", "--nsig"):
+                elif a in ("--mode", "--order", "--nsig", "--scaling"):
                     opt = a
                     if i + 1 >= len(args):
                         print(f"[ERROR] {opt} needs a value. {usage}")
@@ -1365,6 +1370,11 @@ class PlotCommandPrompt:
                     order, order_given = int(value), True
                 elif opt == "--nsig":
                     nsig, nsig_given = int(value), True
+                elif opt == "--scaling":
+                    scaling = value.lower()
+                    if scaling not in ("fourier", "asd"):
+                        print(f"[ERROR] --scaling must be fourier or asd. {usage}")
+                        return
                 else:
                     print(f"[ERROR] Unknown option '{opt}'. {usage}")
                     return
@@ -1394,7 +1404,7 @@ class PlotCommandPrompt:
             print("[ERROR] axis_type must be loglog, xlog, ylog or linlin.")
             return
 
-        kw = {"axis_type": axis_type, "mode": mode}
+        kw = {"axis_type": axis_type, "mode": mode, "scaling": scaling}
         if mode in PARAMETRIC_MODES:
             kw["order"] = order
         if mode in PSEUDO_MODES:
@@ -2326,6 +2336,13 @@ class PlotCommandPrompt:
             raise ValueError("use cm, mh or pa")
         return value
 
+    @staticmethod
+    def _as_scaling(value):
+        value = str(value).lower()
+        if value not in ("fourier", "asd"):
+            raise ValueError("must be fourier or asd")
+        return value
+
     def _cmd_save_tf(self, args):
         """
         Save an analysis product of the displayed traces to disk.
@@ -2358,7 +2375,8 @@ class PlotCommandPrompt:
         }
 
         usage = ("Usage: save_tf <spectrum|spectrogram|cwt|coh> <index>|all --folder_path <folder> "
-                 "[--mode <mode>] [--order <n>] [--nsig <n>] [--ref <index|trace_id>] [--no_compress]")
+                 "[--mode <mode>] [--order <n>] [--nsig <n>] [--scaling fourier|asd] "
+                 "[--ref <index|trace_id>] [--no_compress]")
 
         if len(args) < 3:
             print(usage)
@@ -2427,6 +2445,7 @@ class PlotCommandPrompt:
                 "wavelet": "cm", "param": 6.0, "fmin": None, "fmax": None,  # cwt / coh
                 "ref": "0", "trim": True,  # coh
                 "order": 20, "nsig": None,  # parametric spectrum
+                "scaling": "fourier",  # spectrum: fourier | asd
                 "given": set()}  # options typed by the user
 
         # option -> (key in opts, converter)
@@ -2445,6 +2464,7 @@ class PlotCommandPrompt:
             "--trim": ("trim", self._as_bool),
             "--order": ("order", int),
             "--nsig": ("nsig", int),
+            "--scaling": ("scaling", self._as_scaling),
         }
 
         it = iter(tokens)
@@ -2489,7 +2509,8 @@ class PlotCommandPrompt:
                     print(f"[WARN] {trace.id}: empty or too short window, skipped.")
                     continue
                 result = TraceSpectrumResult(tr)
-                result.compute_spectrum(method=opts["mode"], order=opts["order"], nsig=opts["nsig"])
+                result.compute_spectrum(method=opts["mode"], order=opts["order"], nsig=opts["nsig"],
+                                        scaling=opts.get("scaling", "fourier"))
                 result.to_pickle(opts["folder_path"], compress=opts["compress"])
                 saved += 1
             except Exception as e:
@@ -2756,6 +2777,7 @@ class PlotCommandPrompt:
         Products and options:
             spectrum (sp)       --mode fft|multitaper|burg|yule|covar|modcovar|minvar|music|ev (fft)
                                 --order <n> (20, parametric modes)  --nsig <n> (music/ev, required)
+                                --scaling fourier|asd (fourier: |X|·dt [unit·s]; asd: [unit/√Hz])
             spectrogram (spec)  --win <sec> (5.0)  --overlap <%> (50)  --method fft|multitaper (fft)  --nw <NW>
             cwt                 --wavelet cm|mh|pa (cm)  --param <p> (6)  --fmin <Hz> (0.5)  --fmax <Hz> (Nyquist)
             coh (tf)            --ref <index|trace_id> (0)  --method welch|multitaper (welch)  --win <sec> (N/8 samples)
@@ -3229,3 +3251,4 @@ if __name__ == "__main__":
     import multiprocessing as mp
 
     mp.set_start_method("fork", force=True)  # 'fork' is safest for Matplotlib on macOS
+

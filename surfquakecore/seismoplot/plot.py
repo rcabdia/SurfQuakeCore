@@ -1231,12 +1231,12 @@ class PlotProj:
             tr.trim(starttime=self.utc_start, endtime=self.utc_end)
         return tr
 
-    def _plot_single_spectrum(self, idx, axis_type, mode="fft", order=20, nsig=None):
+    def _plot_single_spectrum(self, idx, axis_type, mode="fft", order=20, nsig=None, scaling="fourier"):
 
         self._exit = False
         trace = self._window_copy(self.displayed_traces[idx])
         spectrum, freqs = SpectrumTool.compute_spectrum(trace.data, trace.stats.delta, mode=mode,
-                                                        order=order, nsig=nsig)
+                                                        order=order, nsig=nsig, scaling=scaling)
 
         fig, ax = plt.subplots()
 
@@ -1255,7 +1255,7 @@ class PlotProj:
         ax.set_xlim(freqs[1], freqs[-1])
 
         ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Pseudo-spectrum (arbitrary units)" if mode in PSEUDO_MODES else "Amplitude")
+        ax.set_ylabel(SpectrumTool.spectrum_ylabel(scaling, mode))
         ax.set_title(f"Spectrum for {trace.id}  [{self._spectrum_label(mode, order, nsig)}]")
         ax.legend()
         plt.grid(True, which="both", ls="-", color='grey', alpha=0.4)
@@ -1269,7 +1269,7 @@ class PlotProj:
         fig.canvas.mpl_disconnect(cid)
         plt.show(block=False)  # non-blocking, return immediately to run()
 
-    def _plot_all_spectra(self, axis_type, mode="fft", order=20, nsig=None):
+    def _plot_all_spectra(self, axis_type, mode="fft", order=20, nsig=None, scaling="fourier"):
 
         self._exit = False
         self.fig_spec, self.ax_spec = plt.subplots()
@@ -1280,7 +1280,7 @@ class PlotProj:
         for trace in traces:
             try:
                 spectrum, freqs = SpectrumTool.compute_spectrum(trace.data, trace.stats.delta, mode=mode,
-                                                                order=order, nsig=nsig)
+                                                                order=order, nsig=nsig, scaling=scaling)
             except Exception as e:
                 print(f"[WARN] {trace.id}: spectrum failed ({e}), skipped.")
                 continue
@@ -1301,7 +1301,7 @@ class PlotProj:
             self.ax_spec.set_ylim(ymin / 10.0, ymax * 100.0)
 
         self.ax_spec.set_xlabel("Frequency (Hz)")
-        self.ax_spec.set_ylabel("Pseudo-spectrum (arbitrary units)" if mode in PSEUDO_MODES else "Amplitude")
+        self.ax_spec.set_ylabel(SpectrumTool.spectrum_ylabel(scaling, mode))
         self.ax_spec.set_title(f"Spectra [{self._spectrum_label(mode, order, nsig)}]")
         self.ax_spec.legend(fontsize=6)
         plt.grid(True, which="both", ls="-", color='grey')
