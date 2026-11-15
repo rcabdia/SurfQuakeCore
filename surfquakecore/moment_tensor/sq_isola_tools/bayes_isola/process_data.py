@@ -155,7 +155,10 @@ class process_data:
 					tr.simulate(paz_remove=tr.stats.paz, water_level=water_level)
 				else:
 					print(tr.stats)
-					raise ('No response in tr.stats for the trace above.')
+					raise ValueError(
+						f"No instrument response (response or paz) in tr.stats for trace {tr.id}. "
+						f"Check that the inventory contains this station/channel for {tr.stats.starttime}."
+					)
 		# 2DO: add prefiltering etc., this is not the best way for the correction
 		# 	see http://docs.obspy.org/packages/autogen/obspy.core.trace.Trace.remove_response.html
 		self.d.data_are_corrected = True
