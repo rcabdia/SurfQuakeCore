@@ -242,7 +242,9 @@ class MorletCWT:
         with np.errstate(divide='ignore', invalid='ignore'):
             inst_freq_raw = deriv / (2j * np.pi * tf)
 
-        inst_freq_hz = (np.abs(inst_freq_raw) * self._fs) / (2.0 * np.pi)
+        #inst_freq_hz = (np.abs(inst_freq_raw) * self._fs) / (2.0 * np.pi)
+        # deriv / (2πi·tf) is already in Hz (derivative taken with freq_ax in Hz)
+        inst_freq_hz = np.abs(inst_freq_raw)
         return phase, inst_freq_hz
 
     @property

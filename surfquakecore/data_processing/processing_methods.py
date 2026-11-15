@@ -579,40 +579,35 @@ def __whiten_aux(data_f, data_f_whiten, index, half_width, avarage_window_width,
     return data_f_whiten
 
 
-def hampel_aux(input_series, window_size, size, n_sigmas):
-    return __hampel_aux(input_series, window_size, size, n_sigmas)
-
-
 def hampel(tr, window_size, n_sigmas=3):
     """
-            Median absolute deviation (MAD) outlier in Time Series
-            :param ts: a trace obspy object representing the timeseries
-            :param window_size: total window size in seconds
-            :param n: threshold, default is 3 (Pearson's rule)
-            :return: Returns the corrected timeseries
-            """
+    Hampel filter (rolling median / MAD outlier replacement).
 
-    size = tr.count()
-    input_series = tr.data
-    window_size = int(window_size * tr.stats.sampling_rate)
-    tr.data = hampel_aux(input_series, window_size, size, n_sigmas)
+    :param tr: obspy Trace
+    :param window_size: TOTAL window length in seconds (made odd in samples)
+    :param n_sigmas: threshold in robust sigmas (1.4826 * MAD), default 3
+    :return: the trace with outliers replaced by the local median
 
+    Same algorithm as cython_module/hampel.pyx: centred window; near the edges
+    the window keeps its length and is shifted inside the trace.
+    """
+    x = np.asarray(tr.data, dtype=np.float64)
+    n = x.size
+    half = int(round(window_size * tr.stats.sampling_rate)) // 2
+    w = 2 * half + 1
+    if half < 1 or n < w:
+        return tr
+    k = 1.4826  # MAD -> sigma for Gaussian noise
+    out = x.copy()
+    for i in range(n):
+        s = min(max(i - half, 0), n - w)
+        win = x[s:s + w]
+        med = np.median(win)
+        thr = n_sigmas * k * np.median(np.abs(win - med))
+        if abs(x[i] - med) > thr:
+            out[i] = med
+    tr.data = out
     return tr
-
-
-def __hampel_aux(input_series, window_size, size, n_sigmas):
-    k = 1.4826  # scale factor for Gaussian distribution
-    # indices = []
-    new_series = input_series.copy()
-    # possibly use np.nanmedian
-    for i in range((window_size), (size - window_size)):
-        x0 = np.median(input_series[(i - window_size):(i + window_size)])
-        S0 = k * np.median(np.abs(input_series[(i - window_size):(i + window_size)] - x0))
-        if (np.abs(input_series[i] - x0) > n_sigmas * S0):
-            new_series[i] = x0
-            # indices.append(i)
-
-    return new_series
 
 
 def trace_envelope(tr, method="FULL", **kwargs):
@@ -645,7 +640,7 @@ def normalize(tr, clip_factor=6, clip_weight=10, norm_win=10, norm_method="1bit"
         lim = clip_factor * np.std(np.abs(tr.data))
 
         # as long as still values left above the waterlevel, clip_weight
-        while tr.data[np.abs(tr.data) > lim] != []:
+        while np.any(np.abs(tr.data) > lim):
             tr.data[tr.data > lim] /= clip_weight
             tr.data[tr.data < -lim] /= clip_weight
 
@@ -672,17 +667,21 @@ def normalize(tr, clip_factor=6, clip_weight=10, norm_win=10, norm_method="1bit"
 
 
 def wavelet_denoise(tr, threshold=0.04, dwt='sym4'):
-    # Threshold for filtering
-    # Create wavelet object and define parameters
+    """
+    Wavelet denoising: soft-threshold the detail coefficients of every level.
+    threshold is relative to the largest |coefficient| of each level.
+    The output keeps the same npts as the input.
+    """
+    npts = tr.stats.npts
     w = pywt.Wavelet(dwt)
-    maxlev = pywt.dwt_max_level(len(tr.data), w.dec_len)
+    maxlev = pywt.dwt_max_level(npts, w.dec_len)
     # Decompose into wavelet components, to the level selected:
     coeffs = pywt.wavedec(tr.data, dwt, level=maxlev)
-    # cA = pywt.threshold(cA, threshold*max(cA))
+    # approximation coeffs[0] is kept; detail coefficients are thresholded
     for i in range(1, len(coeffs)):
-        coeffs[i] = pywt.threshold(coeffs[i], threshold * max(coeffs[i]))
-    datarec = pywt.waverec(coeffs, dwt)
-    tr.data = datarec
+        coeffs[i] = pywt.threshold(coeffs[i], threshold * np.max(np.abs(coeffs[i])), mode='soft')
+    # waverec can return npts + 1 for odd lengths -> cut back to the input length
+    tr.data = pywt.waverec(coeffs, dwt)[:npts]
     return tr
 
 
@@ -999,14 +998,15 @@ def apply_cross_correlation(stream, reference=0, mode='full', normalize='full', 
         cc_tr.stats.is_autocorrelation = (i == reference)
 
         if trim:
-            num = len(ref_trace.data)
-            if (num % 2) == 0:
-                c = int(np.ceil(num / 2.) + 1)  # even
-            else:
-
-                c = int(np.ceil((num + 1) / 2))  # odd
-
-            cc_tr.stats.mid_point = (cc_tr.stats.starttime + c * cc_tr.stats.sampling_rate).timestamp
+            # sample index of zero lag in the correlate_template output
+            n_ref, n_dat = len(ref_trace.data), len(tr.data)
+            if mode == 'full':
+                c = n_ref - 1
+            elif mode == 'valid':
+                c = 0
+            else:  # 'same'
+                c = (n_ref - 1) - (n_dat + n_ref - 1 - len(cc)) // 2
+            cc_tr.stats.mid_point = (cc_tr.stats.starttime + c / cc_tr.stats.sampling_rate).timestamp
 
         cc_stream.append(cc_tr)
 
@@ -1072,7 +1072,9 @@ def deconvolve(stream, reference=0, water_level=0.01, gaussian_filter=None,
         st.taper(max_percentage=taper_pct, type="cosine")
 
     ref_trace = st[reference]
-    nfft = next_power_of_2(max(tr.stats.npts for tr in st))
+    # >= 2N: linear (not circular) deconvolution, so acausal energy and tshift
+    # do not wrap around into the output window
+    nfft = next_power_of_2(2 * max(tr.stats.npts for tr in st))
     freqs = np.fft.rfftfreq(nfft, d=1.0 / sr)
     omega = 2.0 * np.pi * freqs
 

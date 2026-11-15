@@ -577,9 +577,9 @@ class ConvolveWaveletBase:
         freq   = np.fft.fftfreq(b, d=1.0 / self._sample_rate)
         freq   = np.tile(freq, (a, 1))
         deriv  = np.fft.ifft(2j * np.pi * freq * np.fft.fft(self._tf, axis=1), axis=1)
-        inst_freq     = deriv / (2j * np.pi * self._tf)
-        inst_freq     = np.abs(inst_freq)
-        ins_freq_hz   = (inst_freq * self._sample_rate) / (2.0 * np.pi)
+        #inst_freq     = deriv / (2j * np.pi * self._tf)
+        ins_freq_hz = np.abs(deriv / (2j * np.pi * self._tf))
+        inst_freq = ins_freq_hz / self._sample_rate  # normalised [cycles/sample]
         return phase, inst_freq, ins_freq_hz
 
     def get_data_window(self):

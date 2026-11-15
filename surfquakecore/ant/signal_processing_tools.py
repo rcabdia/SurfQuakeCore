@@ -328,7 +328,7 @@ class noise_processing:
             lim = clip_factor * np.std(np.abs(self.tr.data))
 
             # as long as still values left above the waterlevel, clip_weight
-            while self.tr.data[np.abs(self.tr.data) > lim] != []:
+            while np.any(np.abs(self.tr.data) > lim):
                 self.tr.data[self.tr.data > lim] /= clip_weight
                 self.tr.data[self.tr.data < -lim] /= clip_weight
 

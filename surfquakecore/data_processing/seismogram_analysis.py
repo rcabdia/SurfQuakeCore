@@ -735,15 +735,17 @@ class StreamProcessing:
             cc_tr.stats.correlation_with = ref_trace.id
             cc_tr.stats.original_trace = tr.id
             cc_tr.stats.is_autocorrelation = (i == reference_idx)
+
             if strict:
-                num = len(ref_trace.data)
-                if (num % 2) == 0:
-                    c = int(np.ceil(num / 2.) + 1)  # even
-                else:
-
-                    c = int(np.ceil((num + 1) / 2))  # odd
-
-                cc_tr.stats.mid_point = (cc_tr.stats.starttime + c * cc_tr.stats.sampling_rate).timestamp
+                # sample index of zero lag in the correlate_template output
+                n_ref, n_dat = len(ref_trace.data), len(tr.data)
+                if mode == 'full':
+                    c = n_ref - 1
+                elif mode == 'valid':
+                    c = 0
+                else:  # 'same'
+                    c = (n_ref - 1) - (n_dat + n_ref - 1 - len(cc)) // 2
+                cc_tr.stats.mid_point = (cc_tr.stats.starttime + c / cc_tr.stats.sampling_rate).timestamp
 
             cc_stream.append(cc_tr)
 

@@ -38,8 +38,9 @@ def hampel(data, int window_size, double n_sigma):
     Same inputs and outputs as the original implementation:
         filtered, outlier_indices, medians, mads, thresholds
     but the rolling medians are computed in C (no Python calls inside the loop).
-    Samples within window_size//2 of either edge are not filtered; their entries
-    in medians / mads / thresholds are 0.
+    Window_size is the TOTAL window in samples (made odd: 2*(window_size//2)+1).
+    Every sample is filtered. Near the edges the window keeps its length and is
+    shifted inside the trace (first / last w samples), so edges are not skipped.
     """
     arr = np.asarray(data)
     if arr.ndim != 1:
@@ -67,14 +68,20 @@ def hampel(data, int window_size, double n_sigma):
     buf = np.empty(w, dtype=np.float64)
     cdef double[::1] b = buf
 
-    cdef int i, j, n_out = 0
+    cdef int i, j, s, n_out = 0
     cdef double med, mad, thr
 
     if half >= 1 and n >= w:
         with nogil:
-            for i in range(half, n - half):
+            for i in range(n):
+                # centred window, shifted inside the trace at the edges
+                s = i - half
+                if s < 0:
+                    s = 0
+                elif s > n - w:
+                    s = n - w
                 for j in range(w):
-                    b[j] = x[i - half + j]
+                    b[j] = x[s + j]
                 med = _select(&b[0], w, half)
                 for j in range(w):
                     b[j] = fabs(b[j] - med)
