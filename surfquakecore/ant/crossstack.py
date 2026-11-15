@@ -265,7 +265,7 @@ class noisestack:
 
                                         corr_ij_time = np.real(np.fft.irfft(corr_ij_freq, axis=2))
                                         #corr_ij_time = np.fft.ifftshift(corr_ij_time)
-                                        ccorr_ij_time = np.fft.fftshift(corr_ij_time, axes=2)
+                                        corr_ij_time = np.fft.fftshift(corr_ij_time, axes=2)
 
                                     # Crop in time domain 16/01/2025
                                     pad_length = corr_ij_time.shape[2]

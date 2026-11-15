@@ -355,7 +355,10 @@ class noise_processing:
                 fs = self.tr.stats.sampling_rate
                 norm_win = int(norm_win*fs)
                 window = np.ones(norm_win)/norm_win
-                self.tr.data = self.tr.data/np.convolve(np.abs(self.tr.data), window, mode='same')
+                norm_data = np.convolve(np.abs(self.tr.data), window, mode='same')
+                # zero-padded segments (ensure_24) have norm_data == 0 -> keep them at 0 instead of NaN
+                self.tr.data = np.divide(self.tr.data, norm_data,
+                                         out=np.zeros_like(self.tr.data), where=norm_data > 0)
                 self.tr.taper(type="blackman", max_percentage=0.05)
             except:
                 print("Cannot compute time normalization at", self.tr.id)
@@ -435,11 +438,9 @@ class noise_processing_horizontals:
 
         if norm_method == 'clipping':
             lim_N = clip_factor * np.std(self.tr_N.data)
-            lim_E = clip_factor * np.std(self.tr_N.data)
-            self.tr_N.data[self.tr_N.data > lim_N] = lim_N
-            self.tr_E.data[self.tr_E.data > lim_E] = lim_E
-            self.tr_N.data[self.tr_N.data < -lim_N] = -lim_N
-            self.tr_E.data[self.tr_N.data < -lim_E] = -lim_N
+            lim_E = clip_factor * np.std(self.tr_E.data)
+            self.tr_N.data = np.clip(self.tr_N.data, -lim_N, lim_N)
+            self.tr_E.data = np.clip(self.tr_E.data, -lim_E, lim_E)
 
         elif norm_method == 'running avarage':
             try:
@@ -449,16 +450,19 @@ class noise_processing_horizontals:
                 norm_data_N = np.convolve(np.abs(self.tr_N.data), window, mode='same')
                 norm_data_E = np.convolve(np.abs(self.tr_E.data), window, mode='same')
                 norm_data = np.maximum(norm_data_N, norm_data_E)
-                self.tr_N.data = self.tr_N.data/norm_data
-                self.tr_E.data = self.tr_E.data/norm_data
+                # zero-padded segments (ensure_24) have norm_data == 0 -> keep them at 0 instead of NaN
+                self.tr_N.data = np.divide(self.tr_N.data, norm_data,
+                                           out=np.zeros_like(self.tr_N.data), where=norm_data > 0)
+                self.tr_E.data = np.divide(self.tr_E.data, norm_data,
+                                           out=np.zeros_like(self.tr_E.data), where=norm_data > 0)
                 self.tr_N.taper(type="blackman", max_percentage=0.05)
                 self.tr_E.taper(type="blackman", max_percentage=0.05)
             except:
                 print("Cannot compute time normalization at", self.tr_N.id, self.tr_E.id)
 
         elif norm_method == "1 bit":
-            self.tr_N.data = np.sign(self.tr_N.data)
-            self.tr_E.data = np.float32(self.tr_E.data)
+            self.tr_N.data = np.float32(np.sign(self.tr_N.data))
+            self.tr_E.data = np.float32(np.sign(self.tr_E.data))
 
 
     def get_window(self, N, alpha=0.2):
