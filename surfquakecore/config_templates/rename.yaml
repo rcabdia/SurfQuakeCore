@@ -3,6 +3,7 @@ Analysis:
     name: 'rename'
     networks:
       ES: IH
+      "": SG          # traces with no network -> SG
     stations:
       EMAZ: ARNO
     channels:

@@ -1124,46 +1124,66 @@ def deconvolve(stream, reference=0, water_level=0.01, gaussian_filter=None,
 
     return dc_stream
 
+
+
+def _normalize_map(mapping) -> dict:
+    """YAML mapping -> clean {str: str}; None -> {}; null/''/__empty__ keys -> ''."""
+    _EMPTY_KEYS = {"", "__empty__", "none", "null", "~"}
+    if not mapping:
+        return {}
+    if not isinstance(mapping, dict):
+        raise TypeError(f"Rename mapping must be a dict, got {type(mapping).__name__}: {mapping!r}")
+    clean = {}
+    for key, value in mapping.items():
+        k = "" if key is None else str(key).strip()
+        if k.lower() in _EMPTY_KEYS:
+            k = ""
+        if value is None:
+            continue
+        clean[k] = str(value).strip()
+    return clean
+
+
+def _lookup(mapping: dict, code: str):
+    """Exact match first (empty code matches ''), then the '*' wildcard."""
+    _WILDCARD = "*"
+    code = (code or "").strip()
+    if code in mapping:
+        return mapping[code]
+    return mapping.get(_WILDCARD)
+
 def rename_trace(trace: Trace, config: dict) -> Trace:
     """
-    Rename components of a trace using a mapping config.
+    Rename network/station/location/channel codes of a trace using a mapping config.
 
-    Parameters:
-        trace (obspy.Trace): Input trace.
-        config (dict): Renaming config with optional keys: networks, stations, channels, components.
-
-    Returns:
-        obspy.Trace: Renamed trace.
+    config keys (all optional): networks, stations, locations, channels, components.
+    Special mapping keys:
+        ""  (or "__empty__", null) -> applies when the code is empty
+        "*"                        -> applies to any code not matched explicitly
     """
     tr = trace.copy()
+    config = config or {}
 
-    # --- Network ---
-    network_map = config.get("networks", {})
-    new_net = network_map.get(tr.stats.network)
-    if new_net:
-        tr.stats.network = new_net
+    for cfg_key, stat_key in (("networks", "network"),
+                              ("stations", "station"),
+                              ("locations", "location")):
+        new_code = _lookup(_normalize_map(config.get(cfg_key)), tr.stats[stat_key])
+        if new_code is not None:
+            tr.stats[stat_key] = new_code
 
-    # --- Station ---
-    station_map = config.get("stations", {})
-    new_sta = station_map.get(tr.stats.station)
-    if new_sta:
-        tr.stats.station = new_sta
-
-    # --- Full channel ---
-    channel_map = config.get("channels", {})
-    new_cha = channel_map.get(tr.stats.channel)
-    if new_cha:
+    channel_map = _normalize_map(config.get("channels"))
+    new_cha = _lookup(channel_map, tr.stats.channel)
+    if new_cha is not None:
         tr.stats.channel = new_cha
     else:
-        # --- Component-only replacement (last character) ---
-        comp_map = config.get("components", {})
-        orig_comp = tr.stats.channel[-1]
-        new_comp = comp_map.get(orig_comp)
-        if new_comp:
-            tr.stats.channel = tr.stats.channel[:-1] + new_comp
+        comp_map = _normalize_map(config.get("components"))
+        cha = (tr.stats.channel or "").strip()
+        if comp_map and cha:
+            new_comp = _lookup(comp_map, cha[-1])
+            if new_comp is not None:
+                tr.stats.channel = cha[:-1] + new_comp
 
     return tr
-
 
 
 def particle_motion(z, n, e, save_path: str = None):
