@@ -133,7 +133,7 @@ def filter_trace(trace, type, fmin, fmax, **kwargs):
             trace.data = sosfiltfilt(sos, trace.data) if zerophase else sosfilt(sos, trace.data)
 
         elif type.lower() == "cheby2":
-            sos = cheby2(N=corners, rs=ripple, Wn=wp, btype='band', output='sos')
+            sos = cheby2(N=corners, rs=rs, Wn=wp, btype='band', output='sos')
             trace.data = sosfiltfilt(sos, trace.data) if zerophase else sosfilt(sos, trace.data)
 
         elif type.lower() == "elliptic":
@@ -240,32 +240,28 @@ def spectral_derivative(trace, taper_pct=0.05, taper_type="cosine", pad_to_pow2=
 
 
 def wiener_smoothing(tr, time_window, noise_power):
-    data = tr.data
+    """
+    Adaptive (local) Wiener noise filter, scipy.signal.wiener.
 
-    if time_window == 0 and noise_power == 0:
+    time_window : local window [s]; 0 -> scipy default (3 samples).
+                  Converted to an odd number of samples (>= 3).
+    noise_power : noise level as a multiple of the trace std; 0 -> noise
+                  power estimated by scipy (mean of the local variance).
+                  scipy expects a power, so (noise_power * std)**2 is passed.
+    """
+    data = np.asarray(tr.data, dtype=np.float64)
 
-        denoise = scipy.signal.wiener(data, mysize=None, noise=None)
-        tr.data = denoise
+    mysize = None
+    if time_window and time_window > 0:
+        mysize = max(3, int(round(time_window * tr.stats.sampling_rate)))
+        if mysize % 2 == 0:
+            mysize += 1  # odd window -> centred on each sample
 
-    elif time_window != 0 and noise_power == 0:
+    noise = None
+    if noise_power and noise_power > 0:
+        noise = (noise_power * np.std(data)) ** 2  # std multiple -> variance (no int cast)
 
-        denoise = scipy.signal.wiener(data, mysize=int(time_window * tr.stats.sampling_rate), noise=None)
-        tr.data = denoise
-
-    elif time_window == 0 and noise_power != 0:
-
-        noise = noise_power * np.std(data)
-        noise = int(noise)
-        denoise = scipy.signal.wiener(data, mysize=None, noise=noise)
-        tr.data = denoise
-
-    elif time_window != 0 and noise_power != 0:
-
-        noise = noise_power * np.std(data)
-        noise = int(noise)
-        denoise = scipy.signal.wiener(data, mysize=int(time_window * tr.stats.sampling_rate), noise=noise)
-        tr.data = denoise
-
+    tr.data = scipy.signal.wiener(data, mysize=mysize, noise=noise)
     return tr
 
 
@@ -654,25 +650,19 @@ def normalize(tr, clip_factor=6, clip_weight=10, norm_win=10, norm_method="1bit"
             tr.data[tr.data < -lim] /= clip_weight
 
     elif norm_method == 'time normalization':
-        lwin = int(tr.stats.sampling_rate * norm_win)
-        st = 0  # starting point
-        N = lwin  # ending point
-
-        while N < tr.stats.npts:
-            win = tr.data[st:N]
-
-            w = np.mean(np.abs(win)) / (2. * lwin + 1)
-
-            # weight center of window
-            tr.data[st + int(lwin / 2)] /= w
-
-            # shift window
-            st += 1
-            N += 1
-
-        # taper edges
-        # taper = get_window(tr.stats.npts)
-        # tr.data *= taper
+        # Running-absolute-mean normalization (Bensen et al., 2007):
+        # w_n = mean(|d_j|) over a centred window of norm_win seconds, d_n -> d_n / w_n.
+        # Weights are computed from the ORIGINAL data (no in-place feedback).
+        data = np.asarray(tr.data, dtype=np.float64)
+        lwin = max(3, int(round(norm_win * tr.stats.sampling_rate)))
+        if lwin % 2 == 0:
+            lwin += 1  # odd -> window centred on each sample
+        kernel = np.ones(lwin)
+        # true mean also at the edges: divide by the number of samples actually in the window
+        weight = (np.convolve(np.abs(data), kernel, mode='same') /
+                  np.convolve(np.ones_like(data), kernel, mode='same'))
+        # zero segments (padding) -> keep 0 instead of NaN
+        tr.data = np.divide(data, weight, out=np.zeros_like(data), where=weight > 0)
 
     elif norm_method == "1bit":
         tr.data = np.sign(tr.data)

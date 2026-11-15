@@ -171,7 +171,7 @@ Analysis:
   #   window_start / window_end: design window (seconds from the trace start, or UTC times)
   #   optional: ncoeff (2-100, default 30), mu, epsilon
   process_20:
-    name: 'wiener'
+    name: 'wiener_filter'
     window_start: 0
     window_end: 20
 

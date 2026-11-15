@@ -19,9 +19,12 @@ class process_ant:
         """
                 Process ANT,
 
+        1-bit + whitening	whiten is done first
+        whitening, no time normalization	whitening never applied ✘ (it only existed inside the two normalization branches)
+        PCC + whitening	whitening silently ignored
+        Warning message	never printed: __init__ sets _warned_whitening_1bit, so not hasattr(...) is always False
 
-
-                :param No params required to initialize the class
+        :param No params required to initialize the class
         """
 
         self.inventory = metadata
@@ -359,12 +362,10 @@ class process_ant:
                 getattr(self, "whitheningCB", False)
                 and getattr(self, "time_normalizationCB", False)
                 and getattr(self, "timenorm", "").lower() == "1 bit"
-                and not hasattr(self, "_warned_whitening_1bit")
+                and not self._warned_whitening_1bit
         ):
             print("\n️  Warning: Both whitening and 1-bit normalization are selected.")
-            print("   → Whitening will be applied in the frequency domain (spectral flattening).")
-            print("   → 1-bit normalization will be skipped to avoid double amplitude normalization.")
-            print("   → The output will be complex frequency spectra, not time-domain traces.\n")
+            print("   → Whitening is applied first, then 1-bit normalization.\n")
             self._warned_whitening_1bit = True
 
         st = self.fill_gaps(Stream(traces=tr), tol=5 * self.gaps_tol)
@@ -461,7 +462,10 @@ class process_ant:
                                                                              fmax=0.4 * self.sampling_rate_new,
                                                                              D=D, freq_width=self.freqbandwidth,
                                                                              taper=True, outside_scale=1e-3)
-                                res.append(Xw)  # already rFFT, complex64, length D//2+1
+                                # whitening first, then 1-bit: back to time, sign, forward rFFT
+                                xw = np.sign(np.fft.irfft(Xw, n=D)[:n]).astype(np.float32)
+                                Xw = np.fft.rfft(xw, D).astype(np.complex64)
+                                res.append(Xw)  # rFFT, complex64, length D//2+1
                                 continue
                             if self.time_normalizationCB:
                                 process.normalize(norm_win=self.timewindow, norm_method=self.timenorm)
@@ -519,12 +523,10 @@ class process_ant:
                 getattr(self, "whitheningCB", False)
                 and getattr(self, "time_normalizationCB", False)
                 and getattr(self, "timenorm", "").lower() == "1 bit"
-                and not hasattr(self, "_warned_whitening_1bit")
+                and not self._warned_whitening_1bit
         ):
             print("\n️  Warning: Both whitening and 1-bit normalization are selected.")
-            print("   → Whitening will be applied in the frequency domain (spectral flattening).")
-            print("   → 1-bit normalization will be skipped to avoid double amplitude normalization.")
-            print("   → The output will be complex frequency spectra, not time-domain traces.\n")
+            print("   → Whitening is applied first, then 1-bit normalization.\n")
             self._warned_whitening_1bit = True
 
         st1 = self.fill_gaps(Stream(traces=tr_N), tol=5 * self.gaps_tol)
@@ -666,7 +668,12 @@ class process_ant:
                                                                                             taper=True,
                                                                                             outside_scale=1e-3)
 
-                                    res_N.append(XNw)  # already rFFT, complex64, length D//2+1
+                                    # whitening first, then 1-bit: back to time, sign, forward rFFT
+                                    xNw = np.sign(np.fft.irfft(XNw, n=D)[:n]).astype(np.float32)
+                                    xEw = np.sign(np.fft.irfft(XEw, n=D)[:n]).astype(np.float32)
+                                    XNw = np.fft.rfft(xNw, D).astype(np.complex64)
+                                    XEw = np.fft.rfft(xEw, D).astype(np.complex64)
+                                    res_N.append(XNw)  # rFFT, complex64, length D//2+1
                                     res_E.append(XEw)
                                     continue  # skip the rFFT below
 
