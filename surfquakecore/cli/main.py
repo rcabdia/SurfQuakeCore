@@ -3134,7 +3134,7 @@ def _ant_process_matrix():
         "units": "VEL",
         "waterlevel": 60.0,
         "decimate": False,
-        "factor": 5.0,
+        "new_sampling_rate": 5.0,
         "time_norm": False,
         "method": "running avarage",
         "timewindow": 25.0,
@@ -3185,7 +3185,7 @@ def _ant_process_matrix():
             units              [OPTIONAL] Output units: VEL, DISP, ACC (default: VEL)
             waterlevel         [OPTIONAL] Water level for response removal in dB (default: 60)
             decimate           [OPTIONAL] Decimate to target sampling rate, true/false (default: false)
-            factor             [OPTIONAL] Target sampling rate in Hz after decimation (default: 5)
+            new_sampling_rate  [OPTIONAL] Target sampling rate in Hz after decimation (default: 5)
             time_norm          [OPTIONAL] Apply time normalisation, true/false (default: false)
             method             [OPTIONAL] Normalisation method: running avarage, 1 bit, PCC (default: running avarage)
             timewindow         [OPTIONAL] Running-average normalisation window in seconds (default: 128)
@@ -3256,7 +3256,7 @@ def _ant_process_matrix():
           + (f"  ({cfg.get('units', 'VEL')}, WL={cfg.get('waterlevel', 90)})"
              if cfg.get("remove_response") else ""))
     print(f"  Decimation: {cfg.get('decimate', False)}"
-          + (f"  (target {cfg.get('factor', 5)} Hz)" if cfg.get("decimate") else ""))
+          + (f"  (target {cfg.get('new_sampling_rate', 5)} Hz)" if cfg.get("decimate") else ""))
     print(f"  Time norm : {cfg.get('time_norm', False)}"
           + (f"  ({cfg.get('method', 'running avarage')})" if cfg.get("time_norm") else ""))
     print(f"  Whitening : {cfg.get('whiten', False)}")
@@ -3282,7 +3282,7 @@ def _ant_process_matrix():
         "f4": cfg.get("f4", 0.45),
         "waterlevel": cfg.get("waterlevel", 60.0),
         "units": cfg.get("units", "VEL"),
-        "factor": cfg.get("factor", 5.0),
+        "factor": cfg.get("new_sampling_rate", 5.0),
         "method": cfg.get("method", "running avarage"),
         "timewindow": cfg.get("timewindow", 25.0),
         "freqbandwidth": cfg.get("freqbandwidth", 0.02),

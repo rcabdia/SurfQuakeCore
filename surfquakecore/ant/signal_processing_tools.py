@@ -334,23 +334,6 @@ class noise_processing:
 
         elif norm_method == 'running avarage':
 
-            # lwin = int(self.tr.stats.sampling_rate * norm_win)
-            # st = 0  # starting point
-            # N = lwin  # ending point
-            #
-            # while N < self.tr.stats.npts:
-            #     win = self.tr.data[st:N]
-            #     w = np.sum(np.abs(win)) / (2. * lwin + 1)
-            #
-            #     # weight center of window
-            #     if w > 0.0:
-            #         self.tr.data[int(st + lwin / 2)] /= w
-            #
-            #
-            #     # shift window
-            #     st += 1
-            #     N += 1
-
             try:
                 fs = self.tr.stats.sampling_rate
                 norm_win = int(norm_win*fs)

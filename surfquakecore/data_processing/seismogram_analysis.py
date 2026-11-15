@@ -204,6 +204,8 @@ class SeismogramData:
                 if _config['name'] == 'spectrum':
                     spec = TraceSpectrumResult(tr)
                     spec.compute_spectrum(method=_config['method'],
+                                          order=_config.get('order', 20),
+                                          nsig=_config.get('nsig'),
                                           scaling=_config.get('scaling', 'fourier'))
                     spec.to_pickle(folder_path=_config['output_path'])
 

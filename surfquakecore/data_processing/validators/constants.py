@@ -23,6 +23,8 @@ TAPER_METHODS = ['cosine', 'barthann', 'bartlett', 'blackman', 'blackmanharris',
                  'flattop', 'gaussian', 'general_gaussian', 'hamming', 'hann', 'kaiser', 'nuttall', 'parzen', 'slepian',
                  'triang']
 
+SPECTRUM_METHODS = ["fft", "multitaper", "burg", "yule", "covar", "modcovar", "minvar", "music", "ev"]
+
 WAVELET_METHODS = ['db2','db4','db6','db8','db10','db12','db14','db16','db18','db20', 'sym2', 'sym4', 'sym6', 'sym8',
                    'sym10', 'sym12', 'sym14', 'sym16', 'sym18', 'sym20', 'coif2', 'coif3', 'coif4', 'coif6', 'coif8',
                    'coif10', 'coif12', 'coif14', 'coif16', 'bior1.1', 'bior1.3', 'bior1.5', 'bior2.2', 'bior2.4',

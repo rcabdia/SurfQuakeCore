@@ -37,11 +37,11 @@ Analysis:
 
 
 # =============================================================================
-# SPECTRUM - amplitude spectrum of the whole trace
+# SPECTRUM - spectrum of the whole trace
 #
 #   method : estimator used
 #
-#   Fourier methods (amplitude in the units of the trace)
+#   Fourier methods
 #     'fft'         fast, 5% cosine taper; also stores the phase
 #     'multitaper'  several tapers averaged: smoother, less noisy
 #
@@ -65,20 +65,32 @@ Analysis:
 #           rather than raising the order a lot. Capped at 1/3 of the samples.
 #   nsig  : music / ev only, REQUIRED. 2 per pure tone you expect in the data
 #           (1 tone -> 2, 3 tones -> 6). Must be smaller than order.
-#           music / ev amplitudes have no physical units: compare where the
-#           peaks are, not how high they are.
+#
+#   scaling : physical units of the result, the SAME for every method above,
+#             so fft, multitaper and burg spectra can be compared directly.
+#     'fourier'  (default) Fourier amplitude |X(f)|*dt, units = trace unit * s
+#                (SAC convention). Use for earthquakes and other transients:
+#                the value does not depend on how much quiet data surrounds
+#                the event.
+#     'asd'      amplitude spectral density sqrt(PSD), units = trace unit / sqrt(Hz).
+#                Use for continuous noise (microseism, ships, PPSD-like work):
+#                the value does not depend on the record length.
+#     music / ev ignore it: their amplitudes have no physical units, compare
+#     where the peaks are, not how high they are.
 # =============================================================================
 
-# FFT spectrum (default)
+# FFT spectrum (default), Fourier amplitude: earthquakes / transients
 #  process_1:
 #    name: 'spectrum'
 #    method: 'fft'
+#    scaling: 'fourier'
 #    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
 
-# Multitaper spectrum
+# Multitaper spectrum, amplitude spectral density: continuous noise
 #  process_1:
 #    name: 'spectrum'
 #    method: 'multitaper'
+#    scaling: 'asd'
 #    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
 
 # Burg AR spectrum: smooth spectral shape (noise, resonances)
@@ -86,6 +98,7 @@ Analysis:
 #    name: 'spectrum'
 #    method: 'burg'
 #    order: 20
+#    scaling: 'asd'
 #    output_path: "/Users/roberto/Desktop/test_input/config_templates/output_spec"
 
 # MUSIC pseudo-spectrum: frequency of 2 tones (e.g. ship machinery lines)

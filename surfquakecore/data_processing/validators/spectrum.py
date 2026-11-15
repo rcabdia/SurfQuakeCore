@@ -19,4 +19,8 @@ def validate_spectrum(config):
     if config.get('scaling', 'fourier') not in ('fourier', 'asd'):
         raise ValueError(f"Unsupported spectrum scaling: {config['scaling']} (use fourier or asd)")
 
+    # music / ev need nsig (2 per pure tone); order is optional (default 20)
+    if config['method'] in ('music', 'ev') and config.get('nsig') is None:
+        raise ValueError(f"spectrum method '{config['method']}' needs nsig (2 per pure tone)")
+
     return True
