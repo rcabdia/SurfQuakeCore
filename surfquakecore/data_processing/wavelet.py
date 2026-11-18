@@ -83,6 +83,7 @@ Usage example
     cw.setup_wavelet()
 """
 import math
+import warnings
 import multiprocessing
 from multiprocessing.dummy import Pool as ThreadPool
 from typing import Optional
@@ -214,7 +215,6 @@ class ConvolveWaveletBase:
         elif isinstance(data, Stream):
             self.st: Stream = data
             self._decimate_stream = kwargs.get("decimate_stream", False)
-            self.stats = self.st[0].stats.copy()   # reference for start/end/sampling rate
         else:
             if not MseedUtil.is_valid_mseed(data):
                 raise InvalidFile("The file: {} is not a valid mseed.".format(data))
@@ -248,9 +248,9 @@ class ConvolveWaveletBase:
         self._data        = None
         self._npts        = 0
         self._tf          = None
-        self._start_time  = self.stats.starttime
-        self._end_time    = self.stats.endtime
-        self._sample_rate = self.stats.sampling_rate
+        self._start_time  = self.trace.stats.starttime
+        self._end_time    = self.trace.stats.endtime
+        self._sample_rate = self.trace.stats.sampling_rate
 
         self._frex     = None
         self._n_cycles = None
@@ -386,10 +386,9 @@ class ConvolveWaveletBase:
             self._sigma_arr = None
 
         # ---- kernel time vector ----
-        # odd length, exactly centred on t = 0 -> 'same' convolution has no time shift
-        n_half = int(round(self._tt * self._sample_rate))
-        self._wtime    = np.arange(-n_half, n_half + 1) / self._sample_rate
-        self._half_wave = n_half
+        dt = 1.0 / self._sample_rate
+        self._wtime    = np.arange(-self._tt, self._tt + dt, dt)
+        self._half_wave = (len(self._wtime) - 1) / 2.0
 
     def _is_gabor_mode(self) -> bool:
         """Return True if the Gabor / Gaussian-bank mode is active."""
@@ -501,7 +500,6 @@ class ConvolveWaveletBase:
         tr.taper(max_percentage=0.05)
         self._npts        = tr.stats.npts
         self._sample_rate = tr.stats.sampling_rate
-        self._data_start  = tr.stats.starttime   # time of sample 0 of self._data
         return tr.data
 
     def __get_data_in_time_stream(self, start_time, end_time):
@@ -577,14 +575,14 @@ class ConvolveWaveletBase:
         freq   = np.fft.fftfreq(b, d=1.0 / self._sample_rate)
         freq   = np.tile(freq, (a, 1))
         deriv  = np.fft.ifft(2j * np.pi * freq * np.fft.fft(self._tf, axis=1), axis=1)
-        #inst_freq     = deriv / (2j * np.pi * self._tf)
-        ins_freq_hz = np.abs(deriv / (2j * np.pi * self._tf))
-        inst_freq = ins_freq_hz / self._sample_rate  # normalised [cycles/sample]
+        inst_freq     = deriv / (2j * np.pi * self._tf)
+        inst_freq     = np.abs(inst_freq)
+        ins_freq_hz   = (inst_freq * self._sample_rate) / (2.0 * np.pi)
         return phase, inst_freq, ins_freq_hz
 
     def get_data_window(self):
-        start = int(self._half_wave)            # zero lag of the full convolution
-        end   = self._npts + int(self._half_wave)
+        start = int(self._half_wave + 1)
+        end   = self._npts + int(self._half_wave + 1)
         return start, end
 
     def compute_tf(self, parallel=True):
@@ -604,13 +602,7 @@ class ConvolveWaveletBase:
         return cf
 
     def charachteristic_function_kurt_stream(self, window_size_seconds=5,
-                                              parallel=False, stream=True, step_seconds=0.5):
-        """
-        Kurtosis CF for every trace of the stream.
-
-        Each output trace has the SAME time grid as its input trace
-        (starttime, sampling_rate, npts), so CFs can be merged sample by sample.
-        """
+                                              parallel=False, stream=True):
         kurt_st = []
         if self._tf is None:
             self.st.normalize()
@@ -620,9 +612,16 @@ class ConvolveWaveletBase:
             stats = item[1]
             print("Processing Kurtosis", stats.station, stats.channel)
             pow_scalogram = np.abs(item[0]) ** 2
-            cf = self.kurtosis_cf_on_grid(pow_scalogram, window_size_seconds,
-                                          stats.sampling_rate, step_seconds=step_seconds)
-            kurt_st.append(Trace(data=cf, header=stats.copy()))
+            kurtosis_values, time_vector = self.conventional_kurtosis(
+                pow_scalogram, window_size_seconds=window_size_seconds,
+                sampling_rate=self._sample_rate)
+            time_vector_resample = np.linspace(
+                time_vector[0], time_vector[-1],
+                int(time_vector[-1] * self._sample_rate))
+            kurtosis_values_resample = np.interp(
+                time_vector_resample, time_vector, kurtosis_values)
+            tr_kurt = Trace(data=kurtosis_values_resample, header=stats)
+            kurt_st.append(tr_kurt)
 
         kurt_st = Stream(kurt_st)
         for op in ('simple', 'constant', 'linear'):
@@ -634,75 +633,64 @@ class ConvolveWaveletBase:
         kurt_st.taper(max_percentage=0.05, type='blackman')
         return kurt_st
 
-    def charachteristic_function_kurt(self, window_size_seconds=5, parallel=True, step_seconds=0.5):
-        """
-        Kurtosis CF of the analysed trace, on the same time grid as the
-        analysed data (starttime, sampling_rate, npts).
-        """
+    def charachteristic_function_kurt(self, window_size_seconds=5, parallel=True):
         if self._tf is None:
-            self._data = self._data / np.max(np.abs(self._data))
+            self._data = self._data / np.max(self._data)
             self.compute_tf(parallel=parallel)
 
         pow_scalogram = np.abs(self._tf) ** 2
-        cf = self.kurtosis_cf_on_grid(pow_scalogram, window_size_seconds,
-                                      self._sample_rate, step_seconds=step_seconds)
+        kurtosis_values, time_vector = self.conventional_kurtosis(
+            pow_scalogram, window_size_seconds=window_size_seconds,
+            sampling_rate=self._sample_rate)
+        time_vector_resample = np.linspace(
+            time_vector[0], time_vector[-1],
+            int(time_vector[-1] * self._sample_rate))
+        kurtosis_values_resample = np.interp(
+            time_vector_resample, time_vector, kurtosis_values)
 
-        tr_kurt = Trace(data=cf)
-        tr_kurt.stats.station       = self.trace.stats.station
-        tr_kurt.stats.network       = self.trace.stats.network
-        tr_kurt.stats.location      = self.trace.stats.location
-        tr_kurt.stats.channel       = self.trace.stats.channel
-        tr_kurt.stats.sampling_rate = self._sample_rate
-        tr_kurt.stats.starttime     = getattr(self, "_data_start", self._start_time)
+        tr_kurt = Trace(data=kurtosis_values_resample)
+        tr_kurt.stats.station      = self.trace.stats.station
+        tr_kurt.stats.network      = self.trace.stats.network
+        tr_kurt.stats.channel      = self.trace.stats.channel
+        tr_kurt.stats.starttime    = (self.trace.stats.starttime
+                                      + time_vector_resample[0])
+        tr_kurt.stats.sampling_rate = self.trace.stats.sampling_rate
         tr_kurt.detrend(type='simple')
         tr_kurt.detrend(type='constant')
         tr_kurt.detrend(type='linear')
         tr_kurt.taper(max_percentage=0.05, type='blackman')
         return tr_kurt
 
-    @staticmethod
-    def kurtosis_cf_on_grid(pow_scalogram, window_size_seconds, sampling_rate,
-                            step_seconds=0.5):
-        """
-        Kurtosis characteristic function on the sample grid of the data.
+    def conventional_kurtosis(self, data, window_size_seconds, sampling_rate):
+        n                    = data.shape[1]
+        window_size_samples  = int(window_size_seconds * sampling_rate)
+        slide                = int(sampling_rate / 2)
+        kurtosis_values      = self._conventional_kurtosis_helper(
+            data, window_size_samples, slide, n)
+        time_vector = np.linspace(
+            0, int((n - window_size_samples) / sampling_rate),
+            len(kurtosis_values)) + int(window_size_seconds)
+        time_vector     = time_vector[:-1]
+        kurtosis_values = np.abs(np.diff(kurtosis_values))
+        return kurtosis_values, time_vector
 
-        pow_scalogram : (nf, npts) power scalogram, column k <-> sample k.
-        Returns a float64 array of length npts, where sample k is at the same
-        time as sample k of the input trace.
-
-        Kurtosis is computed in sliding windows of window_size_seconds (step
-        step_seconds), pooled over all frequencies, and labelled at the LAST
-        sample of each window (causal: the CF rises when the onset enters the
-        window). The CF is |d kurtosis| between consecutive windows, labelled at
-        the later window, then interpolated onto the sample grid. Samples before
-        the first complete window are 0.
-        """
-        npts = pow_scalogram.shape[1]
-        w = int(round(window_size_seconds * sampling_rate))
-        step = max(1, int(round(step_seconds * sampling_rate)))
-        if w < 2 or w > npts:
-            raise ValueError("kurtosis window must be >= 2 samples and shorter than the trace")
-
-        # kurtosis is scale invariant -> normalise so the variance guard is relative
-        p = pow_scalogram / max(float(np.max(pow_scalogram)), np.finfo(float).tiny)
-
-        starts = np.arange(0, npts - w + 1, step)
-        kurt = np.zeros(len(starts))
-        for j, i in enumerate(starts):
-            win = p[:, i:i + w]
-            mean = np.mean(win)
-            var = np.mean((win - mean) ** 2)
-            if var > 1e-20:
-                k = np.mean((win - mean) ** 4) / var ** 2 - 3.0
-                kurt[j] = np.clip(k, -1e6, 1e6) if np.isfinite(k) else 0.0
-
-        if len(kurt) < 2:
-            return np.zeros(npts)
-
-        t_end = (starts + w - 1).astype(float)      # window-end sample index
-        dk = np.abs(np.diff(kurt))                  # labelled at the later window
-        grid = np.arange(npts, dtype=float)
-        return np.interp(grid, t_end[1:], dk, left=0.0, right=dk[-1])
+    def _conventional_kurtosis_helper(self, data, window_size_samples, slide, n):
+        kurtosis_values = []
+        for i in range(0, n - window_size_samples + 1, slide):
+            window_data  = data[:, i:i + window_size_samples]
+            mean         = np.mean(window_data)
+            variance     = np.mean((window_data - mean) ** 2)
+            fourth_moment = np.mean((window_data - mean) ** 4)
+            if variance > 1e-10:
+                kurtosis = (fourth_moment / (variance ** 2)) - 3
+                if not np.isfinite(kurtosis):
+                    kurtosis = 0.0
+                elif abs(kurtosis) > 1e6:
+                    kurtosis = np.sign(kurtosis) * 1e6
+            else:
+                kurtosis = 1e-2
+            kurtosis_values.append(kurtosis)
+        return np.array(kurtosis_values)
 
     def get_time_delay(self):
         return 0.5 * self._wmin / (2.0 * np.pi * self._fmin)
@@ -773,8 +761,8 @@ class ConvolveWavelet(ConvolveWaveletBase):
                                               dtype=np.complex64)
 
     def __compute_cwt(self, data):
-        start = int(self._half_wave)            # zero lag of the full convolution
-        end   = self._npts + int(self._half_wave)
+        start = int(self._half_wave + 1)
+        end   = self._npts + int(self._half_wave + 1)
         cwt   = (np.fft.irfft(data)[start:end] if self._use_rfft
                  else np.fft.ifft(data, n=self.__n_conv)[start:end])
         return cwt - np.mean(cwt, dtype=np.float32)
@@ -945,14 +933,18 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                   wavelet: str = "Complex Morlet", tt: Optional[float] = None,
                   lowpass_freq: float = 0.15, cf_type="power",
                   win_before: float = 10.0, win_after: float = 2.0,
-                  direction: str = "up", gap: float = 0.5, win_kurt: float = 3.0):
+                  direction: str = "up", gap: float = 0.5, win_kurt: float = 3.0,
+                  chunk_length="auto", decimate: bool = True,
+                  whiten: str = "global", precision: str = "double",
+                  memory_budget: float = 1.5):
     """
     Wavelet characteristic functions for every trace of a Stream.
 
-    The bank of atoms (and its FFT) is computed once per sampling rate /
-    FFT length and reused for all traces. Each trace is convolved with the
-    whole bank in a single FFT product (equivalent to oaconvolve mode='same').
-    Several CF types can be computed from the same scalogram in one pass.
+    The bank of atoms (and its FFT) is computed once and reused. To keep the
+    memory bounded, each trace is (optionally) decimated to ~3 x fmax and
+    processed in time chunks with margins, so memory depends on the chunk
+    length and not on the trace length. Several CF types are computed from
+    the same scalogram in one pass.
 
     Parameters
     ----------
@@ -963,7 +955,9 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
     nf                : number of atoms (only if voices_per_octave is None)
     wavelet           : 'Complex Morlet' | 'Mexican Hat' | 'Paul' | 'cm' | 'mh' | 'pa'
     tt                : half-length of the atoms [s]; None keeps the legacy
-                        value int(fs / fmin)
+                        value int(fs / fmin). A shorter tt (e.g.
+                        4 * cycles / (2 * pi * fmin)) also makes the chunk
+                        margins, and so the computation, smaller.
     lowpass_freq      : lowpass corner applied to the CF [Hz]
     cf_type           : one of the types below, or a tuple/list of them,
                         e.g. ('power_mod', 'entropy', 'kurtosis')
@@ -986,12 +980,44 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                         (epsilon of Gibbons et al. 2008, eq. 7)
     win_kurt          : kurtosis only: trailing window [s] (1-5 s; at least a
                         few periods of fmin)
+    chunk_length      : how the trace is split in time chunks
+                        'auto' (default): from `memory_budget`. If the whole
+                                  trace fits, it is processed in one piece
+                                  (original, exact computation); otherwise
+                                  the longest chunk that fits is used, in
+                                  whole minutes. The choice depends only on
+                                  the data and the parameters, never on the
+                                  machine, so results are reproducible.
+                        <seconds>: fixed chunk length.
+                        None or 0: whole trace at once (memory grows with
+                                  the trace length).
+    decimate          : True = compute the CWT at an integer fraction of the
+                        sampling rate that keeps the highest atom
+                        (fmax + 2 fmax/cycles) below 90 % of the new
+                        Nyquist, about 3 x fmax for 6 cycles (zero-phase
+                        FIR anti-alias filter). The CFs are interpolated back
+                        to the original sampling rate, so the output grid does
+                        not change. False = original sampling rate.
+    whiten            : background used by power_mod, entropy and centroid
+                        (only matters when the trace is split in chunks)
+                        'global' = one median per frequency for the whole
+                                   trace, estimated from up to 12 chunks spread
+                                   over the trace (close to the original)
+                        'chunk'  = median of each chunk (local background,
+                                   follows slow changes of the noise level)
+    precision         : 'double' (default) or 'single'. Single halves the
+                        memory of the scalogram; ample precision for CFs.
+    memory_budget     : peak memory allowed for the CWT of one segment [GB],
+                        used by chunk_length='auto' (default 1.5). Fixed on
+                        purpose (not taken from the free RAM), so the same
+                        input always gives the same chunking.
 
     Returns
     -------
     Stream if cf_type is a string, or dict {cf_type: Stream} if it is a
     tuple/list. CF start times are shifted by the wavelet delay, so all CF
-    types of a trace share the same sample grid.
+    types of a trace share the same sample grid. With chunk_length=None and
+    decimate=False the result is the original (unchunked) computation.
     """
     cf_types = (cf_type,) if isinstance(cf_type, str) else tuple(cf_type)
     bad = [c for c in cf_types if c not in _CF_TYPES]
@@ -999,18 +1025,55 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
         raise ValueError(f"Unknown cf_type {bad}. Use {_CF_TYPES}")
     if direction not in ("up", "down", "both"):
         raise ValueError("direction must be 'up', 'down' or 'both'")
+    if whiten not in ("global", "chunk"):
+        raise ValueError("whiten must be 'global' or 'chunk'")
+    if precision not in ("double", "single"):
+        raise ValueError("precision must be 'double' or 'single'")
+    if not (chunk_length in (None, "auto")
+            or (isinstance(chunk_length, (int, float)) and chunk_length >= 0)):
+        raise ValueError("chunk_length must be 'auto', None, 0 or a positive number of seconds")
+    if memory_budget <= 0:
+        raise ValueError("memory_budget must be > 0 [GB]")
 
     wavelet = _WAVELET_ALIASES.get(wavelet, wavelet)
+    real_dtype = np.float32 if precision == "single" else np.float64
+    complex_dtype = np.complex64 if precision == "single" else np.complex128
+    needs_white = any(c in ("power_mod", "entropy", "centroid") for c in cf_types)
 
-    banks = {}      # fs -> (atoms, delay, log2 frequencies)
-    banks_fft = {}  # (fs, nfft) -> FFT of atoms
+    banks = {}      # (fs, q, precision) -> (atoms, delay, log2 frequencies)
+    banks_fft = {}  # (bank key, nfft) -> FFT of atoms
     out = {c: [] for c in cf_types}
 
     for tr in st:
         fs = tr.stats.sampling_rate
 
-        # 1. Bank of atoms, once per sampling rate (reuses filter_win)
-        if fs not in banks:
+        # 1. Same preprocessing as ConvolveWaveletBase (whole trace)
+        tr_pre = tr.copy()
+        tr_pre.detrend(type="demean")
+        tr_pre.taper(max_percentage=0.05)
+        data = np.asarray(tr_pre.data, dtype=np.float64)
+        n_orig = len(data)
+
+        # The highest atom reaches fmax + 2 sigma_f (sigma_f = fmax / cycles):
+        # beyond Nyquist it is undersampled and distorted by aliasing
+        f_top = fmax * (1.0 + 2.0 / cycles)
+        if f_top > fs / 2.0:
+            warnings.warn(f"{tr.id}: fmax = {fmax} Hz is too close to Nyquist ({fs / 2.0:g} Hz) "
+                          f"for {cycles:g} cycles; the highest atoms are distorted by aliasing. "
+                          f"Use fmax <= {fs / 2.0 / (1.0 + 2.0 / cycles):.1f} Hz.")
+
+        # 2. Optional decimation, keeping the highest atom below the new
+        #    Nyquist (zero-phase FIR anti-alias)
+        q = _decimation_factor(fs, fmax, n_orig, cycles) if decimate else 1
+        if q > 1:
+            data = scipy.signal.decimate(data, q, ftype="fir", zero_phase=True)
+        fs_w = fs / q
+        data = data.astype(real_dtype, copy=False)
+        nw = len(data)
+
+        # 3. Bank of atoms, once per (sampling rate, decimation, precision)
+        bkey = (fs, q, precision)
+        if bkey not in banks:
             kw = dict(wmin=cycles, wmax=cycles, fmin=fmin, fmax=fmax,
                       tt=tt if tt is not None else int(fs / fmin),
                       use_wavelet=wavelet, use_rfft=False, decimate=False)
@@ -1018,43 +1081,80 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                 kw["voices_per_octave"] = voices_per_octave
             else:
                 kw["nf"] = nf if nf is not None else 20
-            cw = ConvolveWaveletScipy(tr, **kw)
+            dummy = Trace(np.zeros(16), header={"sampling_rate": fs_w})
+            cw = ConvolveWaveletScipy(dummy, **kw)
             cw.setup_wavelet()
-            atoms = np.array([cw.filter_win(f, i) for i, f in enumerate(cw.frequencies)])
-            banks[fs] = (atoms, cw.get_time_delay(), np.log2(cw.frequencies))
-        atoms, delay, log2_f = banks[fs]
+            atoms = np.array([cw.filter_win(f, i) for i, f in enumerate(cw.frequencies)],
+                             dtype=complex_dtype)
+            banks[bkey] = (atoms, cw.get_time_delay(), np.log2(cw.frequencies))
+        atoms, delay, log2_f = banks[bkey]
+        m = atoms.shape[1]
 
-        # 2. Same preprocessing as ConvolveWaveletBase
-        tr_pre = tr.copy()
-        tr_pre.detrend(type="demean")
-        tr_pre.taper(max_percentage=0.05)
-        data = tr_pre.data
-        n, m = len(data), atoms.shape[1]
+        # 4. Chunk layout. The margins cover the atom half-length plus the CF
+        #    windows, so every kept sample is computed exactly as on the whole trace.
+        n_b = max(1, int(round(win_before * fs_w)))
+        n_a = max(1, int(round(win_after * fs_w)))
+        n_g = int(round(gap * fs_w))
+        n_k = max(4, int(round(win_kurt * fs_w)))
+        half = (m - 1) // 2 + 1
+        left = half + max(n_g + n_b, n_k) + 2
+        right = half + n_a + 2
 
-        # 3. FFT of the bank, once per (fs, nfft)
-        nfft = scipy.fft.next_fast_len(n + m - 1)
-        key = (fs, nfft)
-        if key not in banks_fft:
-            banks_fft[key] = scipy.fft.fft(atoms, n=nfft, axis=1)
+        if chunk_length == "auto":
+            c_len = _auto_chunk_samples(len(atoms), nw, m, left, right, fs_w,
+                                        precision, memory_budget, tr.id)
+        elif chunk_length:
+            c_len = max(1, int(round(chunk_length * fs_w)))
+        else:
+            c_len = None
 
-        # 4. Convolve the trace with all atoms at once
-        tf = scipy.fft.ifft(banks_fft[key] * scipy.fft.fft(data, n=nfft), axis=1)
-        start = (m - 1) // 2
-        seg = tf[:, start:start + n]
-        P = np.abs(seg) ** 2
-        # kurtosis needs the band-passed signals Re(W), so compute it now
-        k_cf = _kurtosis_cf(seg.real, fs, win_kurt) if "kurtosis" in cf_types else None
-        del tf, seg
+        if c_len is not None and c_len < nw:
+            bounds = [(a, min(a + c_len, nw)) for a in range(0, nw, c_len)]
+            seg_max = min(nw, c_len + left + right)
+        else:
+            bounds = [(0, nw)]
+            seg_max = nw
 
-        # 5. Characteristic functions from the same scalogram
+        nfft = scipy.fft.next_fast_len(seg_max + m - 1)
+        fkey = (bkey, nfft)
+        if fkey not in banks_fft:
+            # keep only one bank FFT: traces of equal length (the usual case)
+            # reuse it, and the memory stays within the budget
+            banks_fft.clear()
+            banks_fft[fkey] = scipy.fft.fft(atoms, n=nfft, axis=1)
+        bank_fft = banks_fft[fkey]
+
+        # 5. Global whitening: one median per frequency, estimated from up to
+        #    12 chunks spread over the trace (single chunk: exact median)
+        med = None
+        if needs_white and whiten == "global" and len(bounds) > 1:
+            idx = np.unique(np.round(np.linspace(0, len(bounds) - 1,
+                                                 min(len(bounds), 12))).astype(int))
+            meds = []
+            for i in idx:
+                a, b = bounds[i]
+                s, e = max(0, a - left), min(nw, b + right)
+                W = _cwt_segment(data[s:e], bank_fft, nfft, m)
+                meds.append(np.median(np.abs(W[:, a - s:b - s]) ** 2, axis=1))
+                del W
+            med = np.median(np.vstack(meds), axis=0)
+
+        # 6. CFs chunk by chunk; only the interior of each chunk is kept
+        out_len = {c: (nw - 1 if c == "power" else nw) for c in cf_types}
+        full = {c: np.zeros(out_len[c]) for c in cf_types}
+        for a, b in bounds:
+            s, e = max(0, a - left), min(nw, b + right)
+            res = _cf_chunk(data[s:e], bank_fft, nfft, m, fs_w, cf_types, log2_f, med,
+                            win_before, win_after, direction, gap, win_kurt)
+            for c, v in res.items():
+                bb = min(b, out_len[c])
+                if bb > a:
+                    full[c][a:bb] = v[a - s:bb - s]
+            del res
+
+        # 7. Post-processing on the whole CF, then back to the original grid
         for c in cf_types:
-            if c == "power":
-                cf = np.mean(np.diff(np.log10(P + 1e-30), axis=1), axis=0)
-            elif c == "kurtosis":
-                cf = k_cf
-            else:
-                cf = _spectral_cf(P, log2_f, fs, c, win_before, win_after, direction, gap=gap)
-
+            cf = full[c]
             if c == "power":
                 # original CF unchanged
                 cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
@@ -1062,16 +1162,104 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                 # taper around the baseline, so the edges settle on the background
                 base = np.median(cf)
                 cf = base + Trace(cf - base).taper(max_percentage=0.05, type="blackman").data
-            cf = lowpass(cf, lowpass_freq, df=fs, corners=3, zerophase=True)
+            cf = lowpass(cf, lowpass_freq, df=fs_w, corners=3, zerophase=True)
+
+            if q > 1:
+                if c == "power":
+                    # d/dt per original sample, as without decimation; value k of the
+                    # difference sits between decimated samples k and k+1
+                    cf = cf / q
+                    x_w = (np.arange(len(cf)) + 0.5) * q - 0.5
+                    n_out = n_orig - 1
+                else:
+                    x_w = np.arange(len(cf)) * q
+                    n_out = n_orig
+                cf = np.interp(np.arange(n_out), x_w, cf)
 
             tr_cf = tr_pre.copy()
-            tr_cf.data = cf
+            tr_cf.data = np.asarray(cf, dtype=np.float64)
             tr_cf.stats.starttime += delay
             out[c].append(tr_cf)
 
     if isinstance(cf_type, str):
         return Stream(traces=out[cf_type])
     return {c: Stream(traces=out[c]) for c in cf_types}
+
+
+# Estimated peak bytes per (atom x sample) of one segment: three complex arrays
+# (bank FFT, product / scalogram), two real power arrays (P and whitened P)
+# and six float64 arrays of the window sums.
+_BYTES_PER_CELL = {"double": 3 * 16 + 2 * 8 + 6 * 8,     # 112
+                   "single": 3 * 8 + 2 * 4 + 6 * 8}      # 80
+
+
+def _auto_chunk_samples(n_atoms, nw, m, left, right, fs, precision, memory_budget, trace_id=""):
+    """
+    Chunk length [samples] chosen from a fixed memory budget, or None when the
+    whole trace fits.
+
+    The peak memory of a segment of S samples is estimated as
+        n_atoms * (S + m) * _BYTES_PER_CELL[precision].
+    The decision depends only on the data and the parameters, never on the
+    machine, so the same input always gives the same chunking and result.
+    """
+    budget = memory_budget * 1e9
+    cell = n_atoms * _BYTES_PER_CELL[precision]
+    if cell * (nw + m) <= budget:
+        return None                                   # whole trace fits: exact, unchunked
+
+    c_len = int(budget // cell) - m - left - right    # longest kept block that fits
+    min_len = 4 * (left + right)
+    if c_len < min_len:
+        warnings.warn(f"{trace_id}: memory_budget = {memory_budget} GB is small for the chunk "
+                      f"margins ({(left + right) / fs:.0f} s); using {min_len / fs:.0f} s chunks, "
+                      f"above the budget. A shorter tt reduces the margins.")
+        return min_len
+
+    # whole minutes (whole seconds for short chunks), so the layout is predictable
+    step = int(round(60 * fs)) if c_len >= 60 * fs else max(1, int(round(fs)))
+    return max(step, (c_len // step) * step)
+
+
+def _decimation_factor(fs, fmax, n, cycles):
+    """
+    Largest integer decimation factor (1 = none) that keeps the highest atom,
+    fmax + 2 sigma_f with sigma_f = fmax / cycles, below 90 % of the new Nyquist
+    (the margin leaves room for the transition band of the anti-alias filter).
+    """
+    f_top = fmax * (1.0 + 2.0 / cycles)
+    q = int(fs // (2.0 * f_top / 0.9))
+    if q < 2 or n < 100 * q:
+        return 1
+    return q
+
+
+def _cwt_segment(data_seg, bank_fft, nfft, m):
+    """Complex scalogram W (nf, len(data_seg)) of one segment, 'same' mode."""
+    n = len(data_seg)
+    tf = bank_fft * scipy.fft.fft(data_seg, n=nfft)
+    tf = scipy.fft.ifft(tf, axis=1, overwrite_x=True)
+    start = (m - 1) // 2
+    return tf[:, start:start + n]
+
+
+def _cf_chunk(data_seg, bank_fft, nfft, m, fs, cf_types, log2_f, med,
+              win_before, win_after, direction, gap, win_kurt):
+    """All requested CFs of one segment: dict {cf_type: 1D array} (power has n-1 samples)."""
+    W = _cwt_segment(data_seg, bank_fft, nfft, m)
+    P = np.abs(W) ** 2
+    res = {}
+    if "kurtosis" in cf_types:
+        # kurtosis needs the band-passed signals Re(W)
+        res["kurtosis"] = _kurtosis_cf(W.real, fs, win_kurt)
+    del W
+    for c in cf_types:
+        if c == "power":
+            res[c] = np.mean(np.diff(np.log10(P + 1e-30), axis=1), axis=0)
+        elif c != "kurtosis":
+            res[c] = _spectral_cf(P, log2_f, fs, c, win_before, win_after, direction,
+                                  gap=gap, med=med)
+    return res
 
 
 def _window_means(P, n_before, n_after):
@@ -1097,7 +1285,7 @@ def _spectral_entropy(P):
     return -(p * np.log(p + 1e-30)).sum(axis=0) / np.log(P.shape[0])
 
 
-def _spectral_cf(P, log2_f, fs, cf_type, win_before, win_after, direction, gap=0.0):
+def _spectral_cf(P, log2_f, fs, cf_type, win_before, win_after, direction, gap=0.0, med=None):
     """
     Window-based CFs from the power scalogram P = |W|^2, shape (nf, n).
 
@@ -1113,9 +1301,14 @@ def _spectral_cf(P, log2_f, fs, cf_type, win_before, win_after, direction, gap=0
     centroid  : shift of the energy centroid in log2 frequency [octaves]
     entropy   : drop of spectral entropy (before minus after)
     `direction` applies to centroid and entropy only.
+    med: background level per frequency (nf,) used for the whitening; None =
+         median of P along time.
     """
     # Whitening: each frequency relative to its own background level
-    P = P / (np.median(P, axis=1, keepdims=True) + 1e-30)
+    if med is None:
+        P = P / (np.median(P, axis=1, keepdims=True) + 1e-30)
+    else:
+        P = P / (np.asarray(med, dtype=P.dtype)[:, None] + 1e-30)
 
     before, after = _window_means(P, max(1, int(round(win_before * fs))),
                                   max(1, int(round(win_after * fs))))
@@ -1822,3 +2015,4 @@ class AFTANWavelet:
             s[ne:] = 0.0
 
         return s
+
