@@ -16,7 +16,7 @@
 #      following steps receive the same traces.
 #
 #  Characteristic functions (cwt_cf, kurtosis, snr, entropy, envelope) are
-#  also stream methods: see characteristic_functions.yaml.
+#  also stream methods: see ch_functions.yaml.
 ###############################################################################
 
 Analysis:
