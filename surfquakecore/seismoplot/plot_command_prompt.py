@@ -48,6 +48,8 @@ class PlotCommandPrompt:
             "back2future": self._cmd_back2future,
             "b2f": self._cmd_back2future,
             "taper": self._cmd_taper,
+            "normalize": self._cmd_normalize,
+            "norm": self._cmd_normalize,
             "remove_spikes": self._cmd_remove_spikes,
             "wiener": self._cmd_wiener,
             "spectrogram": self._cmd_spectrogram,
@@ -450,66 +452,112 @@ class PlotCommandPrompt:
         self.prompt_active = False
         self._exit_code = "replot"
 
-    def _cmd_flip(self, args):
+    def _select_traces(self, tokens):
         """
-        Flip the polarity of a seismic trace in-place (amplitude inversion)
+        Traces chosen by index on the displayed page, as used by 'spectrum'.
 
-        Usage:
-            flip
-        Example:
-
+        tokens: arguments after the command name.
+            []            -> all loaded traces (trace_list)
+            ["all"]       -> all loaded traces (trace_list)
+            ["0"]         -> displayed trace 0
+            ["0,2"] / ["0", "2"] / ["1-3"]  -> several displayed traces
+        Returns a list of Trace objects (the same objects stored in trace_list),
+        or None if an index is invalid.
         """
-
-        from surfquakecore.data_processing.processing_methods import flip
-
         traces = getattr(self.plot_proj, "trace_list", [])
+        if not tokens or (len(tokens) == 1 and tokens[0].lower() == "all"):
+            return list(traces)
+
+        displayed = list(getattr(self.plot_proj, "displayed_traces", None) or [])
+        if not displayed:
+            print("[WARN] No traces currently displayed.")
+            return None
+
+        selected = []
+        for tok in ",".join(tokens).split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            if "-" in tok:
+                a, _, b = tok.partition("-")
+                if not (a.isdigit() and b.isdigit()):
+                    print(f"[ERROR] Invalid range '{tok}'. Use e.g. 1-3.")
+                    return None
+                a, b = sorted((int(a), int(b)))
+                idx = list(range(a, b + 1))
+            elif tok.isdigit():
+                idx = [int(tok)]
+            else:
+                print(f"[ERROR] Invalid index '{tok}'. Use 0-{len(displayed) - 1}, a list (0,2), "
+                      f"a range (1-3) or 'all'.")
+                return None
+            for i in idx:
+                if not 0 <= i < len(displayed):
+                    print(f"[ERROR] Index {i} out of range, use 0-{len(displayed) - 1}.")
+                    return None
+                if displayed[i] not in selected:
+                    selected.append(displayed[i])
+        return selected
+
+    def _apply_to_selection(self, args, func, verb):
+        """Apply func(tr) to the traces selected in args[1:] and replot."""
+        traces = self._select_traces(args[1:])
+        if traces is None:
+            return
         if not traces:
             print("[WARN] No traces to process.")
             return
 
-        flipped_count = 0
+        done = 0
         for tr in traces:
             try:
-                success = flip(tr)
-                if success is not False:
-                    flipped_count += 1
+                if func(tr) is not False:
+                    done += 1
             except Exception as e:
-                print(f"[ERROR] Failed to rmean {tr.id}: {e}")
+                print(f"[ERROR] Failed to {verb} {tr.id}: {e}")
 
-        print(f"[INFO] Flipped applied to {flipped_count} traces.")
+        target = "all traces" if len(args) < 2 or args[1].lower() == "all" else \
+            ", ".join(tr.id for tr in traces)
+        print(f"[INFO] {verb} applied to {done}/{len(traces)} trace(s): {target}")
+        if done == 0:
+            return
+
         self.plot_proj.clear_plot()
         self.prompt_active = False
         self._exit_code = "replot"
+
+    def _cmd_flip(self, args):
+        """
+        Flip the polarity of seismic traces in-place (amplitude inversion).
+
+        Usage:
+            flip [<index>|all]
+            The index refers to the displayed page (as in 'spectrum').
+            Without index, all loaded traces are flipped.
+        Example:
+            >> flip          # all traces
+            >> flip 0        # first displayed trace
+            >> flip 0,2      # displayed traces 0 and 2
+            >> flip 1-3      # displayed traces 1, 2 and 3
+        """
+        from surfquakecore.data_processing.processing_methods import flip
+        self._apply_to_selection(args, flip, "flip")
 
     def _cmd_reverse(self, args):
         """
-        Reverse the data points of a seismic trace in-place (time-reversal)
+        Reverse the data points of seismic traces in-place (time reversal).
 
         Usage:
-            reverse
+            reverse [<index>|all]
+            The index refers to the displayed page (as in 'spectrum').
+            Without index, all loaded traces are reversed.
         Example:
-
+            >> reverse       # all traces
+            >> reverse 0     # first displayed trace
+            >> reverse 0,2   # displayed traces 0 and 2
         """
         from surfquakecore.data_processing.processing_methods import reverse
-
-        traces = getattr(self.plot_proj, "trace_list", [])
-        if not traces:
-            print("[WARN] No traces to process.")
-            return
-
-        reverse_count = 0
-        for tr in traces:
-            try:
-                success = reverse(tr)
-                if success is not False:
-                    reverse_count += 1
-            except Exception as e:
-                print(f"[ERROR] Failed to rmean {tr.id}: {e}")
-
-        print(f"[INFO] Flipped applied to {reverse_count} traces.")
-        self.plot_proj.clear_plot()
-        self.prompt_active = False
-        self._exit_code = "replot"
+        self._apply_to_selection(args, reverse, "reverse")
 
     def _cmd_back2future(self, args):
         """
@@ -622,6 +670,67 @@ class PlotCommandPrompt:
 
         print(f"[INFO] taper ('{taper_type}', max_percentage={max_percentage}) applied to {taper_count} traces.")
 
+        self.plot_proj.clear_plot()
+        self.prompt_active = False
+        self._exit_code = "replot"
+
+    def _cmd_normalize(self, args):
+        """
+        Normalize the traces by their maximum absolute amplitude (ObsPy Stream.normalize).
+
+        Usage:
+            normalize [--mode trace|global]
+
+        Modes:
+            trace   (default) each trace divided by its own max |amplitude| -> each peaks at 1
+            global  all traces divided by the max |amplitude| of all traces
+                    -> relative amplitudes between traces are kept
+
+        Example:
+            >> normalize
+            >> normalize --mode global
+        """
+        import numpy as np
+        from obspy import Stream
+
+        mode = "trace"
+        it = iter(args[1:])
+        for opt in it:
+            if opt == "--mode":
+                try:
+                    mode = next(it).lower()
+                except StopIteration:
+                    print("[ERROR] Missing value for --mode.")
+                    return
+            else:
+                print(f"[ERROR] Unknown option: {opt}. Type 'help normalize'.")
+                return
+
+        if mode not in ("trace", "global"):
+            print("[ERROR] --mode must be trace or global.")
+            return
+
+        traces = getattr(self.plot_proj, "trace_list", [])
+        if not traces:
+            print("[WARN] No traces to process.")
+            return
+
+        # ObsPy divides by the max without checking it: an all-zero trace would become NaN
+        valid = [tr for tr in traces if tr.stats.npts and np.abs(tr.data).max() > 0]
+        for tr in traces:
+            if tr not in valid:
+                print(f"[WARN] {tr.id}: zero or empty trace, skipped.")
+        if not valid:
+            print("[WARN] Nothing to normalize.")
+            return
+
+        try:
+            Stream(valid).normalize(global_max=(mode == "global"))  # in place, same Trace objects
+        except Exception as e:
+            print(f"[ERROR] Normalization failed: {e}")
+            return
+
+        print(f"[INFO] normalize ({mode}) applied to {len(valid)}/{len(traces)} traces.")
         self.plot_proj.clear_plot()
         self.prompt_active = False
         self._exit_code = "replot"
@@ -2679,10 +2788,11 @@ class PlotCommandPrompt:
                 ("algebra", "Apply a Math expression on traces"),
                 ("rmean", "Remove mean on traces"),
                 ("taper", "Apply taper window on traces"),
-                ("flip", "Flip the polarity of a seismic trace"),
+                ("normalize / norm", "Normalize traces (each by its own max, or by the global max)"),
+                ("flip [idx]", "Flip the polarity of traces (all, or one/several by index)"),
                 ("remove_spikes", "Remove spikes with the Hampel filter (median/MAD)"),
                 ("wiener", "Prediction-error (Wiener) filter designed on the selected window"),
-                ("reverse", "Reverse the data points of seismic traces"),
+                ("reverse [idx]", "Reverse traces in time (all, or one/several by index)"),
                 ("filter", "Apply signal filtering"),
                 ("cut", "Trim traces using picks or UTC times"),
                 ("concat", "Merge trace segments, no parameters needed"),
@@ -2876,11 +2986,32 @@ class PlotCommandPrompt:
                 >> taper --type hann --max_percentage 0.1
         """,
             "flip": """
-                Flip the polarity of a seismic trace in-place (amplitude inversion).
+        flip [<index>|all]
+            Flip the polarity of traces in-place (amplitude inversion).
+
+            The index refers to the traces on the displayed page (as in 'spectrum').
+            Without index (or with 'all') every loaded trace is flipped.
+            Several traces: a list (0,2) or a range (1-3).
+
+            Examples:
+                >> flip
+                >> flip 0
+                >> flip 0,2
+                >> flip 1-3
         """,
 
             "reverse": """
-                Reverse the data points of a seismic trace in-place (time-reversal).
+        reverse [<index>|all]
+            Reverse the data points of traces in-place (time reversal).
+
+            The index refers to the traces on the displayed page (as in 'spectrum').
+            Without index (or with 'all') every loaded trace is reversed.
+            Several traces: a list (0,2) or a range (1-3).
+
+            Examples:
+                >> reverse
+                >> reverse 0
+                >> reverse 0,2
         """,
             "shift": """
     shift --phase <name>
@@ -3222,6 +3353,27 @@ class PlotCommandPrompt:
                         >> wiener --ncoeff 40
                         >> wiener --ncoeff 30 --mu 1e-9 --update lms
                         >> wiener --start 2024-05-01T12:00:00 --end 2024-05-01T12:05:00
+
+        """,
+            "normalize": """
+                normalize [--mode trace|global]
+                    Normalize the traces by their maximum absolute amplitude (ObsPy Stream.normalize).
+
+                    Parameters:
+                        --mode   trace  : each trace divided by its own max |amplitude| (default),
+                                          every trace peaks at 1
+                                 global : all traces divided by the max |amplitude| of all traces,
+                                          relative amplitudes between traces are kept
+
+                    Notes:
+                        - Applies to all loaded traces, not only the displayed page.
+                        - Zero or empty traces are skipped.
+                        - Use 'global' with sharey: true to compare amplitudes between traces.
+
+                    Examples:
+                        >> normalize
+                        >> normalize --mode global
+                        >> norm --mode global
         """
         }
 
@@ -3235,6 +3387,7 @@ class PlotCommandPrompt:
                 "spec": "spectrogram",
                 "tf": "coh",
                 "b2f": "back2future",
+                "norm": "normalize"
             }
             cmd = aliases.get(cmd, cmd)
 
@@ -3247,8 +3400,11 @@ class PlotCommandPrompt:
         # General summary
         self._print_general_help()
 
+
 if __name__ == "__main__":
     import multiprocessing as mp
 
     mp.set_start_method("fork", force=True)  # 'fork' is safest for Matplotlib on macOS
+
+
 
