@@ -936,7 +936,7 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                   direction: str = "up", gap: float = 0.5, win_kurt: float = 3.0,
                   chunk_length="auto", decimate: bool = True,
                   whiten: str = "global", precision: str = "double",
-                  memory_budget: float = 1.5):
+                  memory_budget: float = 1.5, edge: str = "reflect"):
     """
     Wavelet characteristic functions for every trace of a Stream.
 
@@ -1011,13 +1011,24 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
                         used by chunk_length='auto' (default 1.5). Fixed on
                         purpose (not taken from the free RAM), so the same
                         input always gives the same chunking.
+    edge              : handling of the two ends of the trace
+                        'reflect' (default): the trace is mirrored at both
+                                  ends over the edge-affected length (atom
+                                  half-length + CF windows + settling time of
+                                  the CF lowpass); the CFs are computed and the
+                                  padding is cropped. The mirror has the
+                                  spectrum and level of the data, so no
+                                  artificial contrast is created and the CFs
+                                  stay valid up to the edges (no 5 % blind zone).
+                        'taper':  original behaviour: 5 % taper of the data
+                                  before the CWT and of the CF afterwards.
 
     Returns
     -------
     Stream if cf_type is a string, or dict {cf_type: Stream} if it is a
     tuple/list. CF start times are shifted by the wavelet delay, so all CF
-    types of a trace share the same sample grid. With chunk_length=None and
-    decimate=False the result is the original (unchunked) computation.
+    types of a trace share the same sample grid. With chunk_length=None,
+    decimate=False and edge='taper' the result is the original computation.
     """
     cf_types = (cf_type,) if isinstance(cf_type, str) else tuple(cf_type)
     bad = [c for c in cf_types if c not in _CF_TYPES]
@@ -1034,6 +1045,8 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
         raise ValueError("chunk_length must be 'auto', None, 0 or a positive number of seconds")
     if memory_budget <= 0:
         raise ValueError("memory_budget must be > 0 [GB]")
+    if edge not in ("reflect", "taper"):
+        raise ValueError("edge must be 'reflect' or 'taper'")
 
     wavelet = _WAVELET_ALIASES.get(wavelet, wavelet)
     real_dtype = np.float32 if precision == "single" else np.float64
@@ -1047,10 +1060,12 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
     for tr in st:
         fs = tr.stats.sampling_rate
 
-        # 1. Same preprocessing as ConvolveWaveletBase (whole trace)
+        # 1. Preprocessing on the whole trace. edge='taper' keeps the original
+        #    5 % taper; edge='reflect' only demeans (the edges are padded below).
         tr_pre = tr.copy()
         tr_pre.detrend(type="demean")
-        tr_pre.taper(max_percentage=0.05)
+        if edge == "taper":
+            tr_pre.taper(max_percentage=0.05)
         data = np.asarray(tr_pre.data, dtype=np.float64)
         n_orig = len(data)
 
@@ -1090,8 +1105,8 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
         atoms, delay, log2_f = banks[bkey]
         m = atoms.shape[1]
 
-        # 4. Chunk layout. The margins cover the atom half-length plus the CF
-        #    windows, so every kept sample is computed exactly as on the whole trace.
+        # 4. Margins: the atom half-length plus the CF windows. They are used
+        #    between chunks and, with edge='reflect', as the padding at both ends.
         n_b = max(1, int(round(win_before * fs_w)))
         n_a = max(1, int(round(win_after * fs_w)))
         n_g = int(round(gap * fs_w))
@@ -1100,20 +1115,34 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
         left = half + max(n_g + n_b, n_k) + 2
         right = half + n_a + 2
 
+        # 5. Edges. 'reflect': mirror the trace at both ends over the edge-affected
+        #    length (plus the settling time of the CF lowpass), compute, and crop
+        #    afterwards: the reflection has the spectrum and level of the data, so
+        #    the CFs stay valid up to the real edges.
+        if edge == "reflect" and nw > 1:
+            n_lp = int(np.ceil(3.0 / lowpass_freq * fs_w))
+            pad_l, pad_r = left + n_lp, right + n_lp
+            data = np.pad(data, (pad_l, pad_r), mode="reflect")
+        else:
+            pad_l = pad_r = 0
+        r0, r1 = pad_l, pad_l + nw          # real data inside the (padded) array
+        nwp = len(data)
+
+        # 6. Chunk layout over the (padded) data
         if chunk_length == "auto":
-            c_len = _auto_chunk_samples(len(atoms), nw, m, left, right, fs_w,
+            c_len = _auto_chunk_samples(len(atoms), nwp, m, left, right, fs_w,
                                         precision, memory_budget, tr.id)
         elif chunk_length:
             c_len = max(1, int(round(chunk_length * fs_w)))
         else:
             c_len = None
 
-        if c_len is not None and c_len < nw:
-            bounds = [(a, min(a + c_len, nw)) for a in range(0, nw, c_len)]
-            seg_max = min(nw, c_len + left + right)
+        if c_len is not None and c_len < nwp:
+            bounds = [(a, min(a + c_len, nwp)) for a in range(0, nwp, c_len)]
+            seg_max = min(nwp, c_len + left + right)
         else:
-            bounds = [(0, nw)]
-            seg_max = nw
+            bounds = [(0, nwp)]
+            seg_max = nwp
 
         nfft = scipy.fft.next_fast_len(seg_max + m - 1)
         fkey = (bkey, nfft)
@@ -1124,45 +1153,61 @@ def cwt_cf_stream(st: Stream, fmin: float, fmax: float, cycles: float = 6.0,
             banks_fft[fkey] = scipy.fft.fft(atoms, n=nfft, axis=1)
         bank_fft = banks_fft[fkey]
 
-        # 5. Global whitening: one median per frequency, estimated from up to
-        #    12 chunks spread over the trace (single chunk: exact median)
+        # 7. Global whitening: one median per frequency over the real data,
+        #    estimated from up to 12 chunks spread over the trace
+        #    (single chunk: exact median, computed inside _cf_chunk)
         med = None
         if needs_white and whiten == "global" and len(bounds) > 1:
             idx = np.unique(np.round(np.linspace(0, len(bounds) - 1,
                                                  min(len(bounds), 12))).astype(int))
             meds = []
             for i in idx:
-                a, b = bounds[i]
-                s, e = max(0, a - left), min(nw, b + right)
+                a, b = max(bounds[i][0], r0), min(bounds[i][1], r1)
+                if b <= a:
+                    continue
+                s, e = max(0, a - left), min(nwp, b + right)
                 W = _cwt_segment(data[s:e], bank_fft, nfft, m)
                 meds.append(np.median(np.abs(W[:, a - s:b - s]) ** 2, axis=1))
                 del W
-            med = np.median(np.vstack(meds), axis=0)
+            if meds:
+                med = np.median(np.vstack(meds), axis=0)
 
-        # 6. CFs chunk by chunk; only the interior of each chunk is kept
-        out_len = {c: (nw - 1 if c == "power" else nw) for c in cf_types}
+        # 8. CFs chunk by chunk; only the interior of each chunk is kept
+        out_len = {c: (nwp - 1 if c == "power" else nwp) for c in cf_types}
         full = {c: np.zeros(out_len[c]) for c in cf_types}
         for a, b in bounds:
-            s, e = max(0, a - left), min(nw, b + right)
+            s, e = max(0, a - left), min(nwp, b + right)
+            med_range = (max(s, r0) - s, min(e, r1) - s)   # real data in this segment
             res = _cf_chunk(data[s:e], bank_fft, nfft, m, fs_w, cf_types, log2_f, med,
-                            win_before, win_after, direction, gap, win_kurt)
+                            win_before, win_after, direction, gap, win_kurt, med_range)
             for c, v in res.items():
                 bb = min(b, out_len[c])
                 if bb > a:
                     full[c][a:bb] = v[a - s:bb - s]
             del res
 
-        # 7. Post-processing on the whole CF, then back to the original grid
+        # 9. Post-processing on the whole CF, crop the padding, back to the original grid
         for c in cf_types:
             cf = full[c]
-            if c == "power":
-                # original CF unchanged
-                cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
+            if edge == "reflect":
+                # short taper inside the padding only (towards the baseline), then
+                # lowpass, then crop: the real samples are not tapered
+                base = np.median(cf[r0:min(r1, len(cf))])
+                tap = Trace(cf - base, header={"sampling_rate": fs_w})
+                tap.taper(max_percentage=0.5, type="blackman",
+                          max_length=min(pad_l, pad_r) / fs_w)
+                cf = base + tap.data
+                cf = lowpass(cf, lowpass_freq, df=fs_w, corners=3, zerophase=True)
+                cf = cf[r0:r1 - 1] if c == "power" else cf[r0:r1]
             else:
-                # taper around the baseline, so the edges settle on the background
-                base = np.median(cf)
-                cf = base + Trace(cf - base).taper(max_percentage=0.05, type="blackman").data
-            cf = lowpass(cf, lowpass_freq, df=fs_w, corners=3, zerophase=True)
+                if c == "power":
+                    # original CF unchanged
+                    cf = Trace(cf).taper(max_percentage=0.05, type="blackman").data
+                else:
+                    # taper around the baseline, so the edges settle on the background
+                    base = np.median(cf)
+                    cf = base + Trace(cf - base).taper(max_percentage=0.05, type="blackman").data
+                cf = lowpass(cf, lowpass_freq, df=fs_w, corners=3, zerophase=True)
 
             if q > 1:
                 if c == "power":
@@ -1244,10 +1289,16 @@ def _cwt_segment(data_seg, bank_fft, nfft, m):
 
 
 def _cf_chunk(data_seg, bank_fft, nfft, m, fs, cf_types, log2_f, med,
-              win_before, win_after, direction, gap, win_kurt):
-    """All requested CFs of one segment: dict {cf_type: 1D array} (power has n-1 samples)."""
+              win_before, win_after, direction, gap, win_kurt, med_range=None):
+    """
+    All requested CFs of one segment: dict {cf_type: 1D array} (power has n-1 samples).
+    med_range: (start, end) of the real data in the segment, used for the
+    whitening median when med is None (so padding does not bias it).
+    """
     W = _cwt_segment(data_seg, bank_fft, nfft, m)
     P = np.abs(W) ** 2
+    if med is None and med_range is not None and med_range[1] > med_range[0]:
+        med = np.median(P[:, med_range[0]:med_range[1]], axis=1)
     res = {}
     if "kurtosis" in cf_types:
         # kurtosis needs the band-passed signals Re(W)
@@ -2015,4 +2066,6 @@ class AFTANWavelet:
             s[ne:] = 0.0
 
         return s
+
+
 
