@@ -1227,9 +1227,12 @@ def particle_motion(z, n, e, save_path: str = None):
         axs[0, 0].set_ylim(-lim, lim)
         axs[0, 0].grid(True, which="both", ls="-", color='grey', alpha=0.4)
 
-        # Incidence angle line
-        inc_rad = np.radians(incidence)
-        axs[0, 0].plot([0, np.cos(inc_rad) * lim], [0, np.sin(inc_rad) * lim], 'k--', linewidth=0.8)
+        # Principal polarisation axis (eigenvector of the largest eigenvalue), components (E, N, Z).
+        # Its projection on each plane is the line of the motion; the incidence is the 3D angle
+        # of this axis from the vertical, so it cannot be drawn with the same angle in both planes.
+        eigval, eigvec = np.linalg.eigh(np.cov(np.vstack([e_data, n_data, z_data])))
+        pe, pn, pz = eigvec[:, -1] * lim
+        axs[0, 0].plot([-pn, pn], [-pz, pz], 'k--', linewidth=0.8)
         axs[0, 0].text(0.05 * lim, 0.9 * lim, f"Inc: {incidence:.1f}°", color='blue', fontsize=9, weight='bold')
 
         # --- Z vs E ---
@@ -1240,7 +1243,7 @@ def particle_motion(z, n, e, save_path: str = None):
         axs[0, 1].set_ylim(-lim, lim)
         axs[0, 1].grid(True, which="both", ls="-", color='grey', alpha=0.4)
         # Add in Z–E panel
-        axs[0, 1].plot([0, np.cos(inc_rad) * lim], [0, np.sin(inc_rad) * lim], 'k--', linewidth=0.8)
+        axs[0, 1].plot([-pe, pe], [-pz, pz], 'k--', linewidth=0.8)
         axs[0, 1].text(0.05 * lim, 0.9 * lim,
                        f"Inc: {incidence:.1f}°", color='blue', fontsize=9, weight='bold')
 

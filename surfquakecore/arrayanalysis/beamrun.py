@@ -279,7 +279,7 @@ class TraceBeamResult:
             path_output = os.path.join(folder_path, f"{base_name}_{counter}")
             counter += 1
 
-        path_output += ".sp"
+        path_output += ".beam"
 
         open_func = gzip.open if compress else open
         mode = 'wb'
@@ -323,14 +323,15 @@ class TraceBeamResult:
         """
         from scipy.signal import find_peaks
         from matplotlib.dates import num2date
-        from datetime import datetime
 
+        # Apparent slowness [s/km] of regional phases, in order of arrival.
+        # Ranges do not overlap, so a beam peak is assigned to one phase only.
         regional_phases = {
-            "Pg": (0.20, 0.35),
-            "Pn": (0.06, 0.10),
-            "Lg": (0.15, 0.25),
-            "Rg": (0.25, 0.40),
-            "Sn": (0.08, 0.14),
+            "Pn": (0.11, 0.14),   # ~7.2-9.0 km/s (upper mantle P)
+            "Pg": (0.14, 0.18),   # ~5.6-7.2 km/s (crustal P)
+            "Sn": (0.20, 0.24),   # ~4.2-5.0 km/s (upper mantle S)
+            "Lg": (0.26, 0.31),   # ~3.2-3.8 km/s (crustal S, guided)
+            "Rg": (0.31, 0.40),   # ~2.5-3.2 km/s (short-period Rayleigh)
         }
 
         teleseismic_phases = {
@@ -409,7 +410,7 @@ class TraceBeamResult:
                 with open(output_file, "a") as f:
                     for phase, picks in results.items():
                         for t, az, slow, pwr in picks:
-                            f.write(f"{phase:5s},{t.isoformat()},{az:6.2f} "
+                            f.write(f"{phase:5s},{t.isoformat()},{az:6.2f},"
                                     f"{slow:6.3f},{pwr:5.3f}\n")
                     f.write("\n")
                 print(f"[INFO] Beam peak results appended to {output_file}")

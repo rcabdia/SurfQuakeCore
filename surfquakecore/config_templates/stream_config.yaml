@@ -216,7 +216,9 @@ Analysis:
   #   Results are saved as a pickle in output_folder. Stream unchanged.
   #   method:        FK (frequency-wavenumber) or CAPON (minimum variance)
   #   timewindow:    length of each analysis window [s]
-  #   overlap:       overlap between consecutive windows (fraction, 0.05 = 5 %)
+  #   overlap:       STEP between consecutive windows, as a fraction of timewindow
+  #                  (0.05 = the window moves 5 % of its length = 95 % overlap;
+  #                   1.0 = contiguous windows). Smaller = smoother, slower.
   #   fmin/fmax:     analysis band [Hz]
   #   smax:          maximum slowness of the grid [s/km]
   #   slow_grid:     slowness grid spacing [s/km]
