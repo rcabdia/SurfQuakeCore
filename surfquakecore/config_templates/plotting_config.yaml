@@ -191,14 +191,3 @@ plotting:
     legend.fontsize: 8
     font.family: serif
     font.weight: bold
-
-
-# Option -a,show_plot,plot_output_path,Plot created,Shown on screen,Figures saved,Processed data to -o
-# yes	true	null	no	no	no	no	no	yes
-# yes	true	folder	no	no	no (path ignored)	no	no	yes
-# yes	false	null	no	no	no	no	no	yes
-# yes	false	folder	yes	no	yes	never (creates it)	no	yes
-# no	true	null	yes	yes	no	n/a	yes	no
-# no	true	folder	yes	yes	yes	yes, if terminal and folder missing	yes	no
-# no	false	folder	yes	no	yes	yes, if terminal and folder missing	no	yes
-# no	false	null	no, warning printed	no	no	n/a	no

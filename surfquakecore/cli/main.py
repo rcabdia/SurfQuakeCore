@@ -2213,7 +2213,8 @@ def _specplot():
         """
     )
 
-    parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
+    parser.add_argument("--file", "-f", required=True,
+                        help="Path to the serialized .sp, .spec, .cwt, .coh, .cep or .ceps file")
 
     parser.add_argument("--split", nargs="?", const=1.0, default=None, type=float,
                         help=("Split the plot into low/high frequency panels. "
@@ -2288,7 +2289,8 @@ def _specplot():
     else:
         raise ValueError(
             f"Unsupported file extension '{ext}'. "
-            "Expected one of: .sp (spectrum), .spec (spectrogram), .cwt (cwt).")
+            "Expected one of: .sp (spectrum), .spec (spectrogram), .cwt (cwt), "
+            ".coh (coherence / transfer function), .cep (cepstrum), .ceps (cepstrogram).")
 
 
 def _beamplot():

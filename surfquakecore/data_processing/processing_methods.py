@@ -881,12 +881,15 @@ def compute_entropy_trace(tr: Trace, win: float = 2.0, overlap: float = 0.5,
 
 def compute_snr(tr, method, sign_win: float = 5, noise_win: float = 30):
 
+    # ObsPy needs the window lengths as whole numbers of samples
+    nsta = int(round(sign_win * tr.stats.sampling_rate))
+    nlta = int(round(noise_win * tr.stats.sampling_rate))
     if method == "classic":
-        tr.data = classic_sta_lta(tr.data,  sign_win*tr.stats.sampling_rate, noise_win*tr.stats.sampling_rate)
+        tr.data = classic_sta_lta(tr.data, nsta, nlta)
     elif method == "recursive":
-        tr.data = recursive_sta_lta(tr.data,  sign_win*tr.stats.sampling_rate, noise_win*tr.stats.sampling_rate)
+        tr.data = recursive_sta_lta(tr.data, nsta, nlta)
     elif method == "z_detect":
-        tr.data = z_detect(tr.data,  sign_win*tr.stats.sampling_rate)
+        tr.data = z_detect(tr.data, nsta)
     return tr
 
 def downsample_trace(trace, factor=10, to_int=False, scale_target=1000):

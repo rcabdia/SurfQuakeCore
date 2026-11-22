@@ -257,10 +257,9 @@ class SeismogramData:
 
                 if _config['name'] == 'cepstrogram':
 
-                    if "overlap" in _config.keys():
-                        overlap = _config["overlap"]
-                    else:
-                        overlap = 50
+                    # The validator and the template use 'overlap_percent'; 'overlap' is kept
+                    # for backward compatibility.
+                    overlap = _config.get("overlap_percent", _config.get("overlap", 50))
 
                     if "kind" in _config.keys():
                         kind = _config["kind"]
@@ -914,13 +913,20 @@ class StreamProcessing:
                             cf_type=tuple(cf_type),
                             win_before=step_config.get("win_before", 10.0),
                             win_after=step_config.get("win_after", 2.0),
-                            direction=step_config.get("direction", "up"))
+                            direction=step_config.get("direction", "up"),
+                            gap=step_config.get("gap", 0.5),
+                            win_kurt=step_config.get("win_kurt", 3.0))
 
         if len(cf_type) == 1:
             self.stream = cfs[cf_type[0]]
         else:
             self.stream = combine_cf_streams(*[cfs[c] for c in cf_type],
-                                             method=step_config.get("combine", "max"))
+                                             method=step_config.get("combine", "max"),
+                                             norm=step_config.get("norm", "mad"),
+                                             q=step_config.get("tail_quantile", 0.99),
+                                             tolerance=step_config.get("tolerance", 0.0),
+                                             p=step_config.get("p", 3.0),
+                                             final_norm=step_config.get("final_norm", False))
 
     def apply_snr(self, step_config):
 
