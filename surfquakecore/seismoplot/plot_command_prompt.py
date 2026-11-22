@@ -8,6 +8,7 @@ plot_command_prompt.py
 import os
 import readline
 import atexit
+from shlex import shlex
 from typing import Optional
 from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers
 
@@ -193,7 +194,14 @@ class PlotCommandPrompt:
                 if not cmd_line:
                     continue
 
-                parts = cmd_line.split()
+                # shlex keeps quoted values together, e.g.
+                # cut --start "2023-01-01 12:00:00" --end "2023-01-01 12:01:00"
+                try:
+                    parts = shlex.split(cmd_line)
+                except ValueError:  # unbalanced quotes -> plain split
+                    parts = cmd_line.split()
+                if not parts:
+                    continue
                 cmd = parts[0].lower()
 
                 handler = self.commands.get(cmd)
