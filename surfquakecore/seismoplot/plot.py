@@ -194,6 +194,27 @@ class PlotProj:
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(os.path.expanduser(path)) if path else None
 
+    def _unique_figure_path(self, out_dir, kind, page, format_save, traces):
+        """
+        Path of an auto-saved figure, named after the start time of the plotted data:
+            sqProject[_<kind>]_page<NNN>_<YYYYmmdd-HHMMSS>.<format>
+        so each event or time span gets its own name. If the file already exists,
+        _1, _2, ... is appended, so figures are never overwritten.
+        """
+        try:
+            t0 = min(tr.stats.starttime for tr in traces)
+            stamp = t0.strftime("%Y%m%d-%H%M%S")
+        except (ValueError, AttributeError):  # no traces: fall back to the clock
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        prefix = f"sqProject_{kind}" if kind else "sqProject"
+        base_name = f"{prefix}_page{page:03d}_{stamp}"
+        out_file = os.path.join(out_dir, f"{base_name}.{format_save}")
+        counter = 1
+        while os.path.exists(out_file):
+            out_file = os.path.join(out_dir, f"{base_name}_{counter}.{format_save}")
+            counter += 1
+        return out_file
+
     def _crosshair_mode(self):
         """Crosshair mode from plot_config['show_crosshair'], or None if disabled.
         Accepts false/true (true = single) or single|vertical|horizontal|all."""
@@ -451,14 +472,7 @@ class PlotProj:
 
         format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
-            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            base_name = f"sqProject_page{page:03d}_{timestamp}"
-            filename = f"{base_name}.{format_save}"
-            out_file = os.path.join(out_dir, filename)
-            counter = 1
-            while os.path.exists(out_file):
-                out_file = os.path.join(out_dir, f"{base_name}_{counter}.{format_save}")
-                counter += 1
+            out_file = self._unique_figure_path(out_dir, None, page, format_save, sub_traces)
             try:
                 self.fig.savefig(out_file, dpi=self._rc.get("savefig.dpi", 150))
                 print(f"[INFO] Figure saved to {out_file}")
@@ -610,9 +624,8 @@ class PlotProj:
             out_dir = self.make_abs(out_dir)
         format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
-            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"sqProject_record_page{self.current_page:03d}_{timestamp}.{format_save}"
-            out_file = os.path.join(out_dir, filename)
+            out_file = self._unique_figure_path(out_dir, "record", self.current_page, format_save,
+                                                self.trace_list)
             try:
                 self.fig.savefig(out_file, dpi=self._rc.get("savefig.dpi", 150))
                 print(f"[INFO] Figure saved to {out_file}")
@@ -680,9 +693,8 @@ class PlotProj:
             out_dir = self.make_abs(out_dir)
         format_save = self.plot_config.get("format_save")
         if out_dir and os.path.isdir(out_dir):
-            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"sqProject_overlay_page{self.current_page:03d}_{timestamp}.{format_save}"
-            out_file = os.path.join(out_dir, filename)
+            out_file = self._unique_figure_path(out_dir, "overlay", self.current_page, format_save,
+                                                self.trace_list)
             try:
                 fig.savefig(out_file, dpi=150)
                 print(f"[INFO] Figure saved to {out_file}")
