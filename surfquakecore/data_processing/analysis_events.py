@@ -174,7 +174,7 @@ class AnalysisEvents:
                 lat, lon, depth = event["latitude"], event["longitude"], event["depth"]
                 inv_sta = inventory.select(network=net, station=sta)
                 sta_coords = inv_sta[0][0].latitude, inv_sta[0][0].longitude, inv_sta[0][0].elevation
-                distance_m, az, baz = gps2dist_azimuth(sta_coords[0], sta_coords[1], lat, lon)
+                distance_m, baz, az = gps2dist_azimuth(sta_coords[0], sta_coords[1], lat, lon)
                 distance_deg = distance_m / 1000 / 111.19
 
                 if self.vel:  # Use velocity-based travel time estimate
@@ -241,11 +241,14 @@ class AnalysisEvents:
                 base_name = f"{tr.id}.D.{t1.year}.{t1.julday}"
                 path_output = os.path.join(self.output, base_name)
 
-                # Check if file exists and append a number if necessary
+                # The H5 writer adds ".h5" to the name, so check for that file.
+                # If it exists, append a number: _1, _2, ...
                 counter = 1
-                while os.path.exists(path_output):
+                while os.path.exists(path_output + ".h5"):
                     path_output = os.path.join(self.output, f"{base_name}_{counter}")
                     counter += 1
+
+                path_output += ".h5"
 
                 print(f"{tr.id} - Writing processed data to {path_output}")
                 tr.write(path_output, format="H5")
@@ -254,10 +257,10 @@ class AnalysisEvents:
                 errors = True
                 print(f"File cannot be written: {self.output}, Error: {e}")
 
-            if errors:
-                print("Writting Complete with Errors, check output", self.output)
-            else:
-                print("Writting Complete, check output", self.output)
+        if errors:
+            print("Writing Complete with Errors, check output", self.output)
+        else:
+            print("Writing Complete, check output", self.output)
 
     def _set_header(self, tr, distance_km, BAZ, AZ, incidence_angle, otime, lat, lon, depth, arrivals=None):
         tr.stats['geodetic'] = {

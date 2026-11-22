@@ -2417,6 +2417,7 @@ def _explore():
     from surfquakecore.seismoplot.availability import PlotExplore
     from surfquakecore.project.surf_project import SurfProject
     from dateutil import parser
+    from obspy import UTCDateTime
 
     arg_parse = ArgumentParser(
         prog="surfquake explore",
@@ -2471,24 +2472,29 @@ def _explore():
         if filters:
             print(f"[INFO] Filtering project by: {filters}")
             sp.filter_project_keys(**filters)
-            sp.get_data_files()
-            # --- Apply time filters ---
-            min_date, max_date = None, None
-            try:
-                if args.min_date:
-                    # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
-                    min_date = parser.parse(args.min_date)
-                if args.max_date:
-                    # max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
-                    max_date = parser.parse(args.max_date)
-                if min_date or max_date:
-                    print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
-                    sp.filter_project_time(starttime=min_date, endtime=max_date, verbose=True)
-            except ValueError as ve:
-                print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
-                raise ve
 
-        data_files = sp.data_files
+            # --- Apply time filters (independent of the key filters) ---
+        min_date, max_date = None, None
+        try:
+            if args.min_date:
+                min_date = UTCDateTime(parser.parse(args.min_date))
+            if args.max_date:
+                max_date = UTCDateTime(parser.parse(args.max_date))
+        except ValueError as ve:
+            print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+            raise ve
+
+        if min_date or max_date:
+            # filter_project_time needs both limits: open the missing one
+            if min_date is None:
+                min_date = UTCDateTime(0)
+            if max_date is None:
+                max_date = UTCDateTime("2100-01-01")
+            print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
+            sp.filter_project_time(starttime=min_date, endtime=max_date, verbose=True)
+
+        data_files = sp.get_data_files()
+
 
     else:
         if "," in args.wave_files or " " in args.wave_files:
