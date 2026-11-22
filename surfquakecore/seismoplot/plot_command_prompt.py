@@ -8,7 +8,7 @@ plot_command_prompt.py
 import os
 import readline
 import atexit
-from shlex import shlex
+import shlex
 from typing import Optional
 from surfquakecore.data_processing.processing_methods import filter_trace, print_surfquake_trace_headers
 
