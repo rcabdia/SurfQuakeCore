@@ -177,14 +177,16 @@ def _create_actions():
 
         "cwt_aftan": _CliActions(
             name="cwt_aftan", run=_cwt_aftan,
-            description="Automatic Frequency-Time Analysis of group and phase velocity dispersion from EGFs or Earthquakes"),
+            description="Automatic Frequency-Time Analysis of group and "
+                        "phase velocity dispersion from EGFs or Earthquakes"),
 
         "make_config": _CliActions(name="make_config",  run=_make_config,
         description="Generate Sample Config files"),
 
         "config": _CliActions(
             name="config", run=_config,
-            description="Show/set global SurfQuake defaults (e.g. waveform read format, check_compression).")
+            description="Show/set global SurfQuake defaults "
+                        "(e.g. waveform read format, check_compression).")
     }
 
     return _actions
@@ -235,14 +237,14 @@ def _command_groups():
         "Section 2: Waveform Processing / Inspection": ["quick", "info", "explore",
                                                         "processing", "processing_daily",
                                                         ],
-        "Section 3: Detection, Picking / Association": [
+        "Section 3: Detection  /  Picking / Association": [
             "pick", "associate", "trigg",
         ],
-        "Section 4: Location/  Source / Mechanism": [
+        "Section 4: Location / Source / Mechanism": [
             "locate", "source", "polarity", "focmec", "plotmec", "mti",
         ],
 
-        "Section 5: Time-Frequency and Array processing Plotting": [
+        "Section 5: Time-Frequency  /  Array processing Plotting": [
             "specplot", "beamplot",
         ],
         "Section 6: PPSD / Ambient Noise": [
@@ -1551,7 +1553,7 @@ def _processing():
         -t, --cut_time             [OPTIONAL] pre & post first arrival in seconds (symmetric)
         -cs, --cut_start_time      [OPTIONAL] Cut pre-first arrival in seconds
         -ce, --cut_end_time        [OPTIONAL] Cut post-first arrival in seconds
-        -r, --reference            [OPTIONAL] The pick time for cutting the waveforms is the origin time of the event
+        -r,  --reference           [OPTIONAL] The pick time for cutting the waveforms is the origin time of the event
         -op, --order_preference    [OPTIONAL] trace_first (default) | stream_first. Controls whether trace-level
                                    steps (rmean, filter, taper...) run before or after stream-level steps
                                    (cross_correlate, rotate, stack...)

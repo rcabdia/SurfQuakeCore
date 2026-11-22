@@ -185,7 +185,7 @@ plotting:
     ytick.labelsize: 7
     xtick.direction: in
     xtick.minor.visible: true
-    axes.grid: true
+    axes.grid: false
     grid.alpha: 0.3
     lines.linewidth: 0.5
     legend.fontsize: 8
