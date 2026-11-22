@@ -24,7 +24,7 @@ from typing import Optional
 
 # should be equal to [project.scripts]
 __entry_point_name = "surfquake"
-web_tutorial_address = "https://projectisp.gprintithub.io/surfquaketutorial.github.io/"
+web_tutorial_address = "https://projectisp.github.io/surfquaketutorial.github.io/"
 
 
 @dataclass
@@ -32,23 +32,10 @@ class _CliActions:
     name: str
     run: callable
     description: str = ""
+    hidden: bool = False  # hidden commands work but are not listed in help
 
 
 # Add this helper somewhere near main() (e.g., above main)
-def _print_main_help(actions: dict):
-    print(f"Usage: {__entry_point_name} <command> [options]\n")
-    print("Commands:\n")
-
-    # compute padding for alignment
-    width = max((len(k) for k in actions.keys()), default=0)
-
-    for name, action in actions.items():
-        desc = (action.description or "").strip()
-        print(f"  {name:<{width}}  {desc}")
-
-    print("\nRun `surfquake <command> -h` for command-specific help.")
-
-
 def resolve_path(path: Optional[str]) -> Optional[str]:
     if path is None:
         return None
@@ -180,13 +167,18 @@ def _create_actions():
             description="Automatic Frequency-Time Analysis of group and "
                         "phase velocity dispersion from EGFs or Earthquakes"),
 
-        "make_config": _CliActions(name="make_config",  run=_make_config,
-        description="Generate Sample Config files"),
+        "make_config": _CliActions(name="make_config", run=_make_config,
+                                   description="Generate Sample Config files"),
 
         "config": _CliActions(
             name="config", run=_config,
             description="Show/set global SurfQuake defaults "
-                        "(e.g. waveform read format, check_compression).")
+                        "(e.g. waveform read format, check_compression)."),
+
+        # Easter egg: deliberately not listed in `surfquake -h`.
+        "play": _CliActions(
+            name="play", run=_play, hidden=True,
+            description="Take a break."),
     }
 
     return _actions
@@ -213,8 +205,8 @@ def _print_main_help(actions: dict):
         print()
 
     remaining = [
-        name for name in actions.keys()
-        if name not in already_printed
+        name for name, action in actions.items()
+        if name not in already_printed and not action.hidden
     ]
 
     if remaining:
@@ -278,6 +270,26 @@ def main():
         print(f"[ERROR] Unknown command: {input_action}\n")
         _print_main_help(actions)
         sys.exit(1)
+
+
+def _play():
+    """Hidden easter egg: surfquake play [--level 0-5] [--speed 0-100]."""
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} play",
+        description="BOMBER (Amstrad CPC, 1984). Flatten the city before you land.",
+    )
+    arg_parse.add_argument("--level", type=int, default=3,
+                           help="0 = tallest buildings (hardest), 5 = easiest")
+    arg_parse.add_argument("--speed", type=int, default=30,
+                           help="0 = fastest, 100 = slowest")
+    args = arg_parse.parse_args()
+
+    try:
+        from surfquakecore.easter_egg.bomber import run
+    except ImportError as exc:
+        print(f"BOMBER needs PyQt5 ({exc}).")
+        sys.exit(1)
+    sys.exit(run(level=args.level, speed=args.speed))
 
 
 def _config():
@@ -390,6 +402,7 @@ def _config():
         print(f"[ERROR] {msg}")
         sys.exit(1)
 
+
 def _make_config():
     """
     Command-line interface for create sample config files
@@ -410,14 +423,14 @@ def _make_config():
         Key Arguments:
             -c, --config_type    [REQUIRED]         Config type 
             -o, --output_folder  [REQUIRED]         Output_folder for saving configuration
-        
+
         Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/
-        
+
         List of available configuration templates
         ----------------------------------------------------------------------------------------
         1. Configurations to be used with commands: quick, processing and processing_daily.
-        
+
         typical_config   ->  Slim template for basic signal processing
         config_all       ->  Template containing all available seismic processing
         stream_config    ->  Template containing processing steps dedicated for a stream of traces
@@ -426,24 +439,24 @@ def _make_config():
         plotting_config  ->  Template for plotting
         test_sign_config ->  Template for generate test synthetic signals
         events           ->  Event file template
-        
+
         ----------------------------------------------------------------------------------------
         2. Configurations of script inputs
-        
+
         script_template  ->  Template containing a python template script to perform your own code
         script_air_X     ->  Template containing a python template script to plugg your own code when 
                              plot seismogram (X is num (1-3) of script example)
-        
+
         ----------------------------------------------------------------------------------------
         3. Configurations to be used with commands: associate, locate and mti.
-        
+
         real_config      -> Template to associate picks
         coin_config      -> Template for Coincidence Trigger
         nll_config       -> Template for locate events
         sspec_config     -> Template for source parameters estimation (SourceSpec: Mw, Ml, Q...)
         mti_config       -> Template for Moment Tensor Inversion
         ----------------------------------------------------------------------------------------
-        
+
         Usage Example:
             > surfquake make_config -c stream_config -o ./configs
             > surfquake make_config -c script_air_1 -o ./configs
@@ -475,6 +488,7 @@ def _make_config():
     else:
         print("Configuration type doesn't match any available config, please review the available config types")
 
+
 def _project():
     """
     Command-line interface for creating a seismic project.
@@ -485,7 +499,7 @@ def _project():
         description="Create a seismic project by indexing seismogram files and storing their metadata.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
+
     Overview:
         This command creates a seismic project — a file-based database that stores paths
         to waveform files and their associated metadata. Projects simplify later processing.
@@ -536,7 +550,7 @@ def _pick():
         description="Use PhaseNet deep learning model to pick P- and S-wave arrivals.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
+
     Overview:
         This command applies the PhaseNet deep neural network to estimate the arrival times
         of P- and S-waves in local and regional seismic events.
@@ -650,27 +664,27 @@ def _polarity():
         description="Determines Polarities from P-wave first motion",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-        
+
         Overview:
             Automatic P-wave first motion polarity determination. The inputs are the project and the picking file in 
             nonlinloc pick format (i.e., might be generated using command pick). 
             Output is an edited pick file with polarities.
-        
+
         Reference:
             Chakraborty, M., Cartaya, C. Q., Li, W., Faber, J., Rümpker, G., Stoecker, H., & Srivastava, N. (2022). 
             PolarCAP–A deep learning approach for first motion polarity classification of earthquake waveforms. 
             Artificial Intelligence in Geosciences, 3, 46-52.
-        
+
         Key Arguments:
         -p, --project_file_path     [REQUIRED] Path to a surfquake project
         -f, --picking_file_path     [REQUIRED] Path to a picking files
         -o, --output_file_path      [REQUIRED] Path to the new picking file edited with polarities
         -t, --thresh                [OPTIONAL] Threshold for Polarity declaration 
 
-        
+
         Example usage:
         > surfquake polarity -f ./nll_picks.txt -p ./project_file.pkl -o ./nll_picks_polarities.txt -t 0.95 
-        
+
         """
     )
 
@@ -697,26 +711,26 @@ def _focmec():
         description="Focal Mechanism from P-Wave first motion polarity",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-        
+
         Overview:
-        
+
         FOCal MEChanism determinations (FOCMEC) software  for determining and 
         displaying double-couple earthquake focal mechanisms using the polarity and amplitude ratios of P and S waves.
-        
+
         Reference:
         Snoke, J. A. (2003). “FOCMEC: Focal Mechanism Determinations.” 
         International Handbook of Earthquake and Engineering Seismology, Part B, Academic Press, pp. 1629–1630.
         https://seiscode.iris.washington.edu/projects/focmec
-        
-        
+
+
         Key Arguments:
         -d, --hyp_folder        [REQUIRED] Path to folder containing hyp files
         -o, --output_folder     [REQUIRED] Path to the output folder
         -a, --accepted          [OPTIONAL] Number of accepted wrong polarities (float, default 1.0)
-        
+
         Example usage:
         > surfquake focmec -d ./folder_hyp_path -a 1.0 -o ./output_folder
-        
+
         """
     )
 
@@ -757,10 +771,10 @@ def _plotmec():
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
         Overview:
-        
+
         Plot fault planes, T & P axis, and P-wave polarities.
-        
-        
+
+
         Key Arguments:
         -f, --focmec_file           [OPTIONAL] Path to a specific *.lst file (focmec output)
         -d, --focmec_folder_path    [OPTIONAL] Path to folder with all *.lst files (focmec output)
@@ -768,15 +782,15 @@ def _plotmec():
         -a, --all_solutions         [OPTIONAL] If set, all searching fault planes will be plot
         -p, --plot_polarities       [OPTIONAL] If plot P-Wave polarities on the beachball
         -m, --format                [OPTIONAL] Format output plot (defaults pdf)
-        
+
         Example usage:
 
         > surfquake plotmec -d ./focmec_folder_path -o ./output_folder
         > surfquake plotmec -f ./focmec_file_path.lst -o ./output_folder -p -a -m pdf
-            
+
         if output is not provided the beachball of the focal mechanism will be shown on screen, 
         but if user provide output folder, the beach ball plot will be saved in the folder
-        
+
         """
     )
     from surfquakecore.first_polarity.first_polarity import FirstPolarity
@@ -1062,26 +1076,26 @@ def _source():
         -o, --output_folder      [REQUIRED] Output folder for source parameter results
         -t, --large_scale        [OPTIONAL] Automatic long cut of teleseismic event waveforms
 
-    
+
     Hypocenter file example:
-    
+
         date_id;lat;lon;depth;event_id
         2022-02-01 02:03:00.276594;42.500311;1.461898;5.297852;20220201_020301
         ....,....,....,....,....,....,....
-    
+
     Earth model file example:
-    
+
         top_depth_km;vp;vs;rho
         0.0;4.5;2.6;2400
         2.0;5.8;3.3;2650
         10.0;6.4;3.7;2800
         25.0;7.8;4.4;3200
-    
+
     Focal Mechanism file example:
-    
+
         date_id;plane_1_strike;plane_1_dip;plane_1_slip_rake
         2022-02-01 02:03:00.276594;0.70322843602916;29.29677156397083;22.420139345268485
-    
+
     Reference:
         Satriano, C. (2023). SourceSpec – Earthquake source parameters from P- or S-wave displacement spectra. 
         DOI: https://doi.org/10.5281/ZENODO.3688587
@@ -1181,11 +1195,11 @@ def _mti():
         -s, --save_plots        [OPTIONAL] If set, saves plots of MT solutions and fits
             --save_green        [OPTIONAL] If set, green functions are saved at output_dir/green
             --use_pre_green     [OPTIONAL] If set, green functions are directly load from output_dir/green
-    
+
     Warning:  --save_green leads over --use_pre_green
     Comments: --use_pre_green, makes only sense for improve an old solution by selecting stations/channels.
               However, green functions are frequency dependent, so do not change the frequency range.
-    
+
     Reference:
         Vackář et al. (2017). Bayesian ISOLA: New Tool for Automated Centroid Moment Tensor Inversion,
         Geophysical Journal International, 210(2), 693–705. https://doi.org/10.1093/gji/ggx180
@@ -1210,7 +1224,7 @@ def _mti():
     arg_parse.add_argument("-s", "--save_plots", help=" In case user wants to save all output plots",
                            action="store_true")
 
-    arg_parse.add_argument( "--save_green", help=" In case user wants to save green_functions for later use",
+    arg_parse.add_argument("--save_green", help=" In case user wants to save green_functions for later use",
                            action="store_true")
 
     arg_parse.add_argument("--use_pre_green", help=" In want to directly proceed with inversion",
@@ -1247,7 +1261,7 @@ def _csv2xml():
         description="Convert a CSV file of station metadata to a StationXML file.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
+
     Overview:
         Convert a CSV station table to StationXML format.
 
@@ -1266,18 +1280,18 @@ def _csv2xml():
         -n, --stations_xml_name      [REQUIRED] Desired filename for the output StationXML
 
     Input file header and first rows:
-    
+
     Minimal Example:
-    
+
     Net Station Lat Lon elevation start_date starttime end_date endtime
     WM ARNO 37.0988 -6.7322 117.0 2007-01-01 00:00:00 2050-12-31 23:59:59
     WM AVE 33.2981 -7.4133 230.0 2007-01-01 00:00:00 2050-12-31 23:59:59
-    
+
     Full example:
     Net Station site_name Lat Lon elevation start_date starttime end_date endtime channel location_code sample_rate azimuth dip depth clock_drift
     WM ARNO ARNO_OBS_01 37.0988 -6.7322 117.0 2007-01-01 00:00:00 2050-12-31 23:59:59 HHZ 00 100.0 0.0 -90.0 0.0 1.2e-7
     WM ARNO ARNO_OBS_01 37.0988 -6.7322 117.0 2007-01-01 00:00:00 2050-12-31 23:59:59 HHN 00 100.0 0.0 0.0 0.0 1.2e-7
-    
+
     Documentation:
         https://projectisp.github.io/surfquaketutorial.github.io/create_metadata/
     """
@@ -1391,7 +1405,7 @@ def _buildmticonfig():
         description="Automatically generate MTI config files from a catalog query.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
+
     Overview:
         The `buildmticonfig` tool creates multiple `mti_config.ini` files using:
             - A catalog file (e.g., QuakeML or ObsPy Catalog)
@@ -1506,7 +1520,7 @@ def _processing():
         description="Process or cut waveforms associated with seismic events.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
+
     Overview:
         Process or cut waveforms associated with seismic events.
         You can:
@@ -1888,7 +1902,6 @@ def _processing_daily():
             verbose=True
         )
 
-
     # --- Run processing workflow ---
     ae = AnalysisEvents(
         output=make_abs(parsed_args.output_folder),
@@ -1916,7 +1929,7 @@ def _quickproc():
         description="Quick waveform processing. Designed for rapid, raw file-based workflows.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
+
     Overview:
         Process seismic traces.
         You can:
@@ -1981,15 +1994,15 @@ def _quickproc():
     parser.add_argument("--plot_config", type=str)
 
     parser.add_argument("--post_script", help="Path to Python script to apply to each event stream",
-        type=str)
+                        type=str)
 
     parser.add_argument("-f", "--fast", nargs="?", const=True, default=False, type=int, metavar="N",
-                           help="Fast plotting")
+                        help="Fast plotting")
 
     parser.add_argument("--post_script_stage",
-        help="When to apply the post-script: 'before' or 'after' plotting",
-        choices=["before", "after"],
-        default="before")
+                        help="When to apply the post-script: 'before' or 'after' plotting",
+                        choices=["before", "after"],
+                        default="before")
 
     parser.add_argument(
         "-op", "--order_preference",
@@ -2015,7 +2028,6 @@ def _quickproc():
 
         # Build project on-the-fly using wildcard path
         data_files = SurfProject.collect_files(root_path=wave_paths)
-
 
     # --- Run processing workflow ---
     ae = AnalysisEvents(
@@ -2059,7 +2071,7 @@ def _trigg():
         Poiata, N., C. Satriano, J.-P. Vilotte, P. Bernard, and K. Obara (2016). Multi-band array detection and 
         location of seismic sources recorded by dense seismic networks,  Geophysical Journal International.,
         205(3), 1548-1573, doi:10.1093/gji/ggw071.
-        
+
         Cabieces, R., Krüger, F., Garcia-Yeguas, et al., (2020). 
         Slowness vector estimation over large-aperture sparse arrays with the Continuous Wavelet Transform (CWT):
         application to Ocean Bottom Seismometers. Geophysical Journal International, 223(3), 1919-1934.
@@ -2165,10 +2177,10 @@ def _specplot():
         description="Plot serialized spectral analysis (spectrum, spectrogram, cwt, cepstrum or cepstrogram)",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-        
+
         Overview:
         Plot spectrograms from saved binary files after processing waveforms
-        
+
         Key Arguments:
             -f, --file         [REQUIRED] Path to the saved file (.sp, .spec, .cwt, .coh, .cep or .ceps)
             -d, --dates        [OPTIONAL] if plot dates at x-axis, otherwise in seconds
@@ -2183,41 +2195,41 @@ def _specplot():
                 --qmax         [OPTIONAL] Cepstrum/cepstrogram: maximum quefrency shown in s (default all)
                 --track        [OPTIONAL] Cepstrogram: overlay the dominant quefrency of every window
                 --extension    [OPTIONAL] file extension (Default: format png)
-                
+
         Examples:
             Plot a saved spectrum:
                 surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.sp
-        
+
             Plot a saved spectrogram:
                 surfquake specplot --file ./cut/spec/IU.HKT.00.BHZ.spec --clip -120.0 --split
-        
+
             Plot a saved cepstrogram (repetition periods between 0.05 and 2 s):
                 surfquake specplot -f ./cut/spec/IU.HKT.00.BHZ.ceps --qmin 0.05 --qmax 2 --track
-            
+
             Save plot to a file:
                 surfquake specplot -f "./spectral/WM.OBS01..SHZ.D.2015.260.cwt" -d --split 
                 --smooth --save_path "./spectral/" --cmap "gnuplot2"
-        
+
         """
     )
 
     parser.add_argument("--file", "-f", required=True, help="Path to the serialized .sp, .spec or .cwt file")
 
     parser.add_argument("--split", nargs="?", const=1.0, default=None, type=float,
-        help=("Split the plot into low/high frequency panels. "
-            "If used without a value, the default cutoff is 1 Hz. ""Example: --split or --split 0.5"))
+                        help=("Split the plot into low/high frequency panels. "
+                              "If used without a value, the default cutoff is 1 Hz. ""Example: --split or --split 0.5"))
 
     parser.add_argument("-v", "--vmax_db", type=float, default=None, required=False,
-        help="Maximum displayed power in dB. Default:  0 dB in Normalize Spec ")
+                        help="Maximum displayed power in dB. Default:  0 dB in Normalize Spec ")
 
     parser.add_argument("--clip", "-c", type=float, required=False, default=None,
-        help="Minimum displayed power in dB")
+                        help="Minimum displayed power in dB")
 
     parser.add_argument("--cmap", type=str, default="rainbow",
-        required=False, help="Matplotlib colormap. Default: rainbow")
+                        required=False, help="Matplotlib colormap. Default: rainbow")
 
     parser.add_argument("--axis_type", "-a", type=str, default="loglog",
-        required=False, help="Spectrum axis type (Default: loglog, option xlog, ylog & linlin)")
+                        required=False, help="Spectrum axis type (Default: loglog, option xlog, ylog & linlin)")
 
     parser.add_argument("-s", "--smooth", help="if smooth the Time-Frequency plane", action="store_true")
 
@@ -2226,14 +2238,14 @@ def _specplot():
     parser.add_argument("-d", "--dates", help="if plot dates at x-asis", action="store_true")
 
     parser.add_argument("--qmin", type=float, default=None, required=False,
-                                                     help = "Cepstrum/cepstrogram: minimum quefrency shown [s]")
+                        help="Cepstrum/cepstrogram: minimum quefrency shown [s]")
 
     parser.add_argument("--qmax", type=float, default=None, required=False,
-                                                     help = "Cepstrum/cepstrogram: maximum quefrency shown [s]")
+                        help="Cepstrum/cepstrogram: maximum quefrency shown [s]")
 
     parser.add_argument("--track", help="Cepstrogram: overlay the dominant quefrency", action="store_true")
 
-    parser.add_argument( "--extension", type=str, default="png", required=False,
+    parser.add_argument("--extension", type=str, default="png", required=False,
                         help="file format (default png)")
 
     args = parser.parse_args()
@@ -2254,7 +2266,7 @@ def _specplot():
     elif ext == ".spec":
         obj = TraceSpectrogramResult.from_pickle(filepath)
         obj.plot_spectrogram(save_path=args.save_path, clip=args.clip, plot_date=args.dates,
-                            split=args.split, vmax_db=args.vmax_db,  cmap=args.cmap, smooth=args.smooth,
+                             split=args.split, vmax_db=args.vmax_db, cmap=args.cmap, smooth=args.smooth,
                              extension=args.extension, type_spec="spec")
 
     elif ext == ".cwt":
@@ -2264,15 +2276,15 @@ def _specplot():
                      extension=args.extension, type_spec="cwt")
 
     elif ext == ".cep":
-            obj = TraceCepstrumResult.from_pickle(filepath)
-            obj.plot_cepstrum(qmin=args.qmin, qmax=args.qmax, save_path=args.save_path,
-                                                         type_spec="cep", extension=args.extension)
+        obj = TraceCepstrumResult.from_pickle(filepath)
+        obj.plot_cepstrum(qmin=args.qmin, qmax=args.qmax, save_path=args.save_path,
+                          type_spec="cep", extension=args.extension)
 
     elif ext == ".ceps":
-            obj = TraceCepstrogramResult.from_pickle(filepath)
-            obj.plot_cepstrogram(save_path=args.save_path, qmin=args.qmin, qmax=args.qmax, clip=args.clip,
-                                 vmax=args.vmax_db, plot_date=args.dates, cmap=args.cmap, smooth=args.smooth,
-                                 track=args.track, extension=args.extension, type_spec="ceps")
+        obj = TraceCepstrogramResult.from_pickle(filepath)
+        obj.plot_cepstrogram(save_path=args.save_path, qmin=args.qmin, qmax=args.qmax, clip=args.clip,
+                             vmax=args.vmax_db, plot_date=args.dates, cmap=args.cmap, smooth=args.smooth,
+                             track=args.track, extension=args.extension, type_spec="ceps")
     else:
         raise ValueError(
             f"Unsupported file extension '{ext}'. "
@@ -2286,7 +2298,7 @@ def _beamplot():
         description="Plot serialized beamforming result and optionally extract peaks",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-        
+
         Key Arguments:
             -f, --file              [REQUIRED] Path to waveform files (.sp, .spec or .cwt)
                 --save_path         [OPTIONAL] Output file path to automatically save the figure
@@ -2294,20 +2306,20 @@ def _beamplot():
                 --write_path        [OPTIONAL] Path to te output txt file with the automatic solutions
                 --baz_range         [OPTIONAL] Filter the automatic search for range of azimuth
                 --min_power         [OPTIONAL] Relative Power threshold for searching automatic solutions (default 0.6)
-        
+
         Examples:
           Plot a saved FK beam:
               surfquake beamplot --file ./output/2024.123.beam
-        
+
           Detect peaks with regional phase constraints:
               surfquake beamplot --file event.beam --find_solutions regional --write_path solutions.txt
-        
+
           Use custom slowness constraints:
               surfquake beamplot --file file_path --find_solutions '{"Pn": [0.05, 0.08], "Lg": [0.18, 0.30]}'
-        
+
           Apply azimuth filtering:
               surfquake beamplot -f file_path --find_solutions regional --baz_range 100 150
-        
+
           Control minimum power threshold:
               surfquake beamplot -f file_path --find_solutions teleseismic --min_power 0.75
         """
@@ -2363,11 +2375,11 @@ def _info():
         description="Prints waveform information ",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-        
+
         Overview:
-        
+
         Extracts and prints on screen the traces header information
-        
+
         Key Arguments:
             -w, --wave_files   [REQUIRED] Glob pattern or path to waveform files
             -c, --columns      [OPTIONAL] Number of columns showing traces info (default = 5)
@@ -2411,11 +2423,11 @@ def _explore():
         description="Explore data availability ",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    
+
     Overview:
-    
+
     Plot the data availability of your seismogram files
-    
+
     Key Arguments:
             -w, --wave_files          [OPTIONAL] Glob pattern or path to waveform files
             -p, --project_path_file   [OPTIONAL] Project path file
@@ -2424,9 +2436,9 @@ def _explore():
             -ch, --channel            [OPTIONAL] Channel filter (if -p selected)
             --min_date                [OPTIONAL] Filter Start date (format: YYYY-MM-DD HH:MM:SS), DEFAULT min date of the project (if -p selected)
             --max_date                [OPTIONAL] Filter End date   (format: YYYY-MM-DD HH:MM:SS), DEFAULT max date of the project (if -p selected)
-    
+
     * Either -w or -p must be set     
-    
+
     Example usage:
 
     surfquake explore -w './data/*.mseed'
@@ -2532,7 +2544,7 @@ def _ppsdDB():
         -ch, --channel             [OPTIONAL] Channel filter(s) (default: all channels)
         -r,  --robust              [OPTIONAL] Keep only files covered by the inventory (default: off)
 
-    
+
     Robust mode (--robust):
 
         Before a file is added to the DB, its channel is checked against the
@@ -2546,7 +2558,7 @@ def _ppsdDB():
 
         Example:
             surfquake ppsdDB -p "./project.pkl" -i "./meta/metadata.xml" -s "./output/test.pkl" -ch "HH?" --robust
-    
+
     Filtering (--net / --station / --channel):
 
         Each of these three filters accepts ONE OR MORE values, separated by spaces.
@@ -2572,7 +2584,7 @@ def _ppsdDB():
 
         Quote wildcard patterns (e.g. "BH*") so your shell does not expand
         them against local filenames before they reach the program.
-        
+
         Documentation:
             https://projectisp.github.io/surfquaketutorial.github.io/
 
@@ -3021,7 +3033,7 @@ def _ant_create_dict():
 
         Quoting wildcards (e.g. "BH*") is recommended so your shell does not
         expand them against local filenames before they reach the program.
-        
+
         Documentation:
             https://projectisp.github.io/surfquaketutorial.github.io/
 
@@ -3550,7 +3562,7 @@ Usage Examples:
   # Ocean path — use ocean reference model:
   surfquake cwt_aftan -i ./stack/ -o ./cwt_out/ \\
                       --ref ak135_ocean_deep --wave rayleigh --plot
-                      
+
   # AFTAN original filter bank (preserves all FORTRAN tricks):
   surfquake cwt_aftan -i ./stack/ -o ./cwt_out/ --wavelet aftan \\
                       --ffact 1.0 --ref ak135_earth --plot
@@ -3601,7 +3613,7 @@ Parameter guide:
                    Increase to 1.0 for noisy data, decrease to 0.3 for clean.
   --filter_param   PMF Gaussian window width [s]. Controls mode isolation width.
                    Larger = broader window, less strict isolation.
-  
+
   Built-in models are loaded with --ref. Available shorthand names include:
 
     ak135_earth
@@ -3619,7 +3631,7 @@ Parameter guide:
     --wave love uses Love phase/group columns.
 
   Users may also pass a full path to a custom CSV/TXT file with columns comma separated:
-    
+
     period,phase_velocity_rayleigh,phase_velocity_love,group_velocity_rayleigh,group_velocity_love
     1.0,3.1425,3.2721,1.6231,3.0846
     1.1,3.3333,3.2941,2.6703,3.0435
@@ -3634,12 +3646,12 @@ Source type / pi-over-four convention:
       Use for ordinary event-to-station earthquake seismograms.
 
 Reference:
-  
+
   Torrence & Compo (1998). A Practical Guide to Wavelet Analysis. BAMS 79(1), 61-78.
-  
+
   Levshin & Ritzwoller (2001). Automated Detection, Extraction and Measurement
   of Regional Surface Waves. Pure and Applied Geophysics.
-  
+
   Bensen et al. (2007). Processing seismic ambient noise data to obtain reliable broad-band surface wave dispersion 
   measurements. Geophys. J. Int. 169, 1239-1260.
 
@@ -3859,10 +3871,10 @@ Documentation:
             # ---- optionally save plot ----
             if parsed.plot:
                 fig = plot_cwt_ftan(result, show=False,
-                    title=f"{basename}  Δ={delta:.1f} km  branch={branch_used}",
-                    ref_periods=ref_group_per,
-                    ref_group_vel=ref_group_vel,
-                    ref_phase_vel=pmf_ref_vel)
+                                    title=f"{basename}  Δ={delta:.1f} km  branch={branch_used}",
+                                    ref_periods=ref_group_per,
+                                    ref_group_vel=ref_group_vel,
+                                    ref_phase_vel=pmf_ref_vel)
 
                 if fig is not None:
                     png_path = os.path.join(output_path, basename + ".pdf")
@@ -3884,3 +3896,4 @@ Documentation:
 if __name__ == "__main__":
     freeze_support()
     main()
+
