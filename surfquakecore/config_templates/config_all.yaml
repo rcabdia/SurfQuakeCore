@@ -43,11 +43,19 @@ Analysis:
     name: 'fill_gaps'
     method: 'latest'
 
-  # --- normalize [trace]: amplitude normalisation
-  #   norm: True = divide by the absolute maximum | <float> = divide by that value
+  # --- normalize [trace / stream]: amplitude normalisation
+  #   norm:       True = divide by the absolute maximum | <float> = divide by that value
+  #               False = no normalisation
+  #   global_max: False (default) = each trace by its OWN absolute maximum
+  #               True  = every trace by the absolute maximum of the WHOLE stream
+  #                       (keeps the relative amplitudes between traces). Needs all traces,
+  #                       so it is applied after the trace-level steps (or before them with
+  #                       stream_first), like the other stream steps.
+  #                       Use it with norm: True.
   process_5:
     name: 'normalize'
     norm: True
+    global_max: False
 
   # --- filter [trace]: frequency filter
   #   type:      bandpass | bandstop | lowpass | highpass | cheby1 | cheby2 | elliptic | bessel

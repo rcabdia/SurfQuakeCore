@@ -94,10 +94,12 @@ class SeismogramData:
                              max_length=_config['max_length'], side=_config['side'])
 
                 if _config['name'] == 'normalize':
-                    if isinstance(_config['norm'], bool):
-                        tr.normalize()
-                    else:
-                        tr.normalize(norm=_config['norm'])
+                    if _config.get('global_max', False):
+                        pass  # needs all traces -> applied on the whole stream in StreamProcessing
+                    elif _config['norm'] is True:
+                        tr.normalize()  # divide by this trace's abs max
+                    elif _config['norm'] not in (False, None):
+                        tr.normalize(norm=_config['norm'])  # divide by the given value
 
                 if _config['name'] == 'differentiate':
                     if _config['method'] == "spectral":
@@ -329,7 +331,7 @@ class StreamProcessing:
     STREAM_METHODS = {"stack", "cross_correlate", "convolve", "rotate", "shift", "synch", "concat", "beam",
                       "particle_motion",
                       "kurtosis", "cut_stream", "algebra", "chop", "deconv", "cross_spectrum", "cwt_cf", "snr",
-                      "entropy", "envelope"}
+                      "entropy", "envelope", "normalize"}
 
     def __init__(self, stream: Stream, config: list, inventory: Optional[Inventory] = None, **kwargs):
         self.stream = stream
@@ -392,6 +394,10 @@ class StreamProcessing:
                     self.apply_entropy(step)
                 elif method_name == "envelope":
                     self.apply_envelope(step)
+                elif method_name == "normalize":
+                    # only the global case is a stream step; per-trace normalize runs in run_analysis
+                    if step.get("global_max", False):
+                        self.stream.normalize(global_max=True)
 
             return self.stream
 

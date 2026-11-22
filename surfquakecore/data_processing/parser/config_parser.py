@@ -125,7 +125,8 @@ def parse_normalize(config):
     """
     template = {
         'name': 'normalize',
-        'norm': True}
+        'norm': True,
+        'global_max': False}
     template.update(config)
     return template
 
