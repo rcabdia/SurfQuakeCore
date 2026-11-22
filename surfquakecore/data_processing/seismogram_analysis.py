@@ -82,7 +82,7 @@ class SeismogramData:
                 _keys = config[i]
 
                 if _config['name'] == 'rmean':
-                    if _config['method'] in ['linear, simple', 'demean']:
+                    if _config['method'] in ['linear', 'simple', 'constant', 'demean']:
                         tr.detrend(type=_config['method'])
                     elif _config['method'] == 'polynomial':
                         tr.detrend(type=_config['method'], order=_config['order'])

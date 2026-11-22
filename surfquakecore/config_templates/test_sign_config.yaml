@@ -9,7 +9,7 @@
 #
 #  Every entry of the 'Source' section (trace_1, trace_2, ...) creates ONE
 #  trace. Traces are created in numerical order. This file can be run as it is:
-#  it creates the 13 traces below, one per signal type. Delete the entries you
+#  it creates the 14 traces below, one per signal type. Delete the entries you
 #  do not need.
 #
 #  An optional 'Analysis' section in the same file (rmean, filter, taper,
@@ -353,7 +353,6 @@ Source:
 #    process_1:
 #      name: 'cross_correlate'
 #      mode: 'full'
-#      normalize: 'full'
+#      normalize: 'naive'
 #      reference_idx: 0
-#      strict: True
 #      trim: True

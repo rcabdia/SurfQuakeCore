@@ -83,11 +83,16 @@ class AnalysisEvents:
                 self.config = fast_config
 
         if self.output is not None:
-            if os.path.isdir(self.output):
-                print("Output Directory: ", self.output)
+            if not os.path.isdir(self.output):
+                try:
+                    os.makedirs(self.output, exist_ok=True)
+                    print("Output Directory created: ", self.output)
+                except OSError as e:
+                    print(f"[WARNING] Output directory {self.output} cannot be created ({e}); "
+                          f"processed traces will not be written")
+                    self.output = None
             else:
-                print("Traces will be process and might be plot: ", self.output)
-                self.output = None
+                print("Output Directory: ", self.output)
 
         # Load plotting config
         self.plot_config = None
