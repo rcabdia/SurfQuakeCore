@@ -832,6 +832,8 @@ def plot_comparison(
                       title="Statistic", loc="lower left",
                       fontsize=7, framealpha=0.85)
 
+    plt.tight_layout()
+    
     if save_path is not None:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
         print(f"  Saved → {save_path}")

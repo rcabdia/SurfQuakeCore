@@ -18,7 +18,7 @@ from datetime import timedelta, datetime
 from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
-from matplotlib.ticker import ScalarFormatter, FuncFormatter
+from matplotlib.ticker import ScalarFormatter, FuncFormatter, Formatter
 from obspy import UTCDateTime, Stream
 from obspy.core.trace import Trace
 import matplotlib as mplt
@@ -35,6 +35,43 @@ from surfquakecore.seismoplot.spanselector import ExtendSpanSelector
 from surfquakecore.utils.obspy_utils import MseedUtil
 from matplotlib.backend_bases import MouseButton
 PSEUDO_MODES = ("music", "ev")
+
+
+class DayTimeFormatter(Formatter):
+    """
+    Time-axis formatter for matplotlib dates.
+
+    Tick labels show HH:MM:SS (or HH:MM:SS.t). The date (YYYY-MM-DD) is added
+    under the first tick and under every tick where the day changes, so plots
+    spanning several days stay readable. Works with zoom and pan.
+    The cursor read-out (status bar) shows the full date and time.
+    """
+
+    def __init__(self, tenths=True):
+        self.tenths = tenths
+
+    def _round(self, x):
+        # round to the nearest shown unit (0.1 s or 1 s)
+        return mdt.num2date(x) + timedelta(milliseconds=50 if self.tenths else 500)
+
+    def _time(self, d):
+        return f"{d:%H:%M:%S}.{d.microsecond // 100000}" if self.tenths else f"{d:%H:%M:%S}"
+
+    def __call__(self, x, pos=None):
+        d = self._round(x)
+        return f"{d:%Y-%m-%d} {self._time(d)}"
+
+    def format_ticks(self, values):
+        labels = []
+        prev_day = None
+        for x in values:
+            d = self._round(x)
+            label = self._time(d)
+            if d.date() != prev_day:
+                label += f"\n{d:%Y-%m-%d}"
+            prev_day = d.date()
+            labels.append(label)
+        return labels
 # Choose the best backend before importing pyplot,
 # more Options: TkAgg, MacOSX, Qt5Agg, QtAgg, WebAgg, Agg
 
@@ -135,6 +172,24 @@ class PlotProj:
             except (ValueError, TypeError) as e:
                 print(f"[WARNING] Invalid value for rcParam '{key}': {value!r} ({e}), ignored")
         return valid
+
+    def _add_date_box(self, ax, starttime, endtime=None):
+        """
+        Date box in the upper-left corner of ax (same style as the spectrogram):
+        JD / year and the start date-time. If endtime falls on another day,
+        the end JD and date-time are added below.
+        Disabled with plot_config['show_date'] = False.
+        """
+        if not self.plot_config.get("show_date", True):
+            return
+        lines = [f"JD {starttime.julday} / {starttime.year}",
+                 starttime.strftime("%Y-%m-%d %H:%M:%S")]
+        if endtime is not None and (endtime.year, endtime.julday) != (starttime.year, starttime.julday):
+            lines += [f"to JD {endtime.julday} / {endtime.year}",
+                      endtime.strftime("%Y-%m-%d %H:%M:%S")]
+        ax.text(0.01, 0.95, "\n".join(lines), transform=ax.transAxes, fontsize=8,
+                va="top", ha="left", zorder=5,
+                bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="gray", alpha=0.5))
 
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(os.path.expanduser(path)) if path else None
@@ -256,10 +311,6 @@ class PlotProj:
     def _plot_standard_traces(self, page):
         plt.close(self.fig)
 
-        def _hms_tenths(x, pos=None):
-            d = mdt.num2date(x) + timedelta(milliseconds=50)  # round to nearest 0.1 s
-            return f"{d:%H:%M:%S}.{d.microsecond // 100000}"
-
         formatter_pow = ScalarFormatter(useMathText=True)
         formatter_pow.set_powerlimits((0, 0))  # Force scientific notation
 
@@ -358,21 +409,15 @@ class PlotProj:
                                 fontsize=8, rotation=0, ha="center", va="top")
 
             if self.plot_config["show_legend"] and len(self.axs) <= 9:
-                ax.legend()
+                ax.legend(loc="upper right")  # the date box is in the upper-left corner
 
-            # Annotate with date
-            starttime = tr.stats.starttime
-            date_str = starttime.strftime("%Y-%m-%d")
-            textstr = f"JD {starttime.julday} / {starttime.year}\n{date_str}"
-            ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=8,
-                    va='top', ha='left',
-                    bbox=dict(boxstyle='round,pad=0.3', fc='lightyellow', ec='gray', alpha=0.5))
+            # Annotate with date (start, and end if the trace reaches another day)
+            self._add_date_box(ax, tr.stats.starttime, tr.stats.endtime)
 
             # Format x-axis
             ax.xaxis_date()
             ax.xaxis.set_major_locator(mdt.AutoDateLocator())
-            #ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
-            ax.xaxis.set_major_formatter(FuncFormatter(_hms_tenths))
+            ax.xaxis.set_major_formatter(DayTimeFormatter(tenths=True))
 
             # Hide bottom ticks except for last subplot
             if ax_idx < len(self.axs) - 1:
@@ -533,7 +578,7 @@ class PlotProj:
         if record_option == "dates":
             ax.set_xlabel("Time (UTC)")
             ax.xaxis_date()
-            ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
+            ax.xaxis.set_major_formatter(DayTimeFormatter(tenths=False))
             min_time = min(tr.stats.starttime for tr in traces)
             max_time = max(tr.stats.endtime for tr in traces)
             ax.set_xlim(mdt.date2num(min_time.datetime), mdt.date2num(max_time.datetime))
@@ -551,8 +596,13 @@ class PlotProj:
         ax.set_ylabel("Distance (km)")
         ax.set_title("Record Section")
 
+        # Date box (not for egf: lag times have no absolute date)
+        if record_option in ("dates", "seconds"):
+            self._add_date_box(ax, min(tr.stats.starttime for tr in traces),
+                               max(tr.stats.endtime for tr in traces))
+
         if cfg["show_legend"]:
-            ax.legend(fontsize=self._rc.get("legend.fontsize", 6))
+            ax.legend(loc="upper right", fontsize=self._rc.get("legend.fontsize", 6))
 
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
@@ -614,11 +664,13 @@ class PlotProj:
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Amplitude")
         ax.xaxis_date()
-        ax.xaxis.set_major_formatter(mdt.DateFormatter('%H:%M:%S'))
+        ax.xaxis.set_major_formatter(DayTimeFormatter(tenths=False))
         ax.set_title("Overlay of All Traces")
+        self._add_date_box(ax, min(tr.stats.starttime for tr in traces),
+                           max(tr.stats.endtime for tr in traces))
 
         if self.plot_config["show_legend"] or n <= 12:
-            ax.legend(fontsize=self._rc.get("legend.fontsize", 6))
+            ax.legend(loc="upper right", fontsize=self._rc.get("legend.fontsize", 6))
 
         plt.tight_layout()
 
@@ -2457,5 +2509,6 @@ class PlotProj:
             msg = "[INFO] No picks remain — CSV overwritten "
             msg += "(header only)." if write_header_when_empty else "(empty file)."
             print(msg, filepath)
+
 
 
