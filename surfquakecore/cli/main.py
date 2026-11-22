@@ -2344,8 +2344,18 @@ def _beamplot():
         try:
             baz_range = tuple(args.baz_range) if args.baz_range else None
 
+            # 'regional' / 'teleseismic' shortcuts, or a JSON dict '{"P": [0.05, 0.08], ...}'
+            phase_dict = args.find_solutions
+            if phase_dict.strip().startswith("{"):
+                import json
+                try:
+                    phase_dict = {name: tuple(limits) for name, limits in json.loads(phase_dict).items()}
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"--find_solutions is not a valid JSON dict "
+                                     f"like '{{\"P\": [0.05, 0.08]}}': {e}")
+
             results = beam_obj.detect_beam_peaks(
-                phase_dict=args.find_solutions,
+                phase_dict=phase_dict,
                 peak_kwargs={"prominence": 0.1, "distance": 10},
                 min_power=args.min_power,
                 output_file=args.write_path,
@@ -2382,7 +2392,7 @@ def _info():
 
         Key Arguments:
             -w, --wave_files   [REQUIRED] Glob pattern or path to waveform files
-            -c, --columns      [OPTIONAL] Number of columns showing traces info (default = 5)
+            -c, --columns      [OPTIONAL] Number of columns showing traces info (default = 1)
 
         Example usage:
 
@@ -2395,7 +2405,7 @@ def _info():
     )
 
     parser.add_argument("-w", "--wave_files", required=True, help="path to waveform files (e.g. './data/*Z')", type=str)
-    parser.add_argument("-c", "--columns", help="Number of traces (columns) to show per file (default = 5).",
+    parser.add_argument("-c", "--columns", help="Number of traces (columns) to show per file (default = 1).",
                         type=int, default=1)
 
     args = parser.parse_args()
@@ -2431,7 +2441,7 @@ def _explore():
 
     Key Arguments:
             -w, --wave_files          [OPTIONAL] Glob pattern or path to waveform files
-            -p, --project_path_file   [OPTIONAL] Project path file
+            -p, --project_file_path   [OPTIONAL] Project path file
             -n, --net                 [OPTIONAL] Network code filter (if -p selected)
             -s, --station             [OPTIONAL] Station code filter (if -p selected)
             -ch, --channel            [OPTIONAL] Channel filter (if -p selected)

@@ -2732,7 +2732,7 @@ class PlotCommandPrompt:
         The script must define: def process(stream): ... return stream
 
         Usage:
-            post_script <path_to_script.py>
+            runpy <path_to_script.py>
         """
 
         from obspy import Stream
