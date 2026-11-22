@@ -52,8 +52,6 @@ SYNCH_METHODS = ['starttime', 'MCCC']
 
 ENVELOPE_MODE = ['FULL', 'SMOOTH']
 
-SPECTRUM_METHODS = ["multitaper", "fft"]
-
 CWT_WAVELETS = ["cm", "mh", "pa"]
 
 CUT_TYPES = ["absolute", "phase", "reference"]

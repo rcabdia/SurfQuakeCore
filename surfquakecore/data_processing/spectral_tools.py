@@ -402,7 +402,12 @@ class SpectrumTool:
                 # Conventional rFFT-based PSD, Zero-padding happens HERE
                 spec = np.fft.rfft(data1, n=nfft)
                 phase = np.angle(spec)
-                spec = (np.abs(spec) ** 2) / (fs * win)
+
+                # one-sided PSD [unit²/Hz], normalised by the taper power (same as multitaper)
+                spec = 2.0 * np.abs(spec) ** 2 / (fs * np.sum(taper ** 2))
+                spec[0] /= 2.0  # DC is not doubled
+                if nfft % 2 == 0:
+                    spec[-1] /= 2.0  # Nyquist is not doubled
 
             else:
                 raise ValueError("method must be 'multitaper' or 'fft'")
