@@ -2067,7 +2067,7 @@ def _trigg():
 
         Overview:
         Process seismograms in daily files to detect events using coincidence trigger. 
-        It can be used either SNR or Kurtosis as Characterisitic functions.
+        It can be used either SNR, Kurtosis or CWT as Characterisitic functions.
 
         Allen, R. (1982). Automatic phase pickers: Their present use and future prospects. Bulletin of the
         Seismological Society of America, 72(6B), S225-S242.
