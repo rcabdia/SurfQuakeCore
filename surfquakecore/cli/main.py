@@ -620,15 +620,19 @@ def _pick():
         # --- Apply time filters ---
         min_date, max_date = None, None
         try:
-            if parsed_args.min_date:
-                # min_date = datetime.strptime(args.min_date, "%Y-%m-%d %H:%M:%S.%f")
-                min_date = parser.parse(parsed_args.min_date)
-            if parsed_args.max_date:
-                # max_date = datetime.strptime(args.max_date, "%Y-%m-%d %H:%M:%S.%f")
-                max_date = parser.parse(parsed_args.max_date)
+            min_date, max_date = None, None
+            try:
+                if parsed_args.min_date:
+                    min_date = parser.parse(parsed_args.min_date)
+                if parsed_args.max_date:
+                    max_date = parser.parse(parsed_args.max_date)
+            except ValueError as ve:
+                print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+                raise ve
             if min_date or max_date:
                 print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
-                sp_loaded.filter_project_time(starttime=min_date, endtime=max_date, verbose=True)
+                sp_loaded.filter_project_time(starttime=min_date or parser.parse("1900-01-01"),
+                                              endtime=max_date or parser.parse("2200-01-01"), verbose=True)
         except ValueError as ve:
             print(f"[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
             raise ve

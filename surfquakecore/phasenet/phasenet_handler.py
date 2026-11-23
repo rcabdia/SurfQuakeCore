@@ -50,6 +50,7 @@ def py_func_decorator(output_types=None, output_shapes=None, name=None):
 
 N_CHANNEL = 3
 DTYPE = "float32"
+SAMPLING_RATE = 100.0  # PhaseNet was trained with data at 100 Hz
 # component letter -> input channel of the network ("H", hydrophone, is ignored: the network has 3 channels)
 COMP2IDX = {"1": 0, "X": 0, "E": 0, "2": 1, "Y": 1, "N": 1, "Z": 2, "H": 3}
 
@@ -221,6 +222,13 @@ class PhasenetReader:
         st = read_stream(fname)
         st = st.detrend("spline", order=2, dspline=5 * st[0].stats.sampling_rate)
         st = st.merge(fill_value=0)
+
+        # PhaseNet works at 100 Hz: resample the data if it has another sampling rate
+        if st[0].stats.sampling_rate != SAMPLING_RATE:
+            st = st.resample(SAMPLING_RATE)
+
+        if self.highpass_filter > 0:
+            st = st.filter("highpass", freq=self.highpass_filter)
 
         if self.highpass_filter > 0:
             st = st.filter("highpass", freq=self.highpass_filter)
@@ -682,7 +690,7 @@ class PhasenetUtils:
         :type picks: Pandas DataFrame
         """
 
-        prob_threshold = 0.3
+        prob_threshold = 0.0  # peaks already selected with min_p_prob / min_s_prob
         columns = ['date', 'fname', 'year', 'month', 'day', 'net', 'station', 'flag', 'tt', 'date_time',
                    'weight', 'amplitude', 'phase', 'channel']
         has_amp = 'p_amp' in picks.columns and 's_amp' in picks.columns
@@ -691,7 +699,8 @@ class PhasenetUtils:
         for _, row in picks.iterrows():
             date_start = datetime.strptime(row['t0'], "%Y-%m-%dT%H:%M:%S.%f")
             network, station, channel = row['stats'].network, row['stats'].station, row['stats'].channel
-            sampling_interval = 1 / row['stats'].sampling_rate
+            #sampling_interval = 1 / row['stats'].sampling_rate
+            sampling_interval = 1 / SAMPLING_RATE  # the picks are in samples of the resampled data
             ss = (date_start.hour * 3600 + date_start.minute * 60 + date_start.second
                   + date_start.microsecond / 1000000)
 
