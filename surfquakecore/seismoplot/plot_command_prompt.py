@@ -1854,41 +1854,65 @@ class PlotCommandPrompt:
         else:
             print(f"[INFO] All traces written successfully to: {output_folder}")
 
-    def _cmd_cut(self, args):
-
-        from datetime import datetime
-        from obspy import UTCDateTime
-
+    @staticmethod
+    def _parse_cut_time(tokens, i):
         """
-        Cut traces based on a phase, reference, or absolute UTC start/end.
+        Time value starting at tokens[i]. Accepts '2026-11-20T10:00:00', a date and a time
+        split by the prompt into two tokens ('2026-11-20' '10:00:00'), with or without quotes.
+        Returns (UTCDateTime, next index).
+        """
+        from obspy import UTCDateTime
+        value = tokens[i].strip('"\'')
+        j = i + 1
+        if (j < len(tokens) and not tokens[j].startswith("--") and ":" in tokens[j]
+                and "T" not in value and ":" not in value):
+            value = f"{value}T{tokens[j].strip(chr(34) + chr(39))}"
+            j += 1
+        return UTCDateTime(value), j
+
+    @staticmethod
+    def _cut_one(tr, t1, t2):
+        """
+        Copy of tr cut to [t1, t2] (no padding: only the real data inside the window),
+        or None if tr has no data inside the window.
+        """
+        if tr.stats.endtime <= t1 or tr.stats.starttime >= t2:
+            return None
+        tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=False)
+        return tr_cut if tr_cut.stats.npts > 0 else None
+
+    def _cmd_cut(self, args):
+        """
+        Cut traces based on a phase, reference, absolute UTC start/end or the window
+        selected in the plot (keys 'u' / 'i' or right-click drag).
+        Traces without data inside the window are dropped (use 'b2f' to recover them).
 
         Usage:
+            cut
             cut --phase <name> <t_before> <t_after>
             cut --reference <t_before> <t_after>
-            cut --start "YYYY-MM-DD HH:MM:SS" --end "YYYY-MM-DD HH:MM:SS"
+            cut --start <YYYY-MM-DD HH:MM:SS> --end <YYYY-MM-DD HH:MM:SS>
         """
+        from obspy import UTCDateTime
 
-        new_traces = []
+        traces = list(getattr(self.plot_proj, "trace_list", []))
+        if not traces:
+            print("[WARN] No traces to cut.")
+            return
 
-        # Case 1: Absolute time cut
-        if "--start" in args and "--end" in args:
+        windows = []  # (trace, t1, t2)
+
+        # Case 1: absolute time cut
+        if "--start" in args or "--end" in args:
             try:
-                start_str = args[args.index("--start") + 1]
-                end_str = args[args.index("--end") + 1]
-                t1 = UTCDateTime(datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S"))
-                t2 = UTCDateTime(datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S"))
-            except Exception as e:
-                print(f"[ERROR] Invalid date format: {e}")
+                t1, _ = self._parse_cut_time(args, args.index("--start") + 1)
+                t2, _ = self._parse_cut_time(args, args.index("--end") + 1)
+            except (ValueError, IndexError) as e:
+                print(f"[ERROR] Use: cut --start <YYYY-MM-DD HH:MM:SS> --end <YYYY-MM-DD HH:MM:SS> ({e})")
                 return
+            windows = [(tr, t1, t2) for tr in traces]
 
-            for tr in self.plot_proj.trace_list:
-                try:
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
-                except Exception as e:
-                    print(f"[ERROR] Could not cut {tr.id}: {e}")
-
-        # Case 2: Phase-based cut
+        # Case 2: phase-based cut (window around the last pick of that phase in each trace)
         elif "--phase" in args:
             try:
                 i = args.index("--phase")
@@ -1898,33 +1922,16 @@ class PlotCommandPrompt:
             except (IndexError, ValueError):
                 print("[ERROR] Usage: cut --phase <name> <t_before> <t_after>")
                 return
-
-            for tr in self.plot_proj.trace_list:
-                phase_time = None
-
-                if hasattr(tr.stats, "picks"):
-                    matching_picks = [
-                        pick for pick in tr.stats.picks
-                        if pick.get("phase", "").lower() == phase_name.lower()
-                    ]
-                    if matching_picks:
-                        # Take the last one
-                        phase_time = UTCDateTime(float(matching_picks[-1]["time"]))
-
-                if phase_time is None:
+            for tr in traces:
+                picks = [p for p in getattr(tr.stats, "picks", []) or []
+                         if p.get("phase", "").lower() == phase_name.lower()]
+                if not picks:
                     print(f"[WARN] Trace {tr.id} missing phase '{phase_name}' — skipped.")
                     continue
+                phase_time = UTCDateTime(float(picks[-1]["time"]))
+                windows.append((tr, phase_time - t_before, phase_time + t_after))
 
-                try:
-                    phase_time = UTCDateTime(phase_time)
-                    t1 = phase_time - t_before
-                    t2 = phase_time + t_after
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
-                except Exception as e:
-                    print(f"[ERROR] Could not cut {tr.id}: {e}")
-
-        # Case 3: Reference-based cut
+        # Case 3: reference-based cut
         elif "--reference" in args:
             try:
                 i = args.index("--reference")
@@ -1933,61 +1940,53 @@ class PlotCommandPrompt:
             except (IndexError, ValueError):
                 print("[ERROR] Usage: cut --reference <t_before> <t_after>")
                 return
-
             ref_time = getattr(self.plot_proj, "last_reference", None)
             if not ref_time:
-                print("[ERROR] No reference time found. Cannot cut.")
+                print("[ERROR] No reference time found (key 'w' in the plot). Cannot cut.")
                 return
+            windows = [(tr, ref_time - t_before, ref_time + t_after) for tr in traces]
 
-            try:
-
-                t1 = ref_time - t_before
-                t2 = ref_time + t_after
-            except Exception as e:
-                print(f"[ERROR] Invalid reference time: {e}")
-                return
-
-            for tr in self.plot_proj.trace_list:
-                try:
-                    tr_cut = tr.copy().trim(starttime=t1, endtime=t2, pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
-                except Exception as e:
-                    print(f"[ERROR] Could not cut {tr.id}: {e}")
-
-        elif len(args) == 1 and isinstance(self.plot_proj.utc_start, UTCDateTime) and isinstance(self.plot_proj.utc_end,
-                                                                                                 UTCDateTime):
-            for tr in self.plot_proj.trace_list:
-                try:
-                    tr_cut = tr.copy().trim(starttime=self.plot_proj.utc_start, endtime=self.plot_proj.utc_end,
-                                            pad=True, fill_value=0)
-                    new_traces.append(tr_cut)
-                except Exception as e:
-                    print(f"[ERROR] Could not cut {tr.id}: {e}")
+        # Case 4: window selected in the plot
+        elif len(args) == 1 and isinstance(getattr(self.plot_proj, "utc_start", None), UTCDateTime) \
+                and isinstance(getattr(self.plot_proj, "utc_end", None), UTCDateTime):
+            windows = [(tr, self.plot_proj.utc_start, self.plot_proj.utc_end) for tr in traces]
 
         else:
             print("[ERROR] You must specify --phase, --reference, --start/--end or "
-                  "span selector to select time segment")
+                  "select the time window in the plot")
             return
+
+        new_traces, dropped = [], []
+        for tr, t1, t2 in windows:
+            if t2 <= t1:
+                print(f"[ERROR] {tr.id}: end of the window ({t2}) must be after start ({t1}).")
+                return
+            try:
+                tr_cut = self._cut_one(tr, t1, t2)
+            except Exception as e:
+                print(f"[ERROR] Could not cut {tr.id}: {e}")
+                continue
+            if tr_cut is None:
+                dropped.append(f"{tr.id} ({tr.stats.starttime.strftime('%Y-%m-%d %H:%M:%S')})")
+            else:
+                new_traces.append(tr_cut)
 
         if not new_traces:
-            print("[WARN] No traces were successfully cut.")
+            print("[WARN] No trace has data inside the window. Nothing was cut.")
             return
 
-        # Apply cuts to plot_proj
-        # self.plot_proj.trace_list = new_traces
-        # self.plot_proj.current_page = 0
-        # self.plot_proj.clear_plot()
-        # self.plot_proj.enable_command_prompt = True
-        # self.plot_proj.plot(page=0)
-        # print(f"[INFO] Cutting complete. {len(new_traces)} traces updated and replotted.")
+        if dropped:
+            msg = f"[INFO] {len(dropped)} trace(s) without data in the window removed: {', '.join(dropped)}."
+            if getattr(self.plot_proj, "original_traces", None):
+                msg += " Use 'b2f' to recover them."
+            print(msg)
 
-        # Apply cuts to plot_proj
         self.plot_proj.trace_list = new_traces
         self.plot_proj.current_page = 0
         self.plot_proj.clear_plot()
-        print(f"[INFO] Cutting complete. {len(new_traces)} traces updated and replotted.")
+        print(f"[INFO] Cutting complete. {len(new_traces)} trace(s) updated and replotted.")
         self.prompt_active = False
-        self._exit_code = "replot"  # ← señal nueva
+        self._exit_code = "replot"
 
     def _cmd_concat(self, args):
         """
@@ -3033,19 +3032,24 @@ class PlotCommandPrompt:
             >> shift --phase_theo S
     """,
             "cut": """
+    cut
     cut --phase <name> <before> <after>
     cut --reference <before> <after>
-    cut --start "<UTC>" --end "<UTC>"
-        Trim traces around:
-            - Phase pick
-            - Reference time
-            - Absolute UTC interval
+    cut --start <YYYY-MM-DD HH:MM:SS> --end <YYYY-MM-DD HH:MM:SS>
+        Trim traces to a time window:
+            - Window selected in the plot (keys 'u'/'i' or right-click drag)
+            - Phase pick (window around the last pick of that phase)
+            - Reference time (key 'w')
+            - Absolute UTC interval (date and time, or 2023-01-01T12:00:00)
+
+        Only the real data inside the window is kept (no zero padding).
+        Traces without data in the window are removed; use 'b2f' to recover them.
 
         Examples:
-            >> cut (only if you have already start_time and end_time using the span selector, dragging with right mouse)
+            >> cut
             >> cut --phase P 10 30
             >> cut --reference 5 20
-            >> cut --start "2023-01-01 12:00:00" --end "2023-01-01 12:01:00"
+            >> cut --start 2023-01-01 12:00:00 --end 2023-01-01 12:01:00
     """,
 
             "beam": """
