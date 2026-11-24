@@ -767,15 +767,16 @@ class StreamProcessing:
         self.stream = SeismicUtils.standardize_to_NE_components(self.stream, auto_trim=True)
 
         if "GAC" in step_config["method"]:
-            self.stream.rotate(method=step_config["type"])
-
+            # angles per station from the header (geodetic first, stats.back_azimuth as fallback)
+            back_azimuth = inclination = None
         else:
+            back_azimuth = step_config["angle"]
+            inclination = step_config.get("inclination", 0.0)
 
-            self.stream.rotate(method=step_config["type"], back_azimuth=step_config["angle"],
-                               inclination=step_config["inclination"])
-
-        # Rename channels to reflect rotated components
-        self.stream = SeismicUtils.rename_rotated_channels(self.stream, step_config["type"])
+        # Rotate station by station (ObsPy renames the rotated channels itself)
+        self.stream, n_rot, n_skip = SeismicUtils.rotate_per_station(
+            self.stream, step_config["type"], back_azimuth=back_azimuth, inclination=inclination)
+        print(f"[INFO] Rotation '{step_config['type']}': {n_rot} station groups rotated, {n_skip} not rotated")
 
         return self.stream
 

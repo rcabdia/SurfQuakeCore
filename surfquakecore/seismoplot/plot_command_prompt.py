@@ -1043,7 +1043,8 @@ class PlotCommandPrompt:
         Usage:
             rotate NE->RT                        # uses back_azimuth from trace header (geodetic)
             rotate NE->RT <back_azimuth>         # uses a single global back_azimuth
-            rotate ->LQT <back_azimuth> [inclination]
+            rotate ZNE->LQT                      # uses baz and inclination from trace header
+            rotate ->LQT <back_azimuth> [inclination]   # same as ZNE->LQT
             rotate ->ZNE
             rotate ZNE->LQT <back_azimuth> [inclination]
 
@@ -1148,61 +1149,22 @@ class PlotCommandPrompt:
             self._exit_code = "replot"
             return
 
-        # For methods that need back_azimuth: group by station and rotate per station
-        station_groups = defaultdict(list)
-        for tr in stream:
-            key = (tr.stats.network, tr.stats.station, tr.stats.location)
-            station_groups[key].append(tr)
+        # '->LQT' is not an ObsPy method: it is kept as a shortcut of 'ZNE->LQT'
+        if method == "->LQT":
+            method = "ZNE->LQT"
 
-        rotated_stream = Stream()
-        rotated_count = 0
-        skipped_count = 0
-
-        for station_key, station_traces in station_groups.items():
-
-            # Determine back_azimuth for this station
-            if back_azimuth_global is not None:
-                baz = back_azimuth_global
-                inc = inclination_global
-            else:
-                # Try to extract from trace header geodetic info
-                baz = None
-                inc = 0.0
-                for tr in station_traces:
-                    geodetic = tr.stats.get("geodetic", {})
-                    geo_vals = geodetic.get("geodetic", None)  # [dist, az, baz, incidence]
-                    if geo_vals and len(geo_vals) >= 3:
-                        baz = geo_vals[2]  # back_azimuth is index 2
-                        if len(geo_vals) >= 4:
-                            inc = geo_vals[3]
-                        break
-
-                if baz is None:
-                    print(f"[WARN] No back_azimuth found in header for "
-                          f"{station_key[0]}.{station_key[1]}.{station_key[2]} — skipping.")
-                    skipped_count += 1
-                    rotated_stream += Stream(station_traces)
-                    continue
-
-            # Rotate this station's traces
-            try:
-                st_sta = Stream(station_traces)
-                if method in ("->LQT", "ZNE->LQT"):
-                    st_sta.rotate(method=method, back_azimuth=baz, inclination=inc)
-                else:
-                    st_sta.rotate(method=method, back_azimuth=baz)
-                self._rename_rotated_channels(st_sta, method)
-                rotated_stream += st_sta
-                rotated_count += 1
-                print(f"[INFO] {station_key[0]}.{station_key[1]} rotated with "
-                      f"baz={baz:.2f}° inc={inc:.2f}°")
-            except Exception as e:
-                print(f"[ERROR] Rotation failed for {station_key[1]}: {e} — keeping original.")
-                rotated_stream += Stream(station_traces)
-                skipped_count += 1
+        # Rotate station by station. Angles: the global ones if given, otherwise each station's
+        # header (geodetic baz/inc, -1 placeholders rejected). ObsPy renames the channels itself.
+        try:
+            rotated_stream, rotated_count, skipped_count = SeismicUtils.rotate_per_station(
+                stream, method, back_azimuth=back_azimuth_global,
+                inclination=inclination_global if back_azimuth_global is not None else None)
+        except Exception as e:
+            print(f"[ERROR] Rotation failed: {e}")
+            return
 
         print(f"[INFO] Rotation '{method}' complete: "
-              f"{rotated_count} stations rotated, {skipped_count} skipped.")
+              f"{rotated_count} station groups rotated, {skipped_count} not rotated.")
 
         # Update trace_list and replot
         self.plot_proj.trace_list = list(rotated_stream)

@@ -160,7 +160,7 @@ Analysis:
   # Some keys only matter for certain CFs:
 
   #  - win_before, win_after and gap only matter for power_mod, power_win, entropy and centroid.
-  #  - win_kurt only matters for kurtosis.
+  #  - win_kurt only matters for kurtosis.pi
   #  - direction only matters for entropy and centroid.
 
 #  process_5:

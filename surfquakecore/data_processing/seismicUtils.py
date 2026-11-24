@@ -71,6 +71,145 @@ class SeismicUtils:
 
         return new_stream
 
+    # Rotations accepted by rotate_per_station, with the components each needs
+    _ROTATION_INPUTS = {
+        "NE->RT": ("N", "E"),
+        "RT->NE": ("R", "T"),
+        "ZNE->LQT": ("Z", "N", "E"),
+        "LQT->ZNE": ("L", "Q", "T"),
+    }
+    _ROTATION_ALIASES = {"->LQT": "ZNE->LQT"}
+
+    @staticmethod
+    def get_header_angles(tr):
+        """
+        Back-azimuth and inclination of a trace, in degrees, from its header.
+
+        tr.stats.geodetic['geodetic'] = [dist_km, az, baz, inc] is the reference (written by
+        analysis_events); tr.stats.back_azimuth / tr.stats.inclination are the fallback.
+        Negative values are the "no event" placeholder (-1) and are returned as None.
+
+        Returns
+        -------
+        (baz, inc) : tuple of float or None
+        """
+        baz = inc = None
+        geodetic = tr.stats.get("geodetic", None)
+        geo_vals = geodetic.get("geodetic", None) if geodetic else None
+        if geo_vals is not None and len(geo_vals) >= 3:
+            baz = geo_vals[2]
+            if len(geo_vals) >= 4:
+                inc = geo_vals[3]
+        if baz is None:
+            baz = tr.stats.get("back_azimuth", None)
+        if inc is None:
+            inc = tr.stats.get("inclination", None)
+
+        def _valid(value):
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                return None
+            return value if np.isfinite(value) and value >= 0 else None
+
+        return _valid(baz), _valid(inc)
+
+    @staticmethod
+    def rotate_per_station(stream, method, back_azimuth=None, inclination=None, verbose=True):
+        """
+        Rotate each station group of a stream independently.
+
+        Groups are (network, station, location, band+instrument code), so the N of a station is
+        always rotated with the E of the same station and sensor. ObsPy renames the rotated
+        channels itself (N/E -> R/T, Z/N/E -> L/Q/T, ...).
+
+        Parameters
+        ----------
+        stream : obspy.Stream
+            Traces with standardised component codes (see standardize_to_NE_components).
+        method : str
+            'NE->RT', 'RT->NE', 'ZNE->LQT', 'LQT->ZNE' ('->LQT' is accepted as 'ZNE->LQT').
+        back_azimuth, inclination : float, optional
+            Fixed angles for all stations. If None, they are read from each station's header
+            (get_header_angles). Stations without a valid angle are left unrotated.
+
+        Returns
+        -------
+        rotated : obspy.Stream
+            All traces, rotated where possible, unrotated otherwise.
+        n_rotated, n_skipped : int
+        """
+        method = SeismicUtils._ROTATION_ALIASES.get(method, method)
+        if method not in SeismicUtils._ROTATION_INPUTS:
+            raise ValueError(f"Unsupported rotation '{method}'. "
+                             f"Use one of {list(SeismicUtils._ROTATION_INPUTS)}")
+        needed = SeismicUtils._ROTATION_INPUTS[method]
+        needs_inc = len(needed) == 3
+
+        groups = defaultdict(list)
+        for tr in stream:
+            s = tr.stats
+            groups[(s.network, s.station, s.location, s.channel[:2])].append(tr)
+
+        rotated = Stream()
+        n_rotated = n_skipped = 0
+
+        for (net, sta, loc, band), traces in groups.items():
+            group_id = f"{net}.{sta}.{loc}.{band}?"
+            group = Stream(traces)
+            by_comp = defaultdict(list)
+            for tr in traces:
+                by_comp[tr.stats.channel[-1].upper()].append(tr)
+
+            missing = [c for c in needed if c not in by_comp]
+            if missing:
+                # a lone vertical (or a hydrophone) has nothing to rotate, so stay quiet for it
+                if verbose and any(c in by_comp for c in needed if c != "Z"):
+                    print(f"[WARN] {group_id}: missing component(s) {missing}, not rotated.")
+                n_skipped += 1
+                rotated += group
+                continue
+            if any(len(by_comp[c]) > 1 for c in needed):
+                if verbose:
+                    print(f"[WARN] {group_id}: more than one trace per component, not rotated.")
+                n_skipped += 1
+                rotated += group
+                continue
+
+            baz, inc = back_azimuth, inclination
+            if baz is None or (needs_inc and inc is None):
+                head_baz, head_inc = SeismicUtils.get_header_angles(by_comp[needed[0]][0])
+                baz = head_baz if baz is None else baz
+                inc = head_inc if inc is None else inc
+            if baz is None or (needs_inc and inc is None):
+                if verbose:
+                    what = "back-azimuth" if baz is None else "inclination"
+                    print(f"[WARN] {group_id}: no valid {what} in header (no event?), not rotated.")
+                n_skipped += 1
+                rotated += group
+                continue
+
+            sub = Stream([by_comp[c][0] for c in needed])
+            try:
+                if needs_inc:
+                    sub.rotate(method=method, back_azimuth=baz, inclination=inc)
+                else:
+                    sub.rotate(method=method, back_azimuth=baz)
+            except Exception as e:
+                if verbose:
+                    print(f"[WARN] {group_id}: rotation failed ({e}), not rotated.")
+                n_skipped += 1
+                rotated += group
+                continue
+
+            n_rotated += 1
+            if verbose:
+                inc_txt = f" inc={inc:.2f}°" if needs_inc else ""
+                print(f"[INFO] {group_id}: {method} with baz={baz:.2f}°{inc_txt}")
+            rotated += group  # same Trace objects, now rotated and renamed by ObsPy
+
+        return rotated, n_rotated, n_skipped
+
     @staticmethod
     def rename_rotated_channels(stream, method):
         """
