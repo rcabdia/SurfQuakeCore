@@ -137,6 +137,9 @@ class PlotProj:
         self.picks = {}
         self.current_pick = None
         self.pick_lines = {}
+        self.events = []  # events imported from a multi-event pick file (dicts)
+        self.event_artists = []  # event lines + labels currently drawn
+        self._pick_event = {}  # (trace_id, round(timestamp, 3)) -> index in self.events
         self.fig = None
         self.axs = None
         self.pick_type = "P"
@@ -803,10 +806,11 @@ class PlotProj:
             self.pick_lines[trace_id] = []
 
         x = mdt.date2num(pick_time)
-        line = ax.axvline(x=x, color='r', linestyle='--', alpha=0.8)
+        color = self._pick_color(trace_id, pick_time)
+        line = ax.axvline(x=x, color=color, linestyle='--', alpha=0.8)
 
         # Tag artists for hover/delete
-        line._surfq_meta = {"trace_id": trace_id, "pick_time": pick_time}
+        line._surfq_meta = {"trace_id": trace_id, "pick_time": pick_time, "color": color}
 
         # Find matching pick
         pick_info = None
@@ -1202,6 +1206,7 @@ class PlotProj:
                 pt = pick[0]
                 self._draw_pick_lines(trace_id, ax, pt)
 
+        self._draw_events()
         self.fig.canvas.draw()
 
     def _clear_picks(self, event=None):
@@ -1219,6 +1224,11 @@ class PlotProj:
                 line.remove()
                 label.remove()
         self.pick_lines = {}
+
+        # Imported events go with the picks
+        self.events = []
+        self._pick_event = {}
+        self._remove_event_artists()
 
         self.current_pick = None
         if self.plot_config["show_info_picks"]:
@@ -2187,9 +2197,9 @@ class PlotProj:
         """Remove hover style from previously hovered pick, if any."""
         if self._hover:
             _, line, label, _ = self._hover
-            # restore default style
+            # restore default style (event colour if the pick belongs to an event)
             try:
-                line.set_color('r')
+                line.set_color(getattr(line, "_surfq_meta", {}).get("color", 'r'))
                 line.set_linewidth(1.0)
             except Exception:
                 pass
@@ -2305,149 +2315,336 @@ class PlotProj:
             self._update_info_box()
         self.fig.canvas.draw_idle()
 
-    def import_nlloc_obs(self, input_file: str, delimiter=r"\s+"):
+    # ==================================================================
+    #  PICK FILE IMPORT (single or multi-event) AND EVENT DISPLAY
+    # ==================================================================
+    # no blue (traces) and no red (picks without event)
+    EVENT_COLORS = ("tab:purple", "tab:green", "tab:brown", "tab:pink",
+                    "tab:olive", "tab:cyan", "black", "tab:gray")
 
+    _PICK_COLUMNS = {
+        "station": ["Station_name", "Station", "STA"],
+        "component": ["Component", "CHA", "Channel"],
+        "phase": ["P_phase_descriptor", "Phase", "PHASE"],
+        "first_motion": ["First_Motion", "FM", "Polarity"],
+        "date": ["Date", "YYYYMMDD"],
+        "hour_min": ["Hour_min", "Hourmin", "HHMM"],
+        "seconds": ["Seconds", "SS", "Sec", "SEC"],
+        "amplitude": ["Amplitude", "AMP"],
+    }
+
+    @staticmethod
+    def _split_pick_blocks(text):
+        """
+        Split a pick file into blocks. A block ends at a blank line or at a line
+        starting with 'Event' (Event_1, Event 1, EVENT...).
+
+        Returns (blocks, explicit): blocks is a list of (event_label or None, [lines]);
+        explicit is True when the file contains 'Event' lines.
+        A block without header line reuses the header of the previous block.
+        """
+        import re
+        event_re = re.compile(r"^\s*event", re.IGNORECASE)
+        blocks, cur, label, explicit = [], [], None, False
+
+        def flush():
+            nonlocal cur
+            if [ln for ln in cur if ln.strip()]:
+                blocks.append((label, cur))
+            cur = []
+
+        for ln in text.splitlines():
+            if event_re.match(ln):
+                flush()
+                explicit = True
+                tok = ln.split()
+                label = " ".join(tok[:2]) if tok[0].lower() == "event" and len(tok) > 1 else tok[0]
+            elif not ln.strip():
+                if [x for x in cur if x.strip()]:  # end of a block (blank right after 'Event' is ignored)
+                    flush()
+                    label = None if explicit else label
+            else:
+                cur.append(ln)
+        flush()
+        return blocks, explicit
+
+    @staticmethod
+    def _fix_gau_header(header, first_row):
+        """Old ISP format: header without the GAU column but data rows with a GAU
+        token before Err (one token more than the header). Add the column name."""
+        h, r = header.split(), first_row.split()
+        if "GAU" in h or "Err" not in h or len(r) != len(h) + 1:
+            return header
+        i = h.index("Err")
+        if r[i].upper() != "GAU":
+            return header
+        return " ".join(h[:i] + ["GAU"] + h[i:])
+
+    @staticmethod
+    def _row_time(datestr, hhmm, sec):
+        """Date as YYYYMMDD or YYYY-MM-DD, Hour_min as HHMM (or HMM), Seconds as float."""
+        import re
+        d = re.sub(r"\D", "", str(datestr).strip())
+        hm = re.sub(r"\D", "", str(hhmm).split(".")[0]).zfill(4)
+        sec = float(sec)
+        s_int = int(sec)
+        us = int(round((sec - s_int) * 1_000_000))
+        if us >= 1_000_000:
+            s_int, us = s_int + 1, us - 1_000_000
+        t = UTCDateTime(int(d[:4]), int(d[4:6]), int(d[6:8]), int(hm[:-2]), int(hm[-2:]))
+        return t + s_int + us * 1e-6
+
+    def _match_trace(self, sta, comp):
+        """Trace with this station and channel; fallback: same station and same
+        component letter; last fallback: same station."""
+        same_sta = [tr for tr in self.trace_list if getattr(tr.stats, "station", "") == sta]
+        for tr in same_sta:
+            if tr.stats.channel == comp:
+                return tr
+        for tr in same_sta:
+            if comp and tr.stats.channel[-1:] == comp[-1:]:
+                return tr
+        return same_sta[0] if same_sta else None
+
+    def import_nlloc_obs(self, input_file: str, delimiter=r"\s+"):
         """
         Load picks from an ISP/CSV-like phase table with headers:
           Station_name Instrument Component P_phase_onset P_phase_descriptor First_Motion
           Date Hour_min Seconds Err ErrMag Coda_duration Amplitude Period
 
-        Imports into trace.stats.picks, self.picks, and draws labels/lines.
+        Single or MULTI-EVENT files. Events are separated by blank lines and/or by
+        lines starting with 'Event' (e.g. 'Event_1'); each block may repeat the header.
+        In a multi-event file every event is drawn as a vertical line with a label,
+        and its picks get the same colour.
+
+        Imports into trace.stats.picks (with key 'event' for event picks), self.picks,
+        and draws labels/lines. Picks already loaded are not duplicated.
         S-wave polarity on import: '+'->'U', '-'->'D'  (P keeps U/D/?)
         """
-
+        import io
         import pandas as pd
-        self._set_output_target(input_file, "NLLOC_OBS")
+
         if not os.path.isfile(input_file):
             print(f"[ERROR] File not found: {input_file}")
             return
+        self._set_output_target(input_file, "NLLOC_OBS")
 
         try:
-            df = pd.read_csv(input_file, delimiter=delimiter, engine="python")
+            with open(input_file, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
         except Exception as e:
-            print(f"[ERROR] Could not read ISP table: {e}")
+            print(f"[ERROR] Could not read pick file: {e}")
             return
 
-        # Flexible column mapping
-        colmap = {
-            "station": None,
-            "component": None,
-            "phase": None,
-            "first_motion": None,
-            "date": None,
-            "hour_min": None,
-            "seconds": None,
-            "amplitude": None,
-        }
-
-        # Accept common variants
-        candidates = {
-            "station": ["Station_name", "Station", "STA"],
-            "component": ["Component", "CHA", "Channel"],
-            "phase": ["P_phase_descriptor", "Phase", "PHASE"],
-            "first_motion": ["First_Motion", "FM", "Polarity"],
-            "date": ["Date", "YYYYMMDD"],
-            "hour_min": ["Hour_min", "HHMM"],
-            "seconds": ["Seconds", "SS", "Sec", "SEC"],
-            "amplitude": ["Amplitude", "AMP"],
-        }
-
-        for key, names in candidates.items():
-            for name in names:
-                if name in df.columns:
-                    colmap[key] = name
-                    break
-
-        missing = [k for k, v in colmap.items() if v is None and k not in ("amplitude",)]
-        if missing:
-            print(f"[ERROR] Missing required columns: {missing}")
+        blocks, explicit = self._split_pick_blocks(text)
+        if not blocks:
+            print(f"[INFO] No picks in '{input_file}'.")
             return
+        # Blocks are events when the file has 'Event' lines (only those blocks),
+        # or when it has several blank-line separated blocks (ISP multi-event).
+        multi = explicit or len(blocks) > 1
 
-        added = 0
+        new_events = []
+        added = duplicated = unmatched = skipped = 0
+        header = None
 
-        for _, row in df.iterrows():
+        for n_block, (label, lines) in enumerate(blocks, start=1):
+            first = lines[0].split()
+            if any(name in first for name in self._PICK_COLUMNS["station"]):
+                header = lines[0]
+                body = lines
+            elif header is not None:
+                body = [header] + lines
+            else:
+                print(f"[WARN] Block {n_block} has no header line, skipped.")
+                continue
+            if len(body) > 1:
+                fixed = self._fix_gau_header(body[0], body[1])
+                if fixed != body[0]:
+                    body = [fixed] + body[1:]
+
             try:
-                sta = str(row[colmap["station"]]).strip()
-                comp = str(row[colmap["component"]]).strip()
-                phase = str(row[colmap["phase"]]).strip().upper()
-                fm = str(row[colmap["first_motion"]]).strip()
+                df = pd.read_csv(io.StringIO("\n".join(body)), delimiter=delimiter, engine="python")
+            except Exception as e:
+                print(f"[WARN] Block {n_block} could not be read: {e}")
+                continue
 
-                # Date/time (Date as YYYYMMDD, Hour_min as HHMM, Seconds as float)
-                datestr = str(row[colmap["date"]]).strip()
-                hhmm = str(row[colmap["hour_min"]]).zfill(4)
-                sec = float(row[colmap["seconds"]])
+            colmap = {}
+            for key, names in self._PICK_COLUMNS.items():
+                colmap[key] = next((nm for nm in names if nm in df.columns), None)
+            missing = [k for k, v in colmap.items() if v is None and k != "amplitude"]
+            if missing:
+                print(f"[WARN] Block {n_block}: missing required columns {missing}, skipped.")
+                continue
 
-                yyyy = int(datestr[:4]);
-                mm = int(datestr[4:6]);
-                dd = int(datestr[6:8])
-                HH = int(hhmm[:2]);
-                MM = int(hhmm[2:])
-                s_int = int(sec);
-                us = int(round((sec - s_int) * 1_000_000))
-                t = UTCDateTime(yyyy, mm, dd, HH, MM, s_int, us)
+            is_event = multi and (label is not None or not explicit)
+            if is_event:
+                ev = {"label": label or f"Event_{len(new_events) + 1}", "picks": [],
+                      "stations": set(), "matched": 0, "entries": [], "keys": []}
+                new_events.append(ev)
 
-                # Amplitude (optional)
-                amp = float(row[colmap["amplitude"]]) if colmap["amplitude"] in df.columns else float("nan")
+            for _, row in df.iterrows():
+                try:
+                    sta = str(row[colmap["station"]]).strip()
+                    comp = str(row[colmap["component"]]).strip()
+                    phase = str(row[colmap["phase"]]).strip().upper()
+                    fm_up = str(row[colmap["first_motion"]]).strip().upper()
+                    t = self._row_time(row[colmap["date"]], row[colmap["hour_min"]],
+                                       row[colmap["seconds"]])
+                    amp = float(row[colmap["amplitude"]]) if colmap["amplitude"] else float("nan")
+                except Exception as e:
+                    skipped += 1
+                    print(f"[WARN] Row skipped: {e}")
+                    continue
 
-                # Import mapping for S: +->U, - -> D ; keep P as is
-                fm_up = fm.upper()
                 if phase.startswith("S"):
-                    if fm_up == "+":
-                        pol_ui = "U"
-                    elif fm_up == "-":
-                        pol_ui = "D"
-                    elif fm_up in ("U", "D", "?"):
-                        pol_ui = fm_up
-                    else:
-                        pol_ui = "?"
+                    pol_ui = {"+": "U", "-": "D"}.get(fm_up, fm_up if fm_up in ("U", "D", "?") else "?")
                 else:
                     pol_ui = fm_up if fm_up in ("U", "D", "?") else "?"
 
-                # Find matching trace: (station, channel)
-                match = None
-                for tr in self.trace_list:
-                    if getattr(tr.stats, "station", "") == sta and getattr(tr.stats, "channel", "") == comp:
-                        match = tr
-                        break
+                if is_event:
+                    ev["picks"].append((t, phase))
+                    ev["stations"].add(sta)
+
+                match = self._match_trace(sta, comp)
                 if match is None:
-                    # relaxed fallback: station only
-                    for tr in self.trace_list:
-                        if getattr(tr.stats, "station", "") == sta:
-                            match = tr
-                            break
-                if match is None:
-                    # no match—skip quietly (or print info)
-                    # print(f"[INFO] Skipping pick (no trace): {sta}.{comp} {phase}")
+                    unmatched += 1
                     continue
 
-                # Add to trace header
-                entry = {"time": t.timestamp, "phase": phase, "amplitude": amp, "polarity": pol_ui}
                 if not hasattr(match.stats, "picks"):
                     match.stats.picks = []
+                if any(abs(p.get("time", -1e12) - t.timestamp) < 1e-3 and p.get("phase") == phase
+                       for p in match.stats.picks):
+                    duplicated += 1
+                    if is_event:  # an already loaded pick can still belong to this event
+                        ev["keys"].append((match.id, round(t.timestamp, 3)))
+                        ev["matched"] += 1
+                    continue
+
+                entry = {"time": t.timestamp, "phase": phase, "amplitude": amp, "polarity": pol_ui}
+                if is_event:
+                    ev["entries"].append(entry)  # 'event' label set once the event is final
+                    ev["keys"].append((match.id, round(t.timestamp, 3)))
+                    ev["matched"] += 1
                 match.stats.picks.append(entry)
-
-                # UI memory + draw if visible
-                if match.id not in self.picks:
-                    self.picks[match.id] = []
-                self.picks[match.id].append((t.datetime, phase, amp, pol_ui))
-
-                if self.fig and getattr(self, "displayed_traces", None):
-                    try:
-                        j = next(k for k, tr_ in enumerate(self.displayed_traces) if tr_.id == match.id)
-                        self._draw_pick_lines(match.id, self.axs[j], t.datetime)
-                    except StopIteration:
-                        pass
-
+                self.picks.setdefault(match.id, []).append((t.datetime, phase, amp, pol_ui))
                 added += 1
-            except Exception as e:
-                print(f"[WARN] Row skipped: {e}")
 
-        if added:
+        # Event time = centroid of the P picks (all picks if there is no P)
+        for ev in new_events:
+            if not ev["picks"]:
+                continue
+            times = [t for t, ph in ev["picks"] if ph.startswith("P")] or [t for t, _ in ev["picks"]]
+            ev["time"] = UTCDateTime(sum(t.timestamp for t in times) / len(times))
+            ev["first"] = min(t for t, _ in ev["picks"])
+            ev["last"] = max(t for t, _ in ev["picks"])
+            ev["n_picks"] = len(ev["picks"])
+            ev["n_stations"] = len(ev["stations"])
+
+            # Same event already loaded (file imported twice): reuse it
+            same = next((e for e in self.events if abs(e["time"] - ev["time"]) < 1e-3
+                         and e["label"].split("#")[0] == ev["label"]), None)
+            if same is None:
+                # unique label (two files can both have 'Event_1')
+                base, used, k = ev["label"], {e["label"] for e in self.events}, 2
+                while ev["label"] in used:
+                    ev["label"] = f"{base}#{k}"
+                    k += 1
+                self.events.append(ev)
+                same = ev
+            for entry in ev.pop("entries"):
+                entry["event"] = same["label"]
+            same.setdefault("keys", [])
+            same["keys"] = list(dict.fromkeys(same["keys"] + ev.pop("keys")))
+        self.events.sort(key=lambda e: e["time"])
+        self._reindex_pick_events()
+
+        if self.fig and getattr(self, "displayed_traces", None) and self.axs is not None:
+            self._redraw_picks()
             if self.plot_config["show_info_picks"]:
-                self._update_info_box() # too messy update the infobox, could be too much picks
-            if self.fig:
-                self.fig.canvas.draw_idle()
-        print(f"[INFO] Imported {added} ISP picks from '{input_file}'.")
+                self._update_info_box()
+
+        msg = f"[INFO] Imported {added} picks from '{input_file}'"
+        extra = []
+        if duplicated:
+            extra.append(f"{duplicated} already loaded")
+        if unmatched:
+            extra.append(f"{unmatched} without trace")
+        if skipped:
+            extra.append(f"{skipped} unreadable")
+        print(msg + (f" ({', '.join(extra)})." if extra else "."))
+        if new_events:
+            self.print_event_summary()
+
+    def _reindex_pick_events(self):
+        """(trace_id, timestamp) -> event index, rebuilt after sorting self.events."""
+        self._pick_event = {key: i for i, e in enumerate(self.events) for key in e.get("keys", [])}
+
+    def print_event_summary(self):
+        """Print the imported events: time, picks, stations, time span."""
+        if not self.events:
+            print("[INFO] No events loaded.")
+            return
+        total = sum(e.get("n_picks", 0) for e in self.events)
+        print(f"[INFO] {len(self.events)} event(s), {total} picks:")
+        print(f"   {'#':>3}  {'Event':<14} {'Time (P centroid)':<23} {'Picks':>5} "
+              f"{'Shown':>5} {'Stations':>8} {'Span (s)':>9}")
+        for i, e in enumerate(self.events, start=1):
+            span = e["last"] - e["first"]
+            print(f"   {i:>3}  {e['label'][:14]:<14} {e['time'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]:<23} "
+                  f"{e['n_picks']:>5} {e['matched']:>5} {e['n_stations']:>8} {span:>9.2f}")
+
+    def _pick_color(self, trace_id, pick_time):
+        """Colour of the event the pick belongs to, red if it belongs to none."""
+        try:
+            ts = UTCDateTime(pick_time).timestamp
+        except Exception:
+            return 'r'
+        idx = self._pick_event.get((trace_id, round(ts, 3)))
+        if idx is None:
+            return 'r'
+        return self.EVENT_COLORS[idx % len(self.EVENT_COLORS)]
+
+    def _remove_event_artists(self):
+        for artist in self.event_artists:
+            try:
+                artist.remove()
+            except Exception:
+                pass
+        self.event_artists = []
+
+    def _draw_events(self):
+        """
+        Draw every imported event inside the displayed time range: a solid vertical
+        line on all subplots (event colour) and a label on the top subplot.
+        Disabled with plot_config['show_events'] = False.
+        """
+        self._remove_event_artists()
+        if not self.events or not self.plot_config.get("show_events", True):
+            return
+        if self.axs is None or not getattr(self, "displayed_traces", None):
+            return
+
+        t_min = min(tr.stats.starttime for tr in self.displayed_traces)
+        t_max = max(tr.stats.endtime for tr in self.displayed_traces)
+        ax0 = self.axs[0]
+
+        for i, ev in enumerate(self.events):
+            t = ev.get("time")
+            if t is None or not (t_min <= t <= t_max):
+                continue  # drawing it would stretch the time axis
+            color = self.EVENT_COLORS[i % len(self.EVENT_COLORS)]
+            x = mdt.date2num(t.datetime)
+            for ax in self.axs:
+                line = ax.axvline(x=x, color=color, linestyle='-', linewidth=1.2, alpha=0.8, zorder=4)
+                line._surfq_event = ev["label"]
+                self.event_artists.append(line)
+            # label at the top of the first subplot (x in data units, y in axes fraction)
+            label = ax0.text(x, 0.98, f"{ev['label']}\n{t.strftime('%H:%M:%S.%f')[:-4]}",
+                             transform=ax0.get_xaxis_transform(), fontsize=7, color="white",
+                             ha="center", va="top", zorder=6, clip_on=True,
+                             bbox=dict(boxstyle="round,pad=0.2", fc=color, ec=color, alpha=0.85))
+            self.event_artists.append(label)
 
     def write_isp_table_manual(self, filepath: str, delimiter: str = " ", write_header_when_empty: bool = True):
         """
@@ -2463,6 +2660,7 @@ class PlotProj:
                   "Date Hour_min Seconds Err ErrMag Coda_duration Amplitude Period")
 
         rows = []
+        event_rows = {}  # event label -> rows (picks imported from a multi-event file)
         for tr in self.trace_list:
             if not hasattr(tr.stats, "picks"):
                 continue
@@ -2499,24 +2697,39 @@ class PlotProj:
                     sec_val = 59.999  # guard rare round-up
                 seconds_str = f"{sec_val:06.3f}"
 
-                rows.append([
+                row = [
                     sta, inst, comp, onset, phase, fm,
                     date, hhmm, seconds_str, err_model, f"{err_mag:.2E}",
                     f"{float(coda):.1f}", f"{float(amp):.2f}", f"{float(period):.2f}"
-                ])
+                ]
+                if p.get("event"):
+                    event_rows.setdefault(p["event"], []).append(row)
+                else:
+                    rows.append(row)
 
         # Always overwrite (even if rows is empty)
         dirpath = os.path.dirname(os.path.abspath(filepath)) or "."
         with tempfile.NamedTemporaryFile("w", delete=False, dir=dirpath) as tf:
             tmp = tf.name
-            if write_header_when_empty or rows:
+            if rows or (write_header_when_empty and not event_rows):
                 tf.write(header + "\n")
             for r in rows:
                 tf.write(delimiter.join(map(str, r)) + "\n")
+            # picks of imported events: one block per event, so the file can be re-imported
+            order = [e["label"] for e in getattr(self, "events", [])]
+            order += [lab for lab in event_rows if lab not in order]
+            for lab in order:
+                if lab not in event_rows:
+                    continue
+                line = lab if lab.lower().startswith("event") else f"Event {lab}"
+                tf.write(f"\n{line}\n{header}\n")
+                for r in event_rows[lab]:
+                    tf.write(delimiter.join(map(str, r)) + "\n")
         os.replace(tmp, filepath)
 
-        if rows:
-            print(f"[INFO] Wrote {len(rows)} picks to ISP table (overwritten): {filepath}")
+        n_rows = len(rows) + sum(len(v) for v in event_rows.values())
+        if n_rows:
+            print(f"[INFO] Wrote {n_rows} picks to ISP table (overwritten): {filepath}")
         else:
             msg = "[INFO] No picks remain — CSV overwritten "
             msg += "(header only)." if write_header_when_empty else "(empty file)."

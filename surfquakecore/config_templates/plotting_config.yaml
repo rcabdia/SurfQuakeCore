@@ -86,6 +86,10 @@ plotting:
   # default: false
   show_info_picks: false
 
+  # Draw the events of a multi-event pick file (line + label, picks in the event colour).
+  # default: true
+  show_events: true
+
   # Crosshair (dashed lines following the mouse). Only for interactive plots.
   #   false      : no crosshair
   #   single     : vertical line in all subplots + horizontal line only in the
