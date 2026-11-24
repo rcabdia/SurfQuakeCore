@@ -115,13 +115,19 @@ Analysis:
   # B. COMPONENTS: ROTATION AND POLARISATION
   # ===========================================================================
 
-  # --- rotate: rotate the 3-component groups of each station
-  #   Components are standardised to Z/N/E and cut to their common window.
+# --- rotate: rotate the 3-component groups of each station
+  #   Each station (net.sta.loc + band code) is rotated on its own; components
+  #   are standardised to Z/N/E (1/2 and Y/X are renamed, NOT corrected for
+  #   sensor azimuth, e.g. OBS) and cut to their common window.
   #   type:        NE->RT | RT->NE | ZNE->LQT | LQT->ZNE
-  #   method:      GAC  = back-azimuth (and inclination) from the trace headers
-  #                FREE = angles given below
+  #   method:      GAC  = back-azimuth (and inclination) of each station from its
+  #                       trace header (needs located events; stations without
+  #                       valid angles are left unrotated with a warning)
+  #                FREE = the same angles below for every station
   #   angle:       back-azimuth [deg] (FREE)
-  #   inclination: [deg] (FREE; give it always, 0.0 for NE->RT)
+  #   inclination: [deg] (FREE; required for ZNE->LQT / LQT->ZNE,
+  #                optional for NE->RT / RT->NE, default 0.0)
+
 
 #  process_5:
 #    name: 'rotate'
