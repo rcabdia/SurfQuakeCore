@@ -70,6 +70,10 @@ def _create_actions():
             name="pick", run=_pick,
             description="Run PhaseNet to pick P/S wave arrivals."
         ),
+        "ccpick": _CliActions(
+            name="ccpick", run=_ccpick,
+            description="Cross-correlation (template matching) picker, PhaseNet-compatible output."
+        ),
         "associate": _CliActions(
             name="associate", run=_associate,
             description="Associate picks into events using REAL."
@@ -230,7 +234,7 @@ def _command_groups():
                                                         "processing", "processing_daily",
                                                         ],
         "Section 3: Detection  /  Picking / Association": [
-            "pick", "associate", "trigg",
+            "pick", "ccpick", "associate", "trigg",
         ],
         "Section 4: Location / Source / Mechanism": [
             "locate", "source", "polarity", "focmec", "plotmec", "mti",
@@ -657,6 +661,197 @@ def _pick():
         PhasenetUtils.print_summary(picks_results, len(picks), output_dir, time.time() - start)
     else:
         print("Empty Project, Nothing to pick!")
+
+
+
+def _filter_project(sp_loaded, parsed_args):
+    """Apply the net/station/channel and time filters shared by the picking commands."""
+    from dateutil import parser
+
+    filters = {}
+    if parsed_args.net:
+        filters["net"] = parsed_args.net
+    if parsed_args.station:
+        filters["station"] = parsed_args.station
+    if parsed_args.channel:
+        filters["channel"] = parsed_args.channel
+    if filters:
+        print(f"[INFO] Filtering project by: {filters}")
+        sp_loaded.filter_project_keys(**filters)
+
+    try:
+        min_date = parser.parse(parsed_args.min_date) if parsed_args.min_date else None
+        max_date = parser.parse(parsed_args.max_date) if parsed_args.max_date else None
+    except ValueError as ve:
+        print("[ERROR] Date format should be: 'YYYY-MM-DD HH:MM:SS.sss'")
+        raise ve
+    if min_date or max_date:
+        print(f"[INFO] Filtering by time range: {min_date} to {max_date}")
+        sp_loaded.filter_project_time(starttime=min_date or parser.parse("1900-01-01"),
+                                      endtime=max_date or parser.parse("2200-01-01"), verbose=True)
+    return sp_loaded
+
+
+def _ccpick():
+    from surfquakecore.cc_picker.cc_picker import CCPicker
+    from surfquakecore.phasenet import pick_output
+    from surfquakecore.project.surf_project import SurfProject
+    import time
+
+    arg_parse = ArgumentParser(
+        prog=f"{__entry_point_name} ccpick",
+        description="Cross-correlation (template matching) picker for P- and S-wave arrivals.",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+
+    Overview:
+        Scans the project traces with template waveforms stored by the user in a folder
+        (obspy correlation_detector). The output is the same as 'surfquake pick' (PhaseNet):
+        original_picks.csv, nll_picks.txt and one folder per day (REAL format).
+
+    Templates folder (any ObsPy format: MSEED, SAC, H5, ...). Phase and onset time come from:
+        1) 'templates_info.txt' in the folder, if present (whitespace or comma separated):
+
+            # file                   phase  pick_time                  event
+            WM.EMAL..HHZ.mseed       P      2024-07-26T06:42:31.520    EV1
+            WM.EMAL..HHN.mseed       S      2024-07-26T06:42:34.100    EV1
+
+           pick_time = absolute UTC onset; event (optional) groups the channels of one master
+           event in network mode. Templates are used as they are (already cut).
+
+        2) otherwise, the SurfQuake pick header of each trace (stats.picks), e.g. H5 files written
+           with the 'write' command of the plotting tool after picking. Every trace with a P and/or
+           S pick becomes a template, cut to [pick - pre_pick, pick + post_pick]. Network mode: all
+           templates in the same (sub)folder are one master event (one subfolder per event).
+
+        Template ids NET.STA.CHA must match the data (location code is ignored).
+
+    Modes:
+        simple   one template = one channel, threshold on the correlation coefficient
+        network  Gibbons & Ringdal (2006, GJI 165, 149-166): scaled network correlation
+                 coefficient, per-channel picks from local maxima, ratio test and optional
+                 plane-wave slowness test. Also writes ccpick_detections.csv.
+
+    Usage Example:
+        > surfquake ccpick -f ./my_project.json -t ./templates -o ./picks_cc
+        > surfquake ccpick -f ./my_project.json -t ./templates -o ./picks_cc --mode network -th 6
+
+    Key Arguments:
+        -f,  --project_file     [REQUIRED]  Path to your seismic project file
+        -t,  --template_dir     [REQUIRED]  Folder with the templates (see above)
+        -o,  --output_dir       [REQUIRED]  Directory to save pick results
+             --mode             [OPTIONAL]  simple | network (default: simple)
+        -th, --threshold        [OPTIONAL]  simple: correlation (default 0.7)
+                                            network: scaled coefficient (default 6.0)
+             --fmin / --fmax    [OPTIONAL]  Bandpass for data and templates (default 2 / 15 Hz)
+             --distance         [OPTIONAL]  Minimum time between picks (default 2.0 s)
+             --pre_pick         [OPTIONAL]  Header picks only: seconds kept before the pick (default 1.0)
+             --post_pick        [OPTIONAL]  Header picks only: seconds kept after the pick (default 4.0)
+        -n,  --net / -s, --station / -ch, --channel / --min_date / --max_date
+                                [OPTIONAL]  Project filters, same as 'pick'
+        -v,  --verbose          [OPTIONAL]  Enable detailed logging
+
+    Network mode only:
+             --scc_a / --scc_b  Background windows of the scaled coefficient (default 1.0 / 2.5 s)
+             --min_ratio        Minimum C_A / mean(C_j^L) (default 0.58)
+             --min_channel_cc   Minimum channel correlation to write a pick (default 0.3)
+             --lag_win          Half window to search each channel maximum (default 0.5 s)
+             --min_channels     Minimum template channels present in the data (default 3)
+             --inventory        StationXML, enables the slowness test (small aperture arrays)
+             --max_slowness     Maximum plane-wave slowness, s/km (default 0.04)
+             --master_mag       Magnitude of the master event(s) -> magnitude per detection
+
+    Reference:
+        Gibbons & Ringdal (2006). The detection of low magnitude seismic events using
+        array-based waveform correlation, Geophysical Journal International, 165, 149-166.
+
+    Documentation:
+        https://projectisp.github.io/surfquaketutorial.github.io/
+    """
+    )
+
+    arg_parse.usage = ("Run cross-correlation picker: -f [project file] -t [templates folder] "
+                       "-o [pick saving directory] --mode [simple|network] -th [threshold]")
+
+    arg_parse.add_argument("-f", "--project_file", help="Path to your project file", type=str, required=True)
+    arg_parse.add_argument("-t", "--template_dir", help="Folder with the templates (+ templates_info.txt or header picks)",
+                           type=str, required=True)
+    arg_parse.add_argument("-o", "--output_dir", help="Path to directory where picks will be saved",
+                           type=str, required=True)
+    arg_parse.add_argument("--mode", choices=["simple", "network"], default="simple", help="Picker mode")
+    arg_parse.add_argument("-th", "--threshold", type=float, default=None,
+                           help="simple: correlation (0.7); network: scaled coefficient (6.0)")
+    arg_parse.add_argument("--fmin", type=float, default=2.0, help="Bandpass low corner (Hz)")
+    arg_parse.add_argument("--fmax", type=float, default=15.0, help="Bandpass high corner (Hz)")
+    arg_parse.add_argument("--distance", type=float, default=2.0, help="Minimum time between picks (s)")
+    arg_parse.add_argument("--pre_pick", type=float, default=1.0,
+                           help="Header-pick templates: seconds before the pick (default 1.0)")
+    arg_parse.add_argument("--post_pick", type=float, default=4.0,
+                           help="Header-pick templates: seconds after the pick (default 4.0)")
+    arg_parse.add_argument("--scc_a", type=float, default=1.0, help="Inner limit of background windows (s)")
+    arg_parse.add_argument("--scc_b", type=float, default=2.5, help="Outer limit of background windows (s)")
+    arg_parse.add_argument("--min_ratio", type=float, default=0.58, help="Minimum C_A / mean(C_j^L)")
+    arg_parse.add_argument("--min_channel_cc", type=float, default=0.3, help="Minimum channel correlation")
+    arg_parse.add_argument("--lag_win", type=float, default=0.5, help="Half window for channel maxima (s)")
+    arg_parse.add_argument("--min_channels", type=int, default=3, help="Minimum channels per template")
+    arg_parse.add_argument("--inventory", type=str, default=None, help="StationXML for the slowness test")
+    arg_parse.add_argument("--max_slowness", type=float, default=0.04, help="Maximum slowness (s/km)")
+    arg_parse.add_argument("--master_mag", type=float, default=None, help="Magnitude of the master event(s)")
+    arg_parse.add_argument("-n", "--net", help="Network code filter", type=str)
+    arg_parse.add_argument("-s", "--station", help="Station code filter", type=str)
+    arg_parse.add_argument("-ch", "--channel", help="Channel code filter", type=str)
+    arg_parse.add_argument("--min_date", help="Start time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("--max_date", help="End time filter: format 'YYYY-MM-DD HH:MM:SS.sss'", type=str)
+    arg_parse.add_argument("-v", "--verbose", help="Show detailed log output", action="store_true")
+
+    parsed_args = arg_parse.parse_args()
+    print(parsed_args)
+
+    sp_loaded = SurfProject.load_project(path_to_project_file=make_abs(parsed_args.project_file))
+    sp_loaded = _filter_project(sp_loaded, parsed_args)
+
+    if not (isinstance(sp_loaded, SurfProject) and len(sp_loaded.project) > 0):
+        print("Empty Project, Nothing to pick!")
+        return
+
+    inventory = None
+    if parsed_args.inventory and parsed_args.mode == "network":
+        from obspy import read_inventory
+        inventory = read_inventory(make_abs(parsed_args.inventory))
+
+    start = time.time()
+    output_dir = make_abs(parsed_args.output_dir)
+    picker = CCPicker(
+        sp_loaded.project,
+        template_dir=make_abs(parsed_args.template_dir),
+        mode=parsed_args.mode,
+        threshold=parsed_args.threshold,
+        fmin=parsed_args.fmin,
+        fmax=parsed_args.fmax,
+        distance=parsed_args.distance,
+        scc_a=parsed_args.scc_a,
+        scc_b=parsed_args.scc_b,
+        min_ratio=parsed_args.min_ratio,
+        min_channel_cc=parsed_args.min_channel_cc,
+        lag_win=parsed_args.lag_win,
+        min_channels=parsed_args.min_channels,
+        inventory=inventory,
+        max_slowness=parsed_args.max_slowness if inventory is not None else None,
+        master_mag=parsed_args.master_mag,
+        pre_pick=parsed_args.pre_pick,
+        post_pick=parsed_args.post_pick,
+        amplitude=True,
+        output=output_dir,
+        verbose=parsed_args.verbose)
+
+    picks_results = picker.pick()
+    pick_output.convert2real(picks_results, output_dir)
+    pick_output.save_original_picks(picks_results, output_dir)
+    pick_output.write_nlloc_format(picks_results, output_dir)
+    if parsed_args.mode == "network":
+        print(f"[INFO] Detections saved in {picker.write_detections(output_dir)}")
+    pick_output.print_summary(picks_results, picker.n_files, output_dir, time.time() - start,
+                              title=f"ccpick ({parsed_args.mode})")
 
 
 def _polarity():
