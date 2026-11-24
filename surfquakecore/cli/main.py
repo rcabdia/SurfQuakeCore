@@ -745,6 +745,10 @@ def _ccpick():
                                             network: scaled coefficient (default 6.0)
              --fmin / --fmax    [OPTIONAL]  Bandpass for data and templates (default 2 / 15 Hz)
              --distance         [OPTIONAL]  Minimum time between picks (default 2.0 s)
+             --save_cc          [OPTIONAL]  Folder where the correlation traces are saved for review (H5)
+             --save_cc_mode     [OPTIONAL]  detections: one file per detection, +-window (default)
+                                            full: whole correlation traces, one file per template and day
+             --save_cc_window   [OPTIONAL]  Half window (s) saved around each detection (default 30)
              --pre_pick         [OPTIONAL]  Header picks only: seconds kept before the pick (default 1.0)
              --post_pick        [OPTIONAL]  Header picks only: seconds kept after the pick (default 4.0)
         -n,  --net / -s, --station / -ch, --channel / --min_date / --max_date
@@ -760,6 +764,14 @@ def _ccpick():
              --inventory        StationXML, enables the slowness test (small aperture arrays)
              --max_slowness     Maximum plane-wave slowness, s/km (default 0.04)
              --master_mag       Magnitude of the master event(s) -> magnitude per detection
+
+    Reviewing the correlation (--save_cc):
+        H5 files (SurfQuake format) in <save_cc>/YYYYMMDD/, readable with the plotting tool. Each
+        detection is marked in the trace header (stats.picks). Network mode saves every channel
+        correlation (data ids), their average C_A (CC.<template>..AVG) and the scaled coefficient
+        (CC.<template>..SCC); detections rejected by the ratio or slowness test are saved too, with
+        the reason in the file name and in the marks. stats.ccpick holds the detection values.
+        Whole days are large (about 35 MB per trace and day at 100 Hz).
 
     Reference:
         Gibbons & Ringdal (2006). The detection of low magnitude seismic events using
@@ -784,6 +796,12 @@ def _ccpick():
     arg_parse.add_argument("--fmin", type=float, default=2.0, help="Bandpass low corner (Hz)")
     arg_parse.add_argument("--fmax", type=float, default=15.0, help="Bandpass high corner (Hz)")
     arg_parse.add_argument("--distance", type=float, default=2.0, help="Minimum time between picks (s)")
+    arg_parse.add_argument("--save_cc", type=str, default=None,
+                           help="Folder to save the correlation traces for review (H5)")
+    arg_parse.add_argument("--save_cc_mode", choices=["detections", "full"], default="detections",
+                           help="detections: window around each detection; full: whole traces")
+    arg_parse.add_argument("--save_cc_window", type=float, default=30.0,
+                           help="Half window (s) saved around each detection (default 30)")
     arg_parse.add_argument("--pre_pick", type=float, default=1.0,
                            help="Header-pick templates: seconds before the pick (default 1.0)")
     arg_parse.add_argument("--post_pick", type=float, default=4.0,
@@ -840,6 +858,9 @@ def _ccpick():
         master_mag=parsed_args.master_mag,
         pre_pick=parsed_args.pre_pick,
         post_pick=parsed_args.post_pick,
+        save_cc=make_abs(parsed_args.save_cc) if parsed_args.save_cc else None,
+        save_cc_mode=parsed_args.save_cc_mode,
+        save_cc_window=parsed_args.save_cc_window,
         amplitude=True,
         output=output_dir,
         verbose=parsed_args.verbose)
@@ -850,6 +871,8 @@ def _ccpick():
     pick_output.write_nlloc_format(picks_results, output_dir)
     if parsed_args.mode == "network":
         print(f"[INFO] Detections saved in {picker.write_detections(output_dir)}")
+    if parsed_args.save_cc:
+        print(f"[INFO] {picker.n_cc_files} correlation file(s) saved in {make_abs(parsed_args.save_cc)}")
     pick_output.print_summary(picks_results, picker.n_files, output_dir, time.time() - start,
                               title=f"ccpick ({parsed_args.mode})")
 

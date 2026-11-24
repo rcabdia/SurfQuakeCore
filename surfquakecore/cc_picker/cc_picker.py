@@ -58,12 +58,13 @@ keep their true start times (the time offsets between channels are used).
 """
 
 import os
+import re
 import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from obspy import Stream, UTCDateTime
+from obspy import Stream, Trace, UTCDateTime
 from obspy.signal.cross_correlation import correlation_detector
 
 from surfquakecore.config.global_config import read_stream
@@ -73,7 +74,13 @@ INFO_FILE = "templates_info.txt"
 AMP_WINDOW = {"P": 10.0, "S": 5.0}  # s after the pick, same windows as PhaseNet
 AMP_SCALE = 2080 * 25  # same amplitude scaling as PhasenetUtils.split_picks
 DETECTION_COLUMNS = ["time", "phase", "template", "n_channels", "n_picks", "cc_mean", "scaled_cc",
-                     "ratio", "slowness", "magnitude"]
+                     "ratio", "slowness", "magnitude", "status"]
+SAVE_CC_MODES = ("detections", "full")
+
+
+def safe_name(name):
+    """Template name usable in a file name."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(name)).strip("_") or "template"
 
 
 def channel_key(stats):
@@ -97,7 +104,8 @@ class CCPicker:
     def __init__(self, files, template_dir, mode="simple", threshold=None, fmin=2.0, fmax=15.0,
                  distance=2.0, scc_a=1.0, scc_b=2.5, min_ratio=0.58, min_channel_cc=0.3,
                  lag_win=0.5, min_channels=3, inventory=None, max_slowness=None, master_mag=None,
-                 pre_pick=1.0, post_pick=4.0, amplitude=True, output=None, verbose=False):
+                 pre_pick=1.0, post_pick=4.0, amplitude=True, output=None, verbose=False,
+                 save_cc=None, save_cc_mode="detections", save_cc_window=30.0):
         """
         Cross-correlation picker with the same output as PhasenetISP + PhasenetUtils.split_picks.
 
@@ -123,11 +131,24 @@ class CCPicker:
         :param amplitude: compute the amplitude column (otherwise 0)
         :param output: directory to create (optional)
         :param verbose: print progress
+        :param save_cc: folder where the correlation traces are written (H5, SurfQuake format) for
+                        review; None = not saved
+        :param save_cc_mode: "detections" -> one file per detection, cut to +-save_cc_window s;
+                             "full" -> whole correlation traces, one file per template and day
+        :param save_cc_window: half length (s) of the saved window in "detections" mode
         """
         if mode not in ("simple", "network"):
             raise ValueError("mode must be 'simple' or 'network'")
         if not 0 < scc_a < scc_b:
             raise ValueError("scc_a and scc_b must satisfy 0 < scc_a < scc_b")
+        if save_cc_mode not in SAVE_CC_MODES:
+            raise ValueError(f"save_cc_mode must be one of {SAVE_CC_MODES}")
+        if save_cc is not None:
+            try:
+                import obspyh5  # noqa: F401  (registers the H5 format in ObsPy)
+            except ImportError as ex:
+                raise ImportError("save_cc writes H5 files and needs obspyh5 (pip install obspyh5)") from ex
+            os.makedirs(save_cc, exist_ok=True)
 
         self.files = files
         self.template_dir = template_dir
@@ -146,6 +167,8 @@ class CCPicker:
         self.pre_pick, self.post_pick = pre_pick, post_pick
         self.amplitude = amplitude
         self.verbose = verbose
+        self.save_cc, self.save_cc_mode, self.save_cc_window = save_cc, save_cc_mode, save_cc_window
+        self.n_cc_files = 0
 
         self.n_files = 0
         self.detections = pd.DataFrame(columns=DETECTION_COLUMNS)
@@ -351,6 +374,46 @@ class CCPicker:
                 kept.append(t)
                 yield r
 
+    # ------------------------------------------------------------------ correlation traces (review)
+    def _cc_trace(self, tr, info, t1=None, t2=None, network=None, station=None, location=None,
+                  channel=None):
+        """float32 copy of a correlation trace (optionally cut to [t1, t2]) with a clean review header."""
+        cut = tr.slice(t1, t2) if t1 is not None else tr
+        out = Trace(data=np.nan_to_num(np.asarray(cut.data, dtype=np.float32)))
+        for key in ("network", "station", "location", "channel", "starttime", "delta"):
+            out.stats[key] = cut.stats[key]
+        for key, value in (("network", network), ("station", station), ("location", location),
+                           ("channel", channel)):
+            if value is not None:
+                out.stats[key] = value
+        out.stats.ccpick = dict(info)
+        out.stats.picks = []
+        return out
+
+    @staticmethod
+    def _mark(tr, time, label, value):
+        """Detection mark in the SurfQuake pick header (shown by the plotting tool)."""
+        if tr.stats.starttime <= time <= tr.stats.endtime:
+            tr.stats.picks.append({"time": UTCDateTime(time).timestamp, "phase": label,
+                                   "amplitude": float(value), "polarity": "?"})
+
+    def _write_cc(self, traces, day, template, phase, tag):
+        folder = os.path.join(self.save_cc, UTCDateTime(day).strftime("%Y%m%d"))
+        os.makedirs(folder, exist_ok=True)
+        base = os.path.join(folder, f"{safe_name(template)}_{phase}_{tag}")
+        path, n = base + ".h5", 1
+        while os.path.exists(path):
+            path, n = f"{base}_{n}.h5", n + 1
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            Stream(traces).write(path, format="H5")
+        self.n_cc_files += 1
+        return path
+
+    @staticmethod
+    def _time_tag(t):
+        return UTCDateTime(t).strftime("%Y%m%dT%H%M%S.%f")[:-4]
+
     # ------------------------------------------------------------------ main
     def pick(self):
         """Run the picker. Returns a DataFrame in the PhasenetUtils.split_picks format."""
@@ -393,10 +456,12 @@ class CCPicker:
                     if not groups:
                         continue
                     templates = [Stream([self._matched_template(g.traces[key], tr)]) for g in groups]
-                    dets, _ = correlation_detector(proc, templates, heights=self.threshold,
-                                                   distance=self.distance,
-                                                   template_times=[g.picks[key] for g in groups],
-                                                   template_names=[g.name for g in groups])
+                    dets, sims = correlation_detector(proc, templates, heights=self.threshold,
+                                                      distance=self.distance,
+                                                      template_times=[g.picks[key] for g in groups],
+                                                      template_names=[g.name for g in groups])
+                    if self.save_cc is not None:
+                        self._save_simple(groups, phase, dets, sims, tr)
                     for d in dets:
                         rows.append(make_pick_row(tr.stats.network, tr.stats.station, tr.stats.channel,
                                                   phase, d["time"], d["similarity"],
@@ -404,6 +469,32 @@ class CCPicker:
                     if self.verbose:
                         print(f"[ccpick] {tr.id} {phase}: {len(dets)} picks")
         return rows
+
+    def _save_simple(self, groups, phase, dets, sims, data_tr):
+        """Simple mode: save the correlation trace of each template (cut per detection or whole)."""
+        if len(sims) != len(groups):  # a template was skipped by ObsPy: indexes no longer match
+            warnings.warn(f"{data_tr.id}: some templates could not be correlated, correlation traces not saved")
+            return
+        for i, (g, sim) in enumerate(zip(groups, sims)):
+            own = [d for d in dets if d["template_id"] == i]
+            info = {"kind": "channel_cc", "template": g.name, "phase": phase, "mode": "simple",
+                    "threshold": float(self.threshold)}
+            if self.save_cc_mode == "full":
+                if not own:
+                    continue
+                tr = self._cc_trace(sim, info)
+                for d in own:
+                    self._mark(tr, d["time"], phase, d["similarity"])
+                self._write_cc([tr], best_day(sim.stats.starttime, sim.stats.endtime), g.name, phase,
+                               f"{data_tr.id}_day")
+            else:
+                for d in own:
+                    w = self.save_cc_window
+                    tr = self._cc_trace(sim, dict(info, detection_time=str(d["time"]),
+                                                  similarity=float(d["similarity"]), status="accepted"),
+                                        d["time"] - w, d["time"] + w)
+                    self._mark(tr, d["time"], phase, d["similarity"])
+                    self._write_cc([tr], d["time"], g.name, phase, self._time_tag(d["time"]))
 
     def _pick_network(self):
         needed = set()
@@ -459,7 +550,7 @@ class CCPicker:
         t_ref = min(tr.stats.starttime for tr in template)
 
         store = {}
-        dets, _ = correlation_detector(data, template, heights=self.threshold, distance=self.distance,
+        dets, sims = correlation_detector(data, template, heights=self.threshold, distance=self.distance,
                                        template_times=t_ref, template_names=g.name,
                                        similarity_func=self._scaled_similarity(store),
                                        template_magnitudes=self.master_mag)
@@ -470,6 +561,7 @@ class CCPicker:
         t0, dt = ccs[0].stats.starttime, ccs[0].stats.delta
         nlag = max(1, int(round(self.lag_win / dt)))
         raw_by_id = {tr.id: tr for tr in raw} if raw is not None else {}
+        reviewed = []  # (detection, idx, lags, cjl, status, ratio, slowness) for save_cc
 
         for d in dets:
             idx = int(round((d["time"] - t0) / dt))
@@ -488,14 +580,18 @@ class CCPicker:
 
             mean_l = float(np.mean(cjl))
             ratio = float(ca[idx]) / mean_l if mean_l > 0 else 0.0
+            status, slowness = "accepted", None
             if ratio < self.min_ratio:
-                continue
-
-            slowness = None
-            if self.inventory is not None and self.max_slowness is not None:
+                status = "rejected_ratio"
+            elif self.inventory is not None and self.max_slowness is not None:
                 slowness = self._plane_wave_slowness(ids, lags)
                 if slowness is not None and slowness > self.max_slowness:
-                    continue
+                    status = "rejected_slowness"
+            reviewed.append((d, idx, lags, cjl, status, ratio, slowness))
+            if status != "accepted":
+                detections.append([str(d["time"]), g.phase, g.name, len(ccs), 0, float(ca[idx]),
+                                   float(d["similarity"]), ratio, slowness, d.get("magnitude"), status])
+                continue
 
             n_picks = 0
             for tr_id, value, lag in zip(ids, cjl, lags):
@@ -508,7 +604,52 @@ class CCPicker:
                 n_picks += 1
 
             detections.append([str(d["time"]), g.phase, g.name, len(ccs), n_picks, float(ca[idx]),
-                               float(d["similarity"]), ratio, slowness, d.get("magnitude")])
+                               float(d["similarity"]), ratio, slowness, d.get("magnitude"), "accepted"])
+
+        if self.save_cc is not None and reviewed:
+            self._save_network(g, ccs, ca, sims[0] if sims else None, reviewed)
+
+    def _save_network(self, g, ccs, ca, scc, reviewed):
+        """Network mode: channel correlations C_j, their average C_A and the scaled coefficient."""
+        t0, dt = ccs[0].stats.starttime, ccs[0].stats.delta
+        avg = Trace(data=np.asarray(ca, dtype=np.float32), header={"starttime": t0, "delta": dt})
+        stack_id = {"network": "CC", "station": safe_name(g.name)[:24], "location": ""}
+        base = {"template": g.name, "phase": g.phase, "mode": "network", "threshold": float(self.threshold),
+                "min_ratio": float(self.min_ratio), "min_channel_cc": float(self.min_channel_cc)}
+
+        def label(status):
+            return g.phase if status == "accepted" else f"{g.phase}-{status}"
+
+        def build(info, t1=None, t2=None):
+            traces = [self._cc_trace(tr, dict(info, kind="channel_cc"), t1, t2) for tr in ccs]
+            traces.append(self._cc_trace(avg, dict(info, kind="network_cc"), t1, t2, channel="AVG", **stack_id))
+            if scc is not None:
+                traces.append(self._cc_trace(scc, dict(info, kind="scaled_cc"), t1, t2, channel="SCC", **stack_id))
+            return traces
+
+        def mark(traces, d, idx, lags, cjl, status):
+            for tr, lag, value in zip(traces, lags, cjl):  # channel traces: their own maximum
+                self._mark(tr, d["time"] + lag, label(status), value)
+            for tr in traces[len(ccs):]:  # AVG and SCC: the detection time
+                value = ca[idx] if tr.stats.channel == "AVG" else d["similarity"]
+                self._mark(tr, d["time"], label(status), value)
+
+        if self.save_cc_mode == "full":
+            traces = build(base)
+            for d, idx, lags, cjl, status, ratio, slowness in reviewed:
+                mark(traces, d, idx, lags, cjl, status)
+            self._write_cc(traces, best_day(t0, ccs[0].stats.endtime), g.name, g.phase, "day")
+            return
+
+        w = self.save_cc_window
+        for d, idx, lags, cjl, status, ratio, slowness in reviewed:
+            info = dict(base, detection_time=str(d["time"]), status=status, cc_mean=float(ca[idx]),
+                        scaled_cc=float(d["similarity"]), ratio=float(ratio),
+                        slowness=float(slowness) if slowness is not None else -1.0)
+            traces = build(info, d["time"] - w, d["time"] + w)
+            mark(traces, d, idx, lags, cjl, status)
+            tag = self._time_tag(d["time"]) + ("" if status == "accepted" else "_" + status)
+            self._write_cc(traces, d["time"], g.name, g.phase, tag)
 
     def write_detections(self, output_dir):
         """Network mode: one row per detection (extra file, PhaseNet outputs untouched)."""

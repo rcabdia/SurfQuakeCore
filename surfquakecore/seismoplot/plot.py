@@ -190,9 +190,64 @@ class PlotProj:
         if endtime is not None and (endtime.year, endtime.julday) != (starttime.year, starttime.julday):
             lines += [f"to JD {endtime.julday} / {endtime.year}",
                       endtime.strftime("%Y-%m-%d %H:%M:%S")]
-        ax.text(0.01, 0.95, "\n".join(lines), transform=ax.transAxes, fontsize=8,
-                va="top", ha="left", zorder=5,
-                bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="gray", alpha=0.5))
+        box = ax.annotate("\n".join(lines), xy=(0, 1), xycoords="axes fraction",
+                          xytext=(4, -4), textcoords="offset points",  # fixed distance to the corner
+                          fontsize=8, va="top", ha="left", zorder=5, annotation_clip=False,
+                          bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="gray", alpha=0.5))
+        box._surfq_corner = True  # font size adapted to the subplot size in _apply_layout
+
+    @staticmethod
+    def _adapt_to_size(fig):
+        """
+        Things that depend on the size of the figure on screen:
+          - number of time ticks (labels never overlap in a narrow window)
+          - font size of the corner labels (trace id, date box) in small subplots
+        """
+        w_in, h_in = fig.get_size_inches()
+        for ax in fig.axes:
+            pos = ax.get_position()
+            if isinstance(ax.xaxis.get_major_formatter(), DayTimeFormatter):
+                # a label 'HH:MM:SS.t' needs ~1.4 in; the date line goes below it
+                n_ticks = max(3, int(pos.width * w_in / 1.4))
+                ax.xaxis.set_major_locator(mdt.AutoDateLocator(minticks=3, maxticks=n_ticks))
+            h_pt = pos.height * h_in * 72
+            fs = 6 if h_pt < 55 else 7 if h_pt < 85 else 8
+            for txt in ax.texts:
+                if getattr(txt, "_surfq_corner", False):
+                    txt.set_fontsize(fs)
+
+    @staticmethod
+    def _apply_layout(fig, hspace=None):
+        """
+        tight_layout (room for tick labels, the date line under the ticks, titles...)
+        and then the vertical space between subplots requested in the config.
+        Ticks and corner labels are adapted to the size. Run again on every
+        window resize, so labels are never cut, crowded or displaced.
+        """
+        if fig is None:
+            return
+        for _ in range(2):  # 2nd pass: the axes size after the first layout is the real one
+            PlotProj._adapt_to_size(fig)
+            try:
+                fig.tight_layout()
+            except Exception:
+                pass
+            if hspace is not None:
+                fig.subplots_adjust(hspace=hspace)
+
+    def _keep_layout_on_resize(self, fig, hspace=None):
+        fig.canvas.mpl_connect("resize_event", lambda event: self._apply_layout(fig, hspace))
+
+    def _add_trace_label(self, ax, text):
+        """
+        Trace identification (id, distance, back-azimuth) pinned to the upper-right
+        corner at a fixed offset in points, so it never moves when the figure is resized.
+        """
+        label = ax.annotate(text, xy=(1, 1), xycoords="axes fraction",
+                            xytext=(-4, -4), textcoords="offset points",
+                            fontsize=8, va="top", ha="right", zorder=6, annotation_clip=False,
+                            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.7))
+        label._surfq_corner = True
 
     def make_abs(self, path: Optional[str]) -> Optional[str]:
         return os.path.abspath(os.path.expanduser(path)) if path else None
@@ -360,11 +415,12 @@ class PlotProj:
         sub_traces = traces[i:i + traces_per_fig]
         self.displayed_traces = sub_traces
 
-        max_traces = min(8, 2 * len(sub_traces))
+        max_traces = max(3, min(8, 2 * len(sub_traces)))
         self.fig, self.axs = plt.subplots(
             len(sub_traces), 1, figsize=(12, max_traces),
-            sharex=True, sharey=self.plot_config["sharey"],
-            gridspec_kw={'hspace': self.plot_config["vspace"]})
+            sharex=True, sharey=self.plot_config["sharey"])
+        # vspace is applied after tight_layout (see _apply_layout): a GridSpec created
+        # with its own hspace makes tight_layout ignore the axes
 
         # Ensure axs is always a list
         if len(sub_traces) == 1:
@@ -432,8 +488,8 @@ class PlotProj:
                         ax.text(arr_dt.matplotlib_date, ax.get_ylim()[1] * 0.85, phase, color="green",
                                 fontsize=8, rotation=0, ha="center", va="top")
 
-            if self.plot_config["show_legend"] and len(self.axs) <= 9:
-                ax.legend(loc="upper right")  # the date box is in the upper-left corner
+            if self.plot_config["show_legend"] and len(self.axs) <= 9:  # cleaner plot with many subplots
+                self._add_trace_label(ax, label)  # upper-right corner, date box in the upper-left
 
             # Annotate with date (start, and end if the trace reaches another day)
             self._add_date_box(ax, tr.stats.starttime, tr.stats.endtime)
@@ -466,7 +522,8 @@ class PlotProj:
             ax.set_xlim(auto_start, auto_end)
 
         plt.ion()
-        plt.tight_layout()
+        self._apply_layout(self.fig, self.plot_config["vspace"])
+        self._keep_layout_on_resize(self.fig, self.plot_config["vspace"])
 
         # --- Auto-save figure---
         out_dir = self.plot_config.get("plot_output_path")
@@ -621,6 +678,9 @@ class PlotProj:
         if cfg["show_legend"]:
             ax.legend(loc="upper right", fontsize=self._rc.get("legend.fontsize", 6))
 
+        self._apply_layout(self.fig)
+        self._keep_layout_on_resize(self.fig)
+
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
         if out_dir:
@@ -688,7 +748,8 @@ class PlotProj:
         if self.plot_config["show_legend"] or n <= 12:
             ax.legend(loc="upper right", fontsize=self._rc.get("legend.fontsize", 6))
 
-        plt.tight_layout()
+        self._apply_layout(fig)
+        self._keep_layout_on_resize(fig)
 
         # --- Auto-save figure ---
         out_dir = self.plot_config.get("plot_output_path")
