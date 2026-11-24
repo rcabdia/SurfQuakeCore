@@ -6,6 +6,7 @@ from surfquakecore.data_processing.processing_methods import spectral_derivative
     add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
     rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing, deconvolve
+from surfquakecore.data_processing.wavelet import robust_zscore
 from surfquakecore.spectral.ceprun import TraceCepstrogramResult, TraceCepstrumResult
 
 try:
@@ -919,6 +920,10 @@ class StreamProcessing:
 
         if len(cf_type) == 1:
             self.stream = cfs[cf_type[0]]
+            if "norm" in step_config:  # optional: single CF in sigma units
+                self.stream = robust_zscore(self.stream,
+                                            norm=step_config["norm"],
+                                            q=step_config.get("tail_quantile", 0.99))
         else:
             self.stream = combine_cf_streams(*[cfs[c] for c in cf_type],
                                              method=step_config.get("combine", "max"),

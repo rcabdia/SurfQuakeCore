@@ -148,7 +148,7 @@ Analysis:
   #                 thresholds mean the same for every rule [False]. True or False.
   #
   # Output units
-  #   - Single cf_type: raw CF (not normalized).
+  #   - Single cf_type: raw CF (not normalized), or sigma units if 'norm' is given.
   #   - Several cf_type: in sigma units, according to `norm`, so thresholds
   #     like 4-5 sigma apply. Calibrate them on a quiet day with the combined
   #     CF: with combine 'max' the background is higher than for a single CF.
@@ -156,6 +156,12 @@ Analysis:
   # Tip: in our tests power_mod found the P (broadband, impulsive) and entropy
   # the S inside the P coda, which the energy CFs missed. Kurtosis adds weak
   # impulsive onsets and sharper picks. Combine them with 'stouffer'.
+
+  # Some keys only matter for certain CFs:
+
+  #  - win_before, win_after and gap only matter for power_mod, power_win, entropy and centroid.
+  #  - win_kurt only matters for kurtosis.
+  #  - direction only matters for entropy and centroid.
 
 #  process_5:
 #    name: 'cwt_cf'
