@@ -5,7 +5,8 @@ from surfquakecore.coincidence_trigger.cf_kurtosis import CFKurtosis
 from surfquakecore.data_processing.processing_methods import spectral_derivative, spectral_integration, filter_trace, \
     add_frequency_domain_noise, normalize, wavelet_denoise, safe_downsample, smoothing, \
     trace_envelope, trim_trace, compute_entropy_trace, compute_snr, downsample_trace, particle_motion, \
-    rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing, deconvolve
+    rename_trace, whiten_new_band_freq_single, run_chop_data, reverse, flip, wiener, wiener_smoothing, deconvolve, \
+    add_seismic_noise
 from surfquakecore.data_processing.wavelet import robust_zscore
 from surfquakecore.spectral.ceprun import TraceCepstrogramResult, TraceCepstrumResult
 
@@ -152,6 +153,13 @@ class SeismogramData:
 
                 if _config['name'] == 'add_noise':
                     tr = add_frequency_domain_noise(tr, noise_type=_config['noise_type'], SNR_dB=_config['SNR_dB'])
+
+                if _config['name'] == 'add_seismic_noise':
+                    try:
+                        tr = add_seismic_noise(tr, inventory, noise_level=_config['noise_level'],
+                                               units=_config['units'], seed=_config['seed'])
+                    except ValueError as e:
+                        print(f"[WARNING] add_seismic_noise skipped for {tr.id}: {e}")
 
                 if _config['name'] == 'whitening':
                     # tr = whiten(tr, _config['freq_width'], taper_edge=_config['taper_edge'])

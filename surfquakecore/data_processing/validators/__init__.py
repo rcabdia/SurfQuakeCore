@@ -31,6 +31,7 @@ from .differentiate import validate_differentiate
 from .wiener import validate_wiener
 from .wiener_smoothing import validate_wiener_smoothing
 from .add_noise import validate_add_white_noise
+from .add_seismic_noise import validate_add_seismic_noise
 from .whitening import validate_whitening
 from .remove_spikes import validate_remove_spikes
 from .time_normalization import validate_time_normalization
@@ -56,6 +57,7 @@ CHECK_DISPATCH = {
     'differentiate': validate_differentiate,
     'wiener_filter': validate_wiener,
     'add_noise': validate_add_white_noise,
+    'add_seismic_noise': validate_add_seismic_noise,
     'whitening': validate_whitening,
     'remove_spikes': validate_remove_spikes,
     'time_normalization': validate_time_normalization,

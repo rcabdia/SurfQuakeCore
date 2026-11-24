@@ -78,23 +78,39 @@ Analysis:
     noise_type: 'pink'
     SNR_dB: 1
 
+  # --- add_seismic_noise [trace]: add realistic background noise (Peterson NLNM / NHNM models)
+  #   Gaussian noise shaped to the Peterson noise models and converted to the trace units.
+  #   noise_level: 0 = low-noise model (NLNM) | 0.5 = mid-noise | 1 = high-noise model (NHNM)
+  #                values > 1 give noise above the NHNM (interpolated in dB)
+  #   units:       units of the trace data:
+  #                counts = raw data; the noise is passed through the instrument response,
+  #                         so the station metadata (inventory) is REQUIRED for these traces
+  #                ACC (m/s**2) | VEL (m/s) | DISP (m) = data already corrected; no response needed
+  #   seed:        optional integer random seed (same seed = same noise)
+  #   Models are defined for 0.1-100000 s; above 10 Hz the 0.1 s value is used.
+  process_8:
+    name: 'add_seismic_noise'
+    noise_level: 0.5
+    units: 'counts'
+    seed: 12345
+
   # --- wavelet_denoise [trace]: discrete wavelet thresholding
   #   dwt:       wavelet family: db2-db20 | sym2-sym20 | coif2-coif16 | bior...
   #   threshold: fraction of the maximum coefficient of each level removed (0-1)
-  process_8:
+  process_9:
     name: 'wavelet_denoise'
     dwt: 'sym8'
     threshold: 0.1
 
   # --- differentiate [trace]: time derivative (e.g. displacement -> velocity)
   #   method: spectral (i*omega in frequency) | gradient (ObsPy, time domain)
-  process_9:
+  process_10:
     name: 'differentiate'
     method: 'spectral'
 
   # --- integrate [trace]: time integral (e.g. velocity -> displacement)
   #   method: spectral | cumtrapz | spline
-  process_10:
+  process_11:
     name: 'integrate'
     method: 'spectral'
 
@@ -102,7 +118,7 @@ Analysis:
   #   fmin/fmax:  whitening band [Hz]; outside it the spectrum is strongly attenuated
   #   freq_width: smoothing width of the amplitude spectrum [Hz]
   #   taper_edge: True = taper the band edges
-  process_11:
+  process_12:
     name: 'whitening'
     fmin: 0.05
     fmax: 9.5
@@ -115,7 +131,7 @@ Analysis:
   #           adaptive = Savitzky-Golay (order 3) over `time_window` [s]
   #           tkeo     = Teager-Kaiser energy operator (no parameters used)
   #   time_window, FWHM: required keys
-  process_12:
+  process_13:
     name: 'smoothing'
     method: 'gaussian'
     time_window: 5
@@ -127,7 +143,7 @@ Analysis:
   #             clipping iteration = repeatedly divide values above 6 x std
   #             time normalization = running-absolute-mean normalisation
   #   norm_win: window of the running mean [s] (time normalization only)
-  process_13:
+  process_14:
     name: "time_normalization"
     method: 'time normalization'
     norm_win: 10
@@ -135,7 +151,7 @@ Analysis:
   # --- remove_spikes [trace]: Hampel filter (median / MAD)
   #   window_size: window [s]
   #   sigma:       samples further than sigma x MAD from the median are replaced
-  process_14:
+  process_15:
     name: 'remove_spikes'
     window_size: 10
     sigma: 4
@@ -143,7 +159,7 @@ Analysis:
   # --- wiener_smoothing [trace]: adaptive Wiener noise filter (scipy)
   #   time_window: local window [s]; 0 = scipy default (3 samples)
   #   noise_power: noise level as a multiple of the trace std; 0 = estimated from data
-  process_15:
+  process_16:
     name: "wiener_smoothing"
     time_window: 1.0
     noise_power: 0
@@ -153,7 +169,7 @@ Analysis:
   #           phase     = phase_name, t_before, t_after around a pick
   #           reference = t_before, t_after around the reference time
   #   optional: pad (True/False), fill_value (value used when padding)
-  process_16:
+  process_17:
     name: 'cut'
     method: 'absolute'
     start: 2018-08-21T00:27:15
@@ -162,23 +178,23 @@ Analysis:
   # --- raw [trace]: keep every `factor`-th sample, without anti-alias filter
   #   factor:   decimation factor (integer)
   #   integers: True = scale and convert the data to int32
-  process_17:
+  process_18:
     name: 'raw'
     factor: 2
     integers: True
 
   # --- reverse [trace]: time reversal of the samples
-  process_18:
+  process_19:
       name: 'reverse'
 
   # --- flip [trace]: polarity inversion (multiply by -1)
-  process_19:
+  process_20:
     name: 'flip'
 
   # --- wiener [trace]: SAC WIENER adaptive prediction-error filter (prewhitening)
   #   window_start / window_end: design window (seconds from the trace start, or UTC times)
   #   optional: ncoeff (2-100, default 30), mu, epsilon
-  process_20:
+  process_21:
     name: 'wiener_filter'
     window_start: 0
     window_end: 20
@@ -192,7 +208,7 @@ Analysis:
   #   Special keys: '*' = any code not matched explicitly
   #                 ''  = empty code (e.g. an empty location)
   #   Always quote the codes: unquoted 00 becomes 0, and NO (Norway) becomes False.
-  process_21:
+  process_22:
     name: 'rename'
     networks:
       'XX': 'ES'

@@ -1793,3 +1793,116 @@ def wiener(trace, window=(0.0, 10.0), ncoeff=30, mu="off", epsilon="off",
                        "update": update}
     return tr
 
+def _peterson_psd_db(freqs, noise_level=0.5):
+    """
+    Acceleration PSD (dB re 1 (m/s^2)^2/Hz) at `freqs`, linearly interpolated (in dB)
+    between Peterson's NLNM (noise_level=0) and NHNM (noise_level=1).
+    Interpolation is done in log10(period); outside the models' 0.1-1e5 s range the
+    end values are held constant (same behaviour as sacnoise.c).
+    """
+    from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
+
+    log_per = np.log10(1.0 / np.asarray(freqs, dtype=float))
+
+    def _interp(model):
+        per, db = model()
+        order = np.argsort(per)  # ObsPy returns periods in decreasing order
+        return np.interp(log_per, np.log10(per[order]), db[order])
+
+    db_low = _interp(get_nlnm)
+    db_high = _interp(get_nhnm)
+    return (1.0 - noise_level) * db_low + noise_level * db_high
+
+
+def add_seismic_noise(trace, inventory=None, noise_level=0.5, units="counts", seed=None,
+                      return_noise=False):
+    """
+    Add realistic seismic background noise to a trace, following Peterson's (1993)
+    New Low / New High Noise Models (Python port of R. Herrmann's sacnoise.c).
+
+    Recipe
+    ------
+    1. Gaussian white noise, unit variance, same length/sampling as the trace.
+    2. Its spectrum is shaped so that the one-sided PSD equals the Peterson model
+       (in acceleration, (m/s^2)^2/Hz):  |X(f)| = |W(f)| * sqrt(P(f) / (2*dt)).
+       The level is set by `noise_level`, interpolated in dB between NLNM and NHNM.
+    3. The acceleration noise is converted to the units of the trace:
+         - "counts": multiplied by the instrument response (output="ACC") from
+           `inventory`, i.e. noise as the real sensor + digitizer would record it.
+         - "ACC" / "VEL" / "DISP": spectral integration (divide by (i*2*pi*f)^n).
+    4. Added to the trace.
+
+    Parameters
+    ----------
+    trace : obspy.Trace
+        Trace to contaminate (modified in place, like add_frequency_domain_noise).
+    inventory : obspy.Inventory
+        Station metadata. Mandatory when units="counts" (response must exist for
+        trace.id at trace.stats.starttime).
+    noise_level : float
+        0 -> NLNM, 0.5 -> mid-noise model, 1 -> NHNM. Values outside [0, 1]
+        extrapolate in dB (e.g. 1.2 = above the high-noise model).
+    units : str
+        Units of the trace data: "counts" (raw, default), "ACC" (m/s^2),
+        "VEL" (m/s) or "DISP" (m).
+    seed : int or None
+        Random seed for reproducibility.
+    return_noise : bool
+        If True, return (trace, noise_trace) so the added noise can be inspected.
+
+    Returns
+    -------
+    obspy.Trace, or (obspy.Trace, obspy.Trace) if return_noise=True
+
+    Notes
+    -----
+    The models are defined for periods 0.1-100000 s. For sampling rates above 20 sps,
+    frequencies above 10 Hz take the model value at 0.1 s (flat extension).
+    """
+    units_key = str(units).upper()
+    if units_key not in ("COUNTS", "ACC", "VEL", "DISP"):
+        raise ValueError(f"units must be 'counts', 'ACC', 'VEL' or 'DISP', got '{units}'")
+
+    npts = trace.stats.npts
+    dt = trace.stats.delta
+    if npts < 2:
+        raise ValueError(f"Trace {trace.id} is too short to add noise")
+
+    freqs = np.fft.rfftfreq(npts, d=dt)
+    f = freqs[1:]  # skip DC
+
+    # 1-2) white Gaussian noise shaped to the Peterson acceleration PSD
+    rng = np.random.default_rng(seed)
+    spec = np.fft.rfft(rng.standard_normal(npts))
+    psd = 10.0 ** (_peterson_psd_db(f, noise_level) / 10.0)
+    spec[1:] *= np.sqrt(psd / (2.0 * dt))
+    spec[0] = 0.0
+
+    # 3) acceleration -> trace units
+    if units_key == "COUNTS":
+        if inventory is None:
+            raise ValueError("add_seismic_noise: an inventory is required to add noise to raw counts")
+        try:
+            resp = inventory.get_response(trace.id, trace.stats.starttime)
+        except Exception as e:
+            raise ValueError(f"add_seismic_noise: no response for {trace.id} "
+                             f"at {trace.stats.starttime}: {e}")
+        # counts per (m/s^2)
+        spec[1:] *= resp.get_evalresp_response_for_frequencies(f, output="ACC")
+    elif units_key in ("VEL", "DISP"):
+        order = 1 if units_key == "VEL" else 2
+        spec[1:] /= (1j * 2.0 * np.pi * f) ** order
+
+    noise = np.fft.irfft(spec, n=npts)
+
+    # 4) add to the trace
+    trace.data = trace.data.astype(np.float64) + noise
+    trace.stats.processing = list(getattr(trace.stats, "processing", [])) + [
+        f"surfquake: add_seismic_noise(noise_level={noise_level}, units={units}, seed={seed})"]
+
+    if return_noise:
+        noise_tr = Trace(data=noise, header=trace.stats.copy())
+        noise_tr.stats.processing = []
+        return trace, noise_tr
+    return trace
+

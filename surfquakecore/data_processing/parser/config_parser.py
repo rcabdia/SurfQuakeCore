@@ -56,6 +56,8 @@ def parse_configuration_file(config):
             parsed_config.append(parse_remove_spikes(step_config))
         elif name == 'add_noise':
             parsed_config.append(parse_add_noise(step_config))
+        elif name == 'add_seismic_noise':
+            parsed_config.append(parse_add_seismic_noise(step_config))
         elif name == 'differentiate':
             parsed_config.append(parse_differentiate(step_config))
         elif name == 'integrate':
@@ -382,6 +384,27 @@ def parse_wiener_filter(config):
 
     template.update(config)
     return template
+
+def parse_add_seismic_noise(config):
+    """
+        Parse add_seismic_noise configuration (Peterson NLNM/NHNM noise), filling defaults.
+
+        Args:
+            config (dict): User-provided add_seismic_noise configuration.
+
+        Returns:
+            dict: add_seismic_noise configuration.
+    """
+
+    template = {
+        'name': 'add_seismic_noise',
+        'noise_level': 0.5,
+        'units': 'counts',
+        'seed': None}
+
+    template.update(config)
+    return template
+
 
 
 
