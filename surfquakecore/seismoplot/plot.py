@@ -605,6 +605,9 @@ class PlotProj:
         # Sort by distance
         traces.sort(key=lambda tr: self._get_geodetic_info(tr)[0])
         distances = [self._get_geodetic_info(tr)[0] for tr in traces]
+        if not all(np.isfinite(d) for d in distances):
+            # No geodetic info (e.g. cross-correlations): one row per trace
+            distances = list(range(len(traces)))
         scale = cfg.get("scale_factor", 1.0)
 
         fig, ax = plt.subplots(figsize=(12, 8))

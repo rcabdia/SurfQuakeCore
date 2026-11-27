@@ -237,7 +237,7 @@ class SurfProject:
                                 '.yaml', '.pdf', '.docx', '.pkl'}
 
         if isinstance(root_path, str):
-            all_files = glob.glob(root_path, recursive=True)
+            all_files = sorted(glob.glob(root_path, recursive=True))
             print(f"[INFO] Found {len(all_files)} files using glob pattern: {root_path}")
         elif isinstance(root_path, list):
             all_files = [os.path.abspath(p) for p in root_path if os.path.exists(p)]

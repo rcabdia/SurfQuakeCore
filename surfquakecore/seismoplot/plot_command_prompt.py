@@ -2157,7 +2157,7 @@ class PlotCommandPrompt:
                 params["normalize"] = next(it)
             elif arg == "--trim":
                 val = next(it)
-                params["trim"] = val.lower() == "False"
+                params["trim"] = val.lower() == "true"
 
         # Input stream
         stream = getattr(self.plot_proj, "trace_list", [])
