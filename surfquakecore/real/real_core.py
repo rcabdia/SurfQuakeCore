@@ -8,6 +8,7 @@
 #  Email: rcabdia@roa.es
 # --------------------------------------------------------------------
 
+import glob
 import os
 from typing import Union
 from obspy import read_inventory
@@ -128,4 +129,8 @@ class RealCore:
 
         real_handler.save()
         real_handler.compute_t_dist()
-        ConversionUtils.real2nll(realout, nllinput)
+        # First-motion polarities: any pick file in NonLinLoc format found in the picking folder
+        # (e.g. nll_picks.txt edited by 'surfquake polarity') is used to fill the First_Motion column
+        polarity_files = glob.glob(os.path.join(self.picking_directory, "*.txt"))
+        ConversionUtils.real2nll(realout, nllinput, polarity_files=polarity_files)
+

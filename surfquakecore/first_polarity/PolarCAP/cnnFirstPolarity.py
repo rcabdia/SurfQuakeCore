@@ -13,7 +13,7 @@ from surfquakecore.utils.obspy_utils import ObspyUtil
 #     tf.compat.v1.enable_eager_execution()
 
 class Polarity:
-    def __init__(self, project: Union[SurfProject, str],  model_path, arrivals_path, threshold, output_path):
+    def __init__(self, project: Union[SurfProject, str], model_path, arrivals_path, threshold, output_path):
 
         self.model = tf.keras.models.load_model(model_path)
 
@@ -38,73 +38,54 @@ class Polarity:
         self.pick_times_imported = ObspyUtil.get_NLL_phase_picks(input_file=self.arrivals_path)
         self.pick_times_imported_modify = deepcopy(self.pick_times_imported)
 
+    def optimized_project_processing_pol(self):
+        """
+        Predict the polarity of the P picks of the whole project, one day at a time,
+        and write the edited pick file.
+        """
+        info = self.project.get_project_basic_info()
+        print(f"[INFO] Project from {info['Start']} to {info['End']}")
+
+        start_time = UTCDateTime(datetime.strptime(info['Start'], '%Y-%m-%d %H:%M:%S'))
+        end_time = UTCDateTime(datetime.strptime(info['End'], '%Y-%m-%d %H:%M:%S'))
+
+        # One range per day; at least one, also for projects shorter than a day
+        n_days = max(1, int(np.ceil((end_time - start_time) / 86400)))
+        daily_ranges = [(start_time + i * 86400, start_time + (i + 1) * 86400) for i in range(n_days)]
+
+        # Sequential on purpose: the TensorFlow model is loaded once in this process
+        for start, end in daily_ranges:
+            self.process_coincidence_pol((self.project, start, end))
+
+        self.write_output()
 
     def _filter_trace_by_picks(self, tr: Trace):
         """
-        Filters an ObsPy Trace based on a pick dictionary.
-
-        Parameters:
-        - trace (obspy.Trace): The input seismic trace.
-        - pick_dict (dict): Dictionary containing pick information in the form:
-          {
-              "station.channel": [["Phase_name", UTCDateTime, "channel", ...], ...],
-              ...
-          }
+        P picks of the pick file that belong to this trace: same station and channel,
+        vertical component, and pick time inside the trace.
 
         Returns:
-        - filtered_picks (list): List of picks matching the trace criteria.
+        - filtered_picks (list): the matching picks
+        - items (list): their positions in self.pick_times_imported[trace_id]
         """
-        # Get the trace's metadata
         trace_id = f"{tr.stats.station}.{tr.stats.channel}"
         trace_start = tr.stats.starttime
         trace_end = tr.stats.endtime
 
-        # List to store matching picks
         filtered_picks = []
         items = []
-        # Check if the trace ID exists in the pick dictionary
-        if trace_id in self.pick_times_imported:
-            for item, pick in enumerate(self.pick_times_imported[trace_id]):
-                phase_name, pick_time, channel = pick[0], pick[1], pick[2]
 
-                # Ensure channel contains "Z" and pick time falls within the trace's time window
-                if trace_start <= pick_time <= trace_end and phase_name == "P":
-                    filtered_picks.append(pick)
-                    items.append(item)
+        # First-motion polarity is only defined on the vertical component
+        if not tr.stats.channel.endswith("Z") or trace_id not in self.pick_times_imported:
+            return filtered_picks, items
+
+        for item, pick in enumerate(self.pick_times_imported[trace_id]):
+            phase_name, pick_time = pick[0], pick[1]
+            if phase_name == "P" and trace_start <= pick_time <= trace_end:
+                filtered_picks.append(pick)
+                items.append(item)
 
         return filtered_picks, items
-
-
-    def optimized_project_processing_pol(self):
-
-        final_filtered_results = []
-        details = []
-
-        info = self.project.get_project_basic_info()
-        print(info['Start'], info['End'])
-
-        # Parse start and end times
-        start_time = UTCDateTime(datetime.strptime(info['Start'], '%Y-%m-%d %H:%M:%S'))
-        end_time = UTCDateTime(datetime.strptime(info['End'], '%Y-%m-%d %H:%M:%S'))
-
-        # Generate daily time ranges
-        daily_ranges = [(start_time + i * 86400, start_time + (i + 1) * 86400)
-                        for i in range(int((end_time - start_time) // 86400))]
-
-        if len(daily_ranges) == 0 and (end_time - start_time) < 86400:
-            daily_ranges = [(start_time, end_time)]
-
-        # Prepare arguments for multiprocessing
-        tasks = [(self.project, start, end) for start, end in daily_ranges]
-
-        for task in tasks:
-            self.process_coincidence_pol(task)
-
-        # no using multiprocess
-        # Use multiprocessing to parallelize
-        # with Pool(initializer=init_worker) as pool:
-        #     results = pool.map(self.process_coincidence_pol, tasks)
-        self.write_output()
 
     def process_coincidence_pol(self, args):
         """Process a single day's data and return events or 'empty'."""
@@ -115,7 +96,6 @@ class Polarity:
             self.run_predict_polarity_day(filtered_files)
         else:
             return "empty"
-
 
     def run_predict_polarity_day(self, filtered_files):
         tr = None
@@ -152,7 +132,7 @@ class Polarity:
                         data_full = data_full - np.mean(data_full)
 
                         data_chop = data_chop - np.mean(data_chop)
-                        #data_chop = data_chop / np.max(data_chop)
+                        # data_chop = data_chop / np.max(data_chop)
                         # data_plot = data_chop
                         data_chop = data_chop.reshape(1, -1, 1)
                         data_chop = self.norm(data_chop)
@@ -169,8 +149,7 @@ class Polarity:
                         self._edit_pick_input(trace_id, item, predictions)
                     except:
                         print("Error estimating prediction polarity at :", pick)
-                    #self._plot(data_plot, data_full, label=predictions[0])
-
+                    # self._plot(data_plot, data_full, label=predictions[0])
 
     def _edit_pick_input(self, trace_id, item, predictions):
 
@@ -187,7 +166,7 @@ class Polarity:
         fig, ax = plt.subplots()
 
         ax.plot(data_full, label=label)
-        #ax.plot(data_full)
+        # ax.plot(data_full)
         ax.legend()
         plt.show()
 
@@ -231,7 +210,7 @@ class Polarity:
 
             # Write the header line
             header = ("Station_name\tInstrument\tComponent\tP_phase_onset\tP_phase_descriptor\t"
-                       "First_Motion\tDate\tHour_min\tSeconds\tErr\tErrMag\tCoda_duration\tAmplitude\tPeriod\n")
+                      "First_Motion\tDate\tHour_min\tSeconds\tErr\tErrMag\tCoda_duration\tAmplitude\tPeriod\n")
 
             file.write(header)
 
@@ -243,12 +222,13 @@ class Polarity:
                 component = id[1].ljust(4)  # Placeholder for Component
 
                 for content in contents:
-                    time = UTCDateTime(content[1]) # Convert starttime and endtime to pandas-compatible datetime objects
+                    time = UTCDateTime(
+                        content[1])  # Convert starttime and endtime to pandas-compatible datetime objects
                     date_concatanate = time.strftime("%Y%m%d")
                     p_phase_onset = "?"  # Placeholder for P phase onset
                     phase_descriptor = content[0].ljust(6)  # Phase descriptor (e.g., P, S)
                     first_motion = content[3]  # Placeholder for First Motion
-                    date = f"{ date_concatanate}"  # Date in yyyymmdd format
+                    date = f"{date_concatanate}"  # Date in yyyymmdd format
                     hour_min = f"{time.hour:02}{time.minute:02}"  # hhmm
                     seconds = f"{time.second + time.microsecond / 1e6:07.4f}"
                     err = "GAU"  # Error type (GAU)
@@ -269,7 +249,6 @@ class Polarity:
 
 
 if __name__ == "__main__":
-
     project_path = "/Users/roberto/Documents/ISP/earthquake_test"
 
     arrivals_path = ("/Users/roberto/Documents/ISP/isp/earthquakeAnalysis/loc_structure/"
@@ -280,4 +259,3 @@ if __name__ == "__main__":
                    output_path="/Users/roberto/Documents/ISP/isp/earthquakeAnalysis/loc_structure/test_focmec.txt")
     print(pol)
     pol.optimized_project_processing_pol()
-
