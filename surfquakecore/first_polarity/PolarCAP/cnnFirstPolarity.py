@@ -98,58 +98,82 @@ class Polarity:
             return "empty"
 
     def run_predict_polarity_day(self, filtered_files):
-        tr = None
+        """
+        Predict the polarity of the P picks of the vertical traces in filtered_files.
+        All the picks of one trace are sent to PolarCAP in a single batch.
+        """
+        half = 32  # PolarCAP input: 64 samples at 100 Hz (0.64 s) centred on the pick
+        labels = ['Negative', 'Positive']
+
         for file in filtered_files:
             try:
-                tr = read(file)[0]
-                print(tr)
-                tr = self.fill_gaps(tr)
-                if tr.stats.sampling_rate != 100:
-                    tr.resample(100)
-            except:
-                print("Cannot process day ", file)
+                st = read(file)
+            except Exception as e:
+                print(f"[WARNING] Cannot read {file}: {e}")
+                continue
 
-            if isinstance(tr, Trace):
-                filtered_picks, items = self._filter_trace_by_picks(tr)
-                trace_id = f"{tr.stats.station}.{tr.stats.channel}"
-                print(filtered_picks)
-                data = tr.data
+            if len(st) == 0 or not st[0].stats.channel.endswith("Z"):
+                continue  # polarities only on vertical channels
 
-                for pick, item in zip(filtered_picks, items):
-                    try:
-                        pick_time = pick[1]
-                        time_samples = int((pick_time - tr.stats.starttime) * tr.stats.sampling_rate)
-                        start_sample = time_samples - 32
-                        end_sample = time_samples + 32
-                        data_chop = data[start_sample:end_sample]
+            tr = self.fill_gaps(st)
+            if tr is None:
+                print(f"[WARNING] Too many gaps, skipped: {file}")
+                continue
+            if tr.stats.sampling_rate != 100:
+                tr.resample(100)
 
-                        start_sample = time_samples - 200
-                        end_sample = time_samples + 200
-                        data_full = data[start_sample:end_sample]
-                        if len(data_chop) < 64:
-                            data_chop = data_chop[0:64]
+            filtered_picks, items = self._filter_trace_by_picks(tr)
+            if not filtered_picks:
+                continue
+            trace_id = f"{tr.stats.station}.{tr.stats.channel}"
+            data = tr.data
 
-                        data_full = data_full - np.mean(data_full)
+            windows, valid_items = [], []
+            for pick, item in zip(filtered_picks, items):
+                centre = int((pick[1] - tr.stats.starttime) * tr.stats.sampling_rate)
+                start, end = centre - half, centre + half
+                if start < 0 or end > len(data):
+                    print(f"[WARNING] {trace_id}: pick at {pick[1]} too close to the trace edge, skipped")
+                    continue
+                window = data[start:end].astype(float)
+                window -= window.mean()
+                if not np.any(window):
+                    continue  # flat window (e.g. filled gap): no polarity
+                windows.append(window)
+                valid_items.append(item)
 
-                        data_chop = data_chop - np.mean(data_chop)
-                        # data_chop = data_chop / np.max(data_chop)
-                        # data_plot = data_chop
-                        data_chop = data_chop.reshape(1, -1, 1)
-                        data_chop = self.norm(data_chop)
-                        y_pred = self.model.predict(data_chop)
+            if not windows:
+                continue
 
-                        pol_pred = np.argmax(y_pred[1], axis=1)
-                        pred_prob = np.max(y_pred[1], axis=1)
-                        predictions = []
-                        polarity = ['Negative', 'Positive']
-                        for pol, prob in zip(pol_pred, pred_prob):
-                            predictions.append((polarity[pol], prob))
+            X = self.norm(np.array(windows).reshape(len(windows), 2 * half, 1))
+            try:
+                y_pred = self.model.predict(X, verbose=0)
+            except Exception as e:
+                print(f"[WARNING] {trace_id}: polarity prediction failed: {e}")
+                continue
 
-                        print(pol_pred, pred_prob, predictions)
-                        self._edit_pick_input(trace_id, item, predictions)
-                    except:
-                        print("Error estimating prediction polarity at :", pick)
-                    # self._plot(data_plot, data_full, label=predictions[0])
+            pol_pred = np.argmax(y_pred[1], axis=1)
+            pred_prob = np.max(y_pred[1], axis=1)
+            for item, pol, prob in zip(valid_items, pol_pred, pred_prob):
+                self._edit_pick_input(trace_id, item, [(labels[pol], prob)])
+
+    def fill_gaps(self, st, tol=5):
+        """
+        Merge the traces of a file into one. Gaps are filled by interpolation if they
+        add up to at most tol % of the data; otherwise None is returned.
+        """
+        if isinstance(st, Trace):
+            st = Stream(traces=[st])
+        if len(st) == 1:
+            return st[0]
+
+        tol_seconds = (tol / 100) * sum(tr.stats.npts for tr in st) * st[0].stats.delta
+        gaps = st.get_gaps()
+        if gaps and not self._check_gaps(gaps, tol_seconds):
+            st.print_gaps()
+            return None
+        st.merge(fill_value="interpolate", interpolation_samples=-1)
+        return st[0]
 
     def _edit_pick_input(self, trace_id, item, predictions):
 
@@ -157,8 +181,6 @@ class Polarity:
             self.pick_times_imported_modify[trace_id][item][3] = "U"
         elif predictions[0][0] == "Negative" and predictions[0][1] >= self.threshold:
             self.pick_times_imported_modify[trace_id][item][3] = "D"
-
-        print(self.pick_times_imported_modify[trace_id][item])
 
     def _plot(self, data, data_full, label):
         import matplotlib.pyplot as plt
