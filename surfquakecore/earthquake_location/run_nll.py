@@ -285,11 +285,16 @@ class NllManager:
             vp_vs = 1.73
 
         if self.nll_config.grid_configuration.model == "1D":
-            # the shift is zero because is centered in the left-down corner
+            # the shift is zero because is centered in the left-down corner.
+            # The 2D travel-time grid is longer than the location grid (see grid2d_nodes),
+            # so the location grid is taken from X and Y of the config, not from the header
+            xNum = int(self.nll_config.grid_configuration.x)
+            yNum = int(self.nll_config.grid_configuration.y)
+            xNum_delta = xNum * dx - round(0.02 * (xNum * dx) + 1)
+            yNum_delta = yNum * dy - round(0.02 * (yNum * dy) + 1)
             xOrig = round(0.01 * (xNum * dx) + 1)
             yOrig = round(0.01 * (yNum * dy) + 1)
             zOrig = zOrig + 1 * round(0.01 * zOrig + 1)
-            xNum_delta = yNum_delta
         else:
             # the shift is centered in the center of the grid
             x_node = int(self.nll_config.grid_configuration.x)
@@ -311,7 +316,8 @@ class NllManager:
 
         df = pd.DataFrame(data)
 
-        df.iloc[1, 0] = 'TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}'.format(lat=latitude, lon=longitude, depth=depth)
+        # TRANS SIMPLE latOrig longOrig rotAngle -> the third value is the rotation, not the depth
+        df.iloc[1, 0] = 'TRANS SIMPLE {lat:.2f} {lon:.2f} {rot:.2f}'.format(lat=latitude, lon=longitude, rot=0.0)
         df.iloc[3, 0] = 'LOCFILES {obspath} NLLOC_OBS {timepath} {locpath}'.format(
             obspath=self.nll_config.grid_configuration.path_to_picks, timepath=travetimepath, locpath=locationpath)
 
@@ -402,8 +408,8 @@ class NllManager:
             shift_x = -0.5 * x_width
             shift_y = -0.5 * y_width
             lat_geo, lon_geo = calculate_destination_coordinates(latitude, longitude, abs(shift_x), abs(shift_y))
-            df.iloc[1, 0] = "TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}".format(lat=lat_geo, lon=lon_geo,
-                                                                                  depth=depth)
+            df.iloc[1, 0] = "TRANS SIMPLE {lat:.2f} {lon:.2f} {rot:.2f}".format(lat=lat_geo, lon=lon_geo,
+                                                                                rot=0.0)
         else:
             df.iloc[1, 0] = "TRANS SIMPLE {lat:.2f} {lon:.2f} {depth:.2f}".format(lat=latitude, lon=longitude,
                                                                                   depth=0.0)
@@ -457,6 +463,7 @@ class NllManager:
 
         if model == "1D":
             x_node = 2  # mandatory for 1D models
+            y_node = self.grid2d_nodes()
             if p_wave_type:
                 waves.append("P")
             if s_wave_type:
@@ -478,6 +485,18 @@ class NllManager:
             for wave in waves:
                 self.__write_header(latitude, longitude, depth, x_node, y_node, z_node, dx, dy, dz, wave)
                 self.grid3d(wave)
+
+    def grid2d_nodes(self):
+        """
+        Number of horizontal nodes of the 2D (distance-depth) grid used for 1D models.
+        NLLoc only uses a station if its 2D travel-time grid reaches every node of the
+        location grid, so the 2D grid must be longer than the distance from the farthest
+        station (DISTANCE_LIMIT) to the farthest corner of the location grid.
+        """
+        g = self.nll_config.grid_configuration
+        diagonal = np.hypot((int(g.x) - 1) * g.dx, (int(g.y) - 1) * g.dy)
+        limit = self.nll_config.travel_times_configuration.distance_limit
+        return int(np.ceil((diagonal + limit) / g.dy)) + 2
 
     def grid_to_time(self):
         """
@@ -506,7 +525,14 @@ class NllManager:
             waves.append("P")
         if self.nll_config.grid_configuration.s_wave_type:
             waves.append("S")
-        self.stations_to_nll_v2(latitude, longitude, depth, limit)
+        if self.nll_config.grid_configuration.model == "1D":
+            # in 1D the grid origin is the SW corner: measure DISTANCE_LIMIT from the centre of the grid
+            g = self.nll_config.grid_configuration
+            lat_c, lon_c = calculate_destination_coordinates(latitude, longitude, 0.5 * (int(g.x) - 1) * g.dx,
+                                                             0.5 * (int(g.y) - 1) * g.dy)
+        else:
+            lat_c, lon_c = latitude, longitude  # in 3D the grid origin is already the centre
+        self.stations_to_nll_v2(lat_c, lon_c, depth, limit)
 
         for wave in waves:
             output = self.set_grid2time_template(latitude, longitude, depth, dimension, option, wave)
@@ -890,4 +916,7 @@ class Nllcatalog:
     def __write_dict(self, events_dict, output):
         output = os.path.join(output, "catalog.txt")
         df_magnitudes = pd.DataFrame.from_dict(events_dict)
+        # sort the events by origin time (the .hyp files are found in arbitrary order)
+        origin_times = pd.to_datetime(df_magnitudes["Origin Time"], format="%m/%d/%Y, %H:%M:%S.%f")
+        df_magnitudes = df_magnitudes.iloc[origin_times.argsort()]
         df_magnitudes.to_csv(output, sep=";", index=False)

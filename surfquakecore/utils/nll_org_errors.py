@@ -111,7 +111,7 @@ def computeOriginErrors(org):
 
     # 2D confidence intervals at confidenceLevel
     nll2d = np.array(nll3d[:2, :2])
-    eigval2d, eigvec2d = np.linalg.eig(nll2d)  # XY (horizontal) plane
+    eigval2d, eigvec2d = np.linalg.eigh(nll2d)  # XY (horizontal) plane
 
     # indexes are not necessarily ordered. Sort them by eigenvalues
     idx = eigval2d.argsort()
@@ -127,7 +127,7 @@ def computeOriginErrors(org):
     horizontalUncertainty = np.sqrt((errx ** 2) + (erry ** 2))   # SC3ML in kilometers
 
     # 3D confidence intervals at confidenceLevel
-    eigval3d, eigvec3d = np.linalg.eig(nll3d)
+    eigval3d, eigvec3d = np.linalg.eigh(nll3d)
     idx = eigval3d.argsort()
     eigval3d = eigval3d[idx]
     eigvec3d = eigvec3d[:, idx]
