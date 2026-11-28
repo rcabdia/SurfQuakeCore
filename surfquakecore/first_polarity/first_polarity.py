@@ -103,8 +103,9 @@ class FirstPolarity:
                 m = df.iloc[i].Pha
                 ph = str(df.iloc[i].On)
 
-                if dip >= 90:
+                if dip >= 90:   # upgoing ray: antipode on the lower hemisphere
                     dip = 180 - dip
+                    az = (az + 180) % 360
 
                 if ph[0] == "P" and m != "?":
                     Az.append(az)
