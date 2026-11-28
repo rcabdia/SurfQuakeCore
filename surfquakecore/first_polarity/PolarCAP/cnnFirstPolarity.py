@@ -15,7 +15,7 @@ from surfquakecore.utils.obspy_utils import ObspyUtil
 class Polarity:
     def __init__(self, project: Union[SurfProject, str], model_path, arrivals_path, threshold, output_path):
 
-        self.model = tf.keras.models.load_model(model_path)
+        self.model = tf.keras.models.load_model(model_path, compile=False)
 
         if isinstance(project, str):
             self.project = SurfProject.load_project(project)

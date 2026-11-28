@@ -92,7 +92,7 @@ class FirstPolarity:
         Az = []
         Dip = []
         Motion = []
-        df = pd.read_csv(location_file, delim_whitespace=True, skiprows=17)
+        df = pd.read_csv(location_file, sep=r"\s+", skiprows=17)
         for i in range(len(df)):
             if df.iloc[i].RAz > 0:
                 sta = str(df.iloc[i].PHASE)
@@ -446,21 +446,33 @@ class FirstPolarity:
 
         return parsed_data
 
+
     @staticmethod
     def set_head(event_file):
-        header = "\n"
-        # helps to set a string in comments of focmec input
-        try:
-            origin: Origin = ObspyUtil.reads_hyp_to_origin(event_file)
-            origin_time_formatted_string = origin.time.datetime.strftime("%d/%m/%Y, %H:%M:%S.%f")
+        # "dd/mm/YYYY, HH:MM:SS.ffffff lon lat depth", as expected by extract_name
+        with open(event_file) as f:
+            for line in f:
+                if line.startswith("GEOGRAPHIC"):
+                    p = line.split()
+                    return (f"{p[4]}/{p[3]}/{p[2]}, {p[5]}:{p[6]}:{float(p[7]):09.6f} "
+                            f"{p[11]} {p[9]} {p[13]}")
+        return "\n"
 
-            lat = str(origin.longitude)
-            lon = str(origin.latitude)
-            depth = str(origin.depth / 1000)
-            header = origin_time_formatted_string + " " + lat + " " + lon + " " + depth
-        except:
-            pass
-        return header
+    # @staticmethod
+    # def set_head(event_file):
+    #     header = "\n"
+    #     # helps to set a string in comments of focmec input
+    #     try:
+    #         origin: Origin = ObspyUtil.reads_hyp_to_origin(event_file)
+    #         origin_time_formatted_string = origin.time.datetime.strftime("%d/%m/%Y, %H:%M:%S.%f")
+    #
+    #         lat = str(origin.longitude)
+    #         lon = str(origin.latitude)
+    #         depth = str(origin.depth / 1000)
+    #         header = origin_time_formatted_string + " " + lat + " " + lon + " " + depth
+    #     except:
+    #         pass
+    #     return header
 
     @staticmethod
     def extract_name(file_path):

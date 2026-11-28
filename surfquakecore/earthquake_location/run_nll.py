@@ -648,7 +648,7 @@ class NllManager:
     def ger_NLL_residuals(self):
         location_file = os.path.join(self.get_loc_dir, "last.hyp")
         if os.path.isfile(location_file):
-            df = pd.read_csv(location_file, delim_whitespace=True, skiprows=16)
+            df = pd.read_csv(location_file, sep=r"\s+", skiprows=16)
             xp = []
             yp = []
             xs = []

@@ -72,7 +72,7 @@ class BuildExt(build_ext):
 
 setup(
     name="surfquake",
-    version="1.8.3",
+    version="1.8.4",
     description="SurfQuake core with Cython accelerations",
     packages=["surfquakecore", "surfquakecore.cython_module"],
     cmdclass={"build_ext": BuildExt},
