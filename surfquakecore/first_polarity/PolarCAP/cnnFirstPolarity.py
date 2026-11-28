@@ -1,9 +1,10 @@
 from typing import Union
 from copy import deepcopy
 from obspy import UTCDateTime, read, Trace, Stream
+import time
 import numpy as np
 import tensorflow as tf
-from datetime import datetime
+from datetime import datetime, timedelta
 from surfquakecore.project.surf_project import SurfProject
 from surfquakecore.utils.obspy_utils import ObspyUtil
 
@@ -43,6 +44,7 @@ class Polarity:
         Predict the polarity of the P picks of the whole project, one day at a time,
         and write the edited pick file.
         """
+        t0 = time.time()
         info = self.project.get_project_basic_info()
         print(f"[INFO] Project from {info['Start']} to {info['End']}")
 
@@ -52,12 +54,66 @@ class Polarity:
         # One range per day; at least one, also for projects shorter than a day
         n_days = max(1, int(np.ceil((end_time - start_time) / 86400)))
         daily_ranges = [(start_time + i * 86400, start_time + (i + 1) * 86400) for i in range(n_days)]
+        daily_files = [self.project.filter_time(starttime=start, endtime=end, tol=3600, use_full=True) or []
+                       for start, end in daily_ranges]
+
+        # Progress counters
+        self._n_total = sum(len(files) for files in daily_files)
+        self._n_done = 0
+        self._t0 = t0
+        self._step = max(1, -(-self._n_total // 50))  # at most ~50 progress lines
+        print(f"[PolarCAP] {self._n_total} files | {n_days} day(s) | min prob: {self.threshold}", flush=True)
 
         # Sequential on purpose: the TensorFlow model is loaded once in this process
-        for start, end in daily_ranges:
-            self.process_coincidence_pol((self.project, start, end))
+        for files in daily_files:
+            if files:
+                self.run_predict_polarity_day(files)
 
         self.write_output()
+        self.print_summary(time.time() - t0)
+
+    def process_coincidence_pol(self, args):
+        """Process a single day's data (kept for backward compatibility)."""
+        sp, start, end = args
+        filtered_files = sp.filter_time(starttime=start, endtime=end, tol=3600, use_full=True)
+        if filtered_files:
+            self.run_predict_polarity_day(filtered_files)
+        else:
+            return "empty"
+
+    def _progress(self):
+        """Print the progress every self._step files, like PhaseNet."""
+        if not getattr(self, "_n_total", 0):
+            return
+        self._n_done += 1
+        if self._n_done % self._step and self._n_done != self._n_total:
+            return
+        elapsed = time.time() - self._t0
+        eta = elapsed / self._n_done * (self._n_total - self._n_done)
+        print(f"[PolarCAP] {self._n_done}/{self._n_total} files ({100 * self._n_done / self._n_total:.0f}%) | "
+              f"elapsed {timedelta(seconds=int(elapsed))} | remaining ~{timedelta(seconds=int(eta))}",
+              flush=True)
+
+    def print_summary(self, elapsed):
+        """Short report at the end of the run."""
+        n_p = n_u = n_d = 0
+        for key, picks in self.pick_times_imported_modify.items():
+            if not key.split(".")[-1].endswith("Z"):
+                continue
+            for pick in picks:
+                if pick[0] == "P":
+                    n_p += 1
+                    n_u += pick[3] == "U"
+                    n_d += pick[3] == "D"
+        line = "=" * 60
+        print(f"\n{line}\n PolarCAP summary\n{line}")
+        print(f" Files processed       : {getattr(self, '_n_total', 0)}")
+        print(f" P picks on vertical   : {n_p}")
+        print(f" With polarity         : {n_u + n_d}  (U: {n_u}, D: {n_d}, min prob {self.threshold})")
+        print(f" Without polarity (?)  : {n_p - n_u - n_d}")
+        print(f" Total time            : {timedelta(seconds=int(elapsed))}")
+        print(f" Results saved in      : {self.output_path}")
+        print(line)
 
     def _filter_trace_by_picks(self, tr: Trace):
         """
@@ -87,16 +143,6 @@ class Polarity:
 
         return filtered_picks, items
 
-    def process_coincidence_pol(self, args):
-        """Process a single day's data and return events or 'empty'."""
-        sp, start, end = args
-        # Filter files for the given time range
-        filtered_files = sp.filter_time(starttime=start, endtime=end, tol=3600, use_full=True)
-        if filtered_files:
-            self.run_predict_polarity_day(filtered_files)
-        else:
-            return "empty"
-
     def run_predict_polarity_day(self, filtered_files):
         """
         Predict the polarity of the P picks of the vertical traces in filtered_files.
@@ -106,56 +152,61 @@ class Polarity:
         labels = ['Negative', 'Positive']
 
         for file in filtered_files:
-            try:
-                st = read(file)
-            except Exception as e:
-                print(f"[WARNING] Cannot read {file}: {e}")
+            self._predict_file(file, half, labels)
+            self._progress()
+
+    def _predict_file(self, file, half, labels):
+        """Polarities of the P picks of one file (only vertical channels)."""
+        try:
+            st = read(file)
+        except Exception as e:
+            print(f"[WARNING] Cannot read {file}: {e}")
+            return
+
+        if len(st) == 0 or not st[0].stats.channel.endswith("Z"):
+            return  # polarities only on vertical channels
+
+        tr = self.fill_gaps(st)
+        if tr is None:
+            print(f"[WARNING] Too many gaps, skipped: {file}")
+            return
+        if tr.stats.sampling_rate != 100:
+            tr.resample(100)
+
+        filtered_picks, items = self._filter_trace_by_picks(tr)
+        if not filtered_picks:
+            return
+        trace_id = f"{tr.stats.station}.{tr.stats.channel}"
+        data = tr.data
+
+        windows, valid_items = [], []
+        for pick, item in zip(filtered_picks, items):
+            centre = int((pick[1] - tr.stats.starttime) * tr.stats.sampling_rate)
+            start, end = centre - half, centre + half
+            if start < 0 or end > len(data):
+                print(f"[WARNING] {trace_id}: pick at {pick[1]} too close to the trace edge, skipped")
                 continue
+            window = data[start:end].astype(float)
+            window -= window.mean()
+            if not np.any(window):
+                continue  # flat window (e.g. filled gap): no polarity
+            windows.append(window)
+            valid_items.append(item)
 
-            if len(st) == 0 or not st[0].stats.channel.endswith("Z"):
-                continue  # polarities only on vertical channels
+        if not windows:
+            return
 
-            tr = self.fill_gaps(st)
-            if tr is None:
-                print(f"[WARNING] Too many gaps, skipped: {file}")
-                continue
-            if tr.stats.sampling_rate != 100:
-                tr.resample(100)
+        X = self.norm(np.array(windows).reshape(len(windows), 2 * half, 1))
+        try:
+            y_pred = self.model.predict(X, verbose=0)
+        except Exception as e:
+            print(f"[WARNING] {trace_id}: polarity prediction failed: {e}")
+            return
 
-            filtered_picks, items = self._filter_trace_by_picks(tr)
-            if not filtered_picks:
-                continue
-            trace_id = f"{tr.stats.station}.{tr.stats.channel}"
-            data = tr.data
-
-            windows, valid_items = [], []
-            for pick, item in zip(filtered_picks, items):
-                centre = int((pick[1] - tr.stats.starttime) * tr.stats.sampling_rate)
-                start, end = centre - half, centre + half
-                if start < 0 or end > len(data):
-                    print(f"[WARNING] {trace_id}: pick at {pick[1]} too close to the trace edge, skipped")
-                    continue
-                window = data[start:end].astype(float)
-                window -= window.mean()
-                if not np.any(window):
-                    continue  # flat window (e.g. filled gap): no polarity
-                windows.append(window)
-                valid_items.append(item)
-
-            if not windows:
-                continue
-
-            X = self.norm(np.array(windows).reshape(len(windows), 2 * half, 1))
-            try:
-                y_pred = self.model.predict(X, verbose=0)
-            except Exception as e:
-                print(f"[WARNING] {trace_id}: polarity prediction failed: {e}")
-                continue
-
-            pol_pred = np.argmax(y_pred[1], axis=1)
-            pred_prob = np.max(y_pred[1], axis=1)
-            for item, pol, prob in zip(valid_items, pol_pred, pred_prob):
-                self._edit_pick_input(trace_id, item, [(labels[pol], prob)])
+        pol_pred = np.argmax(y_pred[1], axis=1)
+        pred_prob = np.max(y_pred[1], axis=1)
+        for item, pol, prob in zip(valid_items, pol_pred, pred_prob):
+            self._edit_pick_input(trace_id, item, [(labels[pol], prob)])
 
     def fill_gaps(self, st, tol=5):
         """
@@ -198,25 +249,6 @@ class Polarity:
         for i in range(X_ret.shape[0]):
             X_ret[i] = X_ret[i] / maxi[i]
         return X_ret
-
-    def fill_gaps(self, tr, tol=5):
-
-        tol_seconds_percentage = int((tol / 100) * len(tr.data)) * tr.stats.delta
-        st = Stream(traces=tr)
-        gaps = st.get_gaps()
-
-        if len(gaps) > 0 and self._check_gaps(gaps, tol_seconds_percentage):
-            st.print_gaps()
-            st.merge(fill_value="interpolate", interpolation_samples=-1)
-            return st[0]
-
-        elif len(gaps) > 0 and not self._check_gaps(gaps, tol_seconds_percentage):
-            st.print_gaps()
-            return None
-        elif len(gaps) == 0 and self._check_gaps(gaps, tol_seconds_percentage):
-            return tr
-        else:
-            return tr
 
     def _check_gaps(self, gaps, tol):
         time_gaps = []

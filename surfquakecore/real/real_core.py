@@ -96,12 +96,18 @@ class RealCore:
         nllinput = os.path.join(self.output_directory, "nll_input.txt")
         realout = os.path.join(self.output_directory, "phase_sel_total.txt")
 
-        # create travel times
+        # Travel-time table: same ranges and grid sizes that REAL receives in -G (TRAVEL_TIME_GRID_SEARCH),
+        # computed with VELOCITY_MODEL or, by default, with the model distributed with surfquake
         self._get_real_grid()
-        tt_db = create_tt_db()
-
-        tt_db.run_tt_db(ttime=self.working_directory, dist=self.h_range,
-                        depth=self.real_config.geographic_frame.depth, ddist=0.01, ddep=1)
+        tt_grid = self.real_config.travel_time_grid_search
+        if self.h_range > tt_grid.horizontal_range:
+            print(f"[WARNING] The geographic frame extends {self.h_range:.2f} deg from its centre, more than the "
+                  f"travel-time table (HORIZONTAL_RANGE = {tt_grid.horizontal_range} deg)")
+        model_build_dir = os.path.join(self.working_directory, "taup_model") if tt_grid.velocity_model else None
+        tt_db = create_tt_db(model_path=tt_grid.velocity_model, build_dir=model_build_dir)
+        tt_db.run_tt_db(ttime=self.working_directory, dist=tt_grid.horizontal_range,
+                        depth=tt_grid.depth_range, ddist=tt_grid.horizontal_grid_resolution_size,
+                        ddep=tt_grid.depth_grid_resolution_size)
 
         ThresholdPwave = self.real_config.threshold_picks.min_num_p_wave_picks
         ThresholdSwave = self.real_config.threshold_picks.min_num_s_wave_picks

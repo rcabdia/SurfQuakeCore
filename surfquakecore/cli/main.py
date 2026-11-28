@@ -1093,14 +1093,52 @@ def _associate():
         description="Use REAL to associate phase picks into unique seismic events.",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
-    Overview:
-        This command runs the REAL (Rapid Earthquake Association and Location) algorithm
-        to group previously detected phase picks into seismic events.
+        Overview:
+            This command runs the REAL (Rapid Earthquake Association and Location) algorithm
+            to group previously detected phase picks into seismic events.
 
-        Picks should be organized per station/channel in standard format.
+            Picks should be organized per station/channel in standard format
+            (the daily folders written by 'surfquake pick').
 
-    Usage Example:
-        > surfquake associate -i inventory.xml -p ./picks_folder -c real_config.ini -w ./working_dir -s ./associated_output -v
+            Travel times are computed with TauP for the grid of the [TRAVEL_TIME_GRID_SEARCH]
+            section of the config file. By default the velocity model distributed with surfquake
+            is used; set VELOCITY_MODEL = path/to/model.nd (TauP .nd or .tvel format) in that
+            section to use your own model. The table is saved in the working directory and
+            reused while the model and the grid do not change.
+
+            If the picks folder contains a pick file with first-motion polarities
+            (output of 'surfquake polarity'), they are copied to the associated P picks.
+        
+            Velocity model (optional, VELOCITY_MODEL in [TRAVEL_TIME_GRID_SEARCH]):
+        A 1D model in TauP ".nd" (named discontinuities) format. One line per depth:
+
+            depth(km)  Vp(km/s)  Vs(km/s)  density(g/cm3)  Qp  Qs
+
+        - A discontinuity is written as two lines with the same depth.
+        - The line "mantle" marks the Moho ("outer-core" and "inner-core" the core).
+        - All the lines must have the same number of columns.
+        - The model must reach the centre of the Earth (6371 km): write your own crust
+          and copy the deeper part (from "mantle" down) from real/tt_db/mymodel.nd.
+        - Avoid low-velocity layers: TauP may find no P or S arrival.
+
+        Example (my_model.nd), a three-layer crust over the surfquake mantle:
+
+               0.00     4.50000   2.60000   2.40000    1456.0     600.0
+               3.00     4.50000   2.60000   2.40000    1456.0     600.0
+               3.00     5.80000   3.35000   2.65000    1456.0     600.0
+              15.00     5.80000   3.35000   2.65000    1456.0     600.0
+              15.00     6.40000   3.70000   2.85000    1456.0     600.0
+              31.00     6.40000   3.70000   2.85000    1456.0     600.0
+            mantle
+              31.00     8.11061   4.49094   3.38076    1446.0     600.0
+              40.00     8.10119   4.48486   3.37906    1446.0     600.0
+            ......      (rest of the lines of mymodel.nd, down to 6371 km)
+
+        and in real_config.ini:
+
+            [TRAVEL_TIME_GRID_SEARCH]
+            ...
+            VELOCITY_MODEL = ./my_model.nd
 
     Key Arguments:
         -i, --inventory_file     [REQUIRED] Path to station metadata (XML or RESP)
@@ -1109,7 +1147,10 @@ def _associate():
         -w, --work_dir           [REQUIRED] Working directory for REAL intermediate output
         -s, --save_dir           [REQUIRED] Output directory for associated pick results
         -v, --verbose            [OPTIONAL] Enable detailed logging
-
+    
+    Usage Example:
+        > surfquake associate -i inventory.xml -p ./picks_folder -c real_config.ini -w ./working_dir -s ./associated_output -v
+    
     Reference:
         Zhang et al. (2019), Rapid Earthquake Association and Location,
         Seismological Research Letters, https://doi.org/10.1785/0220190052

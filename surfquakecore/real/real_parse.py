@@ -12,6 +12,7 @@
 from surfquakecore.real.structures import RealConfig, GeographicFrame, GridSearch, TravelTimeGridSearch, ThresholdPicks
 from surfquakecore.utils import Cast
 from surfquakecore.utils.configuration_utils import parse_configuration_file
+import os
 
 
 def load_real_configuration(config_file: str) -> RealConfig:
@@ -40,6 +41,8 @@ def load_real_configuration(config_file: str) -> RealConfig:
             DEPTH_RANGE = 50.00
             DEPTH_GRID_RESOLUTION_SIZE = 2.00
             HORIZONTAL_GRID_RESOLUTION_SIZE = 0.01
+            # optional: 1D velocity model (TauP .nd or .tvel). Without it, the surfquake model is used
+            VELOCITY_MODEL = ./my_model.nd
             #
             [THRESHOLD_PICKS]
             MIN_NUM_P_WAVE_PICKS = 3
@@ -74,9 +77,24 @@ def load_real_configuration(config_file: str) -> RealConfig:
                 depth_grid_resolution_size=Cast(
                     real_config_ini['TRAVEL_TIME_GRID_SEARCH']['DEPTH_GRID_RESOLUTION_SIZE'], float),
                 horizontal_grid_resolution_size=Cast(
-                    real_config_ini['TRAVEL_TIME_GRID_SEARCH']['HORIZONTAL_GRID_RESOLUTION_SIZE'], float)),
+                    real_config_ini['TRAVEL_TIME_GRID_SEARCH']['HORIZONTAL_GRID_RESOLUTION_SIZE'], float),
+                velocity_model=_velocity_model_path(
+                    real_config_ini['TRAVEL_TIME_GRID_SEARCH'].get('VELOCITY_MODEL', fallback=None), config_file)),
         threshold_picks=ThresholdPicks(
             min_num_p_wave_picks=Cast(real_config_ini['THRESHOLD_PICKS']['MIN_NUM_P_WAVE_PICKS'], int),
             min_num_s_wave_picks=Cast(real_config_ini['THRESHOLD_PICKS']['MIN_NUM_S_WAVE_PICKS'], int),
             num_stations_recorded=Cast(real_config_ini['THRESHOLD_PICKS']['NUM_STATIONS_RECORDED'], int))
     )
+
+
+def _velocity_model_path(value, config_file):
+    """
+    Optional VELOCITY_MODEL of the configuration. Empty or missing: None (surfquake model).
+    A relative path is searched from the current folder and then from the folder of the .ini file.
+    """
+    if value is None or str(value).strip() in ("", "None", "none", "default"):
+        return None
+    path = os.path.expanduser(str(value).strip())
+    if os.path.isabs(path) or os.path.isfile(path):
+        return os.path.abspath(path)
+    return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(config_file)), path))

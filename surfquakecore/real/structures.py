@@ -10,6 +10,7 @@
 
 
 from dataclasses import dataclass
+from typing import Optional
 from surfquakecore.utils import BaseDataClass
 
 @dataclass
@@ -36,6 +37,7 @@ class TravelTimeGridSearch(BaseDataClass):
     depth_range: float
     depth_grid_resolution_size: float
     horizontal_grid_resolution_size: float
+    velocity_model: Optional[str] = None  # TauP model (.nd/.tvel); None = model distributed with surfquake
 
 
 @dataclass
